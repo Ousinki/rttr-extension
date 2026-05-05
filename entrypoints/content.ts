@@ -634,7 +634,7 @@ export default defineContentScript({
       translate: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>',
       settings: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
       dismiss: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>',
-      speak: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>',
+      speak: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>',
     };
 
     interface MenuItem {
@@ -666,7 +666,10 @@ export default defineContentScript({
             el.addEventListener('click', (e) => {
               e.preventDefault();
               e.stopPropagation();
-              hideContextMenu();
+              el.classList.remove('rttr-speaking');
+              void el.offsetWidth; // trigger reflow
+              el.classList.add('rttr-speaking');
+              setTimeout(() => el.classList.remove('rttr-speaking'), 2000);
               if (item.onSpeakClick) item.onSpeakClick();
             });
           } else {
@@ -1007,69 +1010,32 @@ export default defineContentScript({
               }
             }
 
-            // 如果没有预加载的音标，尝试按需从 Free Dictionary API 获取
-            if (!ipaToShow && textToSpeak) {
+            // 立即开始发音，不被音标查询阻塞
+            speakText(textToSpeak);
+
+            const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+
+            if (ipaToShow) {
+              showPronounceBadge(ipaToShow, target.getBoundingClientRect());
+            } else {
               const singleWord = textToSpeak.trim();
-              // 仅对纯单词（不含空格）发起按需查询
               if (!singleWord.includes(' ') && /^[a-zA-Z'-]+$/.test(singleWord)) {
                 try {
-                  const resp = await fetch(
-                    `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(singleWord.toLowerCase())}`,
-                    { signal: AbortSignal.timeout(2000) }
-                  );
-                  if (resp.ok) {
-                    const data = await resp.json();
-                    const phonetics = data?.[0]?.phonetics;
-                    const usEntry = phonetics?.find((p: any) => p.audio?.includes('-us') && p.text);
-                    const anyEntry = phonetics?.find((p: any) => p.text);
-                    const raw = usEntry?.text || anyEntry?.text || data?.[0]?.phonetic || '';
-                    if (raw) {
-                      // 严式→宽式 KK 清洗
-                      const cleaned = raw.replace(/^\/|\/$/g, '')
-                        .replace(/ɹ/g, 'r').replace(/ɫ/g, 'l').replace(/ɾ/g, 't')
-                        .replace(/ɚ/g, 'ər').replace(/ɝ/g, 'ɜːr')
-                        .replace(/t͡ʃ/g, 'tʃ').replace(/d͡ʒ/g, 'dʒ')
-                        .replace(/\./g, '').trim();
-                      ipaToShow = `/${cleaned}/`;
-                      // 缓存回 entry 供后续点击复用
-                      entry.ipa = ipaToShow;
+                  const resp = await browser.runtime.sendMessage({ type: 'LOOKUP_IPA', word: singleWord }) as { ipa: string | null };
+                  if (resp?.ipa) {
+                    showPronounceBadge(resp.ipa, target.getBoundingClientRect());
+                    // 缓存回 entry 供后续点击复用（只针对整个短语点击时缓存）
+                    if (textToSpeak === (entry.pronunciation || part)) {
+                      entry.ipa = resp.ipa;
                     }
+                    return;
                   }
                 } catch {
-                  // 超时或网络失败，静默跳过
+                  // 静默失败
                 }
               }
+              showPronounceBadge(speakerSVG, target.getBoundingClientRect(), true);
             }
-            
-            // 查找 rt 元素并替换文本为音标
-            const rtElement = wrapper.querySelector('rt');
-            // 使用闭包中安全的初始值，防止快速连续点击时读取到已经被替换成的音标（导致永久卡在音标状态）
-            const trueOriginalRtText = isSameTranslation ? '' : entry.translation;
-            
-            if (rtElement && ipaToShow) {
-              rtElement.textContent = ipaToShow;
-              wrapper.classList.add('rttr-playing-ipa');
-              
-              // 当闪现音标时，彻底隐藏悬浮窗以免视觉干扰或遮挡
-              if (wrapper.dataset.explanation) {
-                hideTooltip();
-              }
-            }
-
-            speakText(textToSpeak, () => {
-              // 朗读结束或错误时恢复
-              if (rtElement && ipaToShow) {
-                rtElement.textContent = trueOriginalRtText;
-                wrapper.classList.remove('rttr-playing-ipa');
-                
-                // 如果鼠标仍悬停在该单词上，则重新显示悬浮窗
-                if (wrapper.dataset.explanation && wrapper.matches(':hover')) {
-                  requestAnimationFrame(() => {
-                    showTooltip(wrapper.dataset.explanation!, wrapper.getBoundingClientRect());
-                  });
-                }
-              }
-            });
           });
 
           // 拖拽标注 → 标记为已知词 (扔掉)
@@ -1655,6 +1621,20 @@ export default defineContentScript({
           align-items: center;
           justify-content: center;
           color: #007aff;
+        }
+
+        .rttr-speaking .rttr-wave1 {
+          animation: rttr-wave-pulse 1.2s infinite both;
+        }
+        .rttr-speaking .rttr-wave2 {
+          animation: rttr-wave-pulse 1.2s infinite 0.2s both;
+        }
+
+        @keyframes rttr-wave-pulse {
+          0% { opacity: 0; }
+          30% { opacity: 1; }
+          70% { opacity: 0; }
+          100% { opacity: 0; }
         }
 
         .rttr-cm-item {
