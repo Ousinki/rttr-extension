@@ -92,7 +92,27 @@ export default defineBackground(() => {
       };
     }
 
-    // 1. 调用 AI 全量翻译
+    // 0. 尝试命中缓存 (用户要求暂时注释掉本地化缓存)
+    /*
+    const textHash = Array.from(text).reduce((s, c) => Math.imul(31, s) + c.charCodeAt(0) | 0, 0);
+    const cacheKey = `rttr_cache_${textHash}`;
+    const cachedData = await browser.storage.local.get(cacheKey);
+    let allResults: any[] = [];
+
+    if (cachedData[cacheKey]) {
+      console.log('[RTTR] Cache hit for paragraph');
+      allResults = cachedData[cacheKey];
+    } else {
+      console.log('[RTTR] Cache miss, fetching from AI');
+      // 1. 调用 AI 全量翻译
+      allResults = await translateParagraph(text, settings);
+      
+      // 存入缓存，设置最多保留 1000 条记录以防无限膨胀
+      await browser.storage.local.set({ [cacheKey]: allResults });
+    }
+    */
+    
+    // 1. 调用 AI 全量翻译（临时恢复直接调用）
     const allResults = await translateParagraph(text, settings);
 
     // 2. 过滤基础词汇（本地配置表，< 1ms）

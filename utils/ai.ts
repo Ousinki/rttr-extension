@@ -4,6 +4,8 @@
  */
 
 import type { RTTRSettings } from './storage';
+import nlp from 'compromise';
+import { shouldSkip } from './skip-words';
 
 // ─── 类型定义 ────────────────────────────────────────────
 
@@ -17,27 +19,24 @@ export interface AnnotationResult {
 
 // ─── AI Prompt ──────────────────────────────────────────
 
-const SYSTEM_PROMPT = `你是一个精准的英文语境翻译引擎。用户会发送一段英文文本。
+const SYSTEM_PROMPT = `你是一个精准的英语词典翻译引擎。
 
 你的任务：
-1. 逐词识别段落中的实义词，给出语境翻译
-2. **务必合并专有名词与短语**：对于人名（如 Donald Trump）、地名、机构名、专有实体（如 Washington Hilton hotel）、以及固定搭配、习语和短语动词，**必须**将它们作为一个整体提取并翻译，**绝对不要**拆分成单个单词！
-3. 对于专有名词、技术术语或需要背景知识的词，再提供一个中文解释（约10-20字）。
-4. **对于纯数字、年份或金额**（如 2025, 1990s, $100），不要强行翻译成中文（翻译保持和原文一致）。请提供它地道的**纯英文拼写读法**（例如 "twenty twenty-five"）作为发音提示，并在解释中也提供该读法，以悬浮窗展示。
-5. **极其重要**：必须提供每个提取的词（**包括纯数字和年份的读音**）的国际音标（IPA），并用斜杠包裹。**注意：音标内部的空格数量必须与原英文词组的空格数量完全一致！** 对于带连字符的词（如 Vice-President）或缩写（如 JD），即使有多个发音，也必须将音标连写（如 /vaɪs-ˈprezɪdənt/ 或 /ˌdʒeɪˈdiː/），**绝对不要加空格**，否则系统将无法对齐单词发音。
-6. 跳过虚词：冠词、单独介词、连词、代词、be动词、助动词
+用户会提供一段英文的【上下文】，以及一个用 JSON 数组格式提供的【需要翻译的短语/单词列表】。
+请**仅仅针对列表中的词汇**，结合给定的上下文，提供最精准的中文翻译和美式音标。
 
-**输出格式要求（极其重要）**：
-为了极致的响应速度，**绝对不要使用 JSON**。请严格按照以下格式输出，每行一个词汇结果，使用竖线 | 分隔字段。
-字段顺序：原文|语境翻译|中文解释(可选)|发音提示(可选)|音标(可选)
+【核心要求】：
+1. 你的返回条目数量必须与用户请求列表中的数量严格一致。
+2. 绝对不能自作主张去翻译列表中不存在的单词！
+3. 对于专有名词或生僻专业词汇，提供简短中文解释（10字以内）。
+4. **对于纯数字、年份**（如 2025），不要翻译，直接在其“解释”列提供英文拼写读法（如 twenty twenty-five）。
+5. 必须提供精确的美式 IPA 音标。音标内的空格数必须与原文单词的空格数完全一致！例如 "White House" 包含1个空格，其音标必须是 "/ˌwaɪt ˈhaʊs/"。带连字符或缩写（如 Vice-President, JD）的音标绝对不可包含空格（如 /vaɪs-ˈprezɪdənt/, /ˌdʒeɪˈdiː/）。
 
-示例：
-Homebrew|Homebrew|macOS 上的包管理器||/ˈhoʊmˌbru/
-typically|通常|||/ˈtɪpɪkli/
-supports|支持|||/səˈpɔrts/
-2025|2025|twenty twenty-five|twenty twenty-five|
+**输出格式要求（为了极限速度）**：
+绝对不要使用 JSON 对象。严格按照以下格式输出，每行一个结果，用竖线 | 分隔。一共 4 列。
+字段顺序：列表原文|语境翻译|中文解释(可选)|IPA音标
 
-不要输出任何其他的解释文字、Markdown 标记或代码块语法，直接输出上述格式的纯文本。`;
+直接输出纯文本结果，不要任何Markdown语法或多余解释。`;
 
 // ─── API 调用 ────────────────────────────────────────────
 
@@ -49,6 +48,52 @@ export async function translateParagraph(
     throw new Error('请先在插件设置中配置 API Key');
   }
 
+  // 1. 本地 NLP 引擎智能分词
+  const doc = nlp(text);
+  const chunksSet = new Set<string>();
+
+  // 优先提取实体和名词短语
+  doc.people().out('array').forEach((c: string) => chunksSet.add(c.trim()));
+  doc.places().out('array').forEach((c: string) => chunksSet.add(c.trim()));
+  doc.organizations().out('array').forEach((c: string) => chunksSet.add(c.trim()));
+  doc.nouns().out('array').forEach((c: string) => chunksSet.add(c.trim()));
+  doc.verbs().out('array').forEach((c: string) => chunksSet.add(c.trim()));
+  doc.adjectives().out('array').forEach((c: string) => chunksSet.add(c.trim()));
+  doc.adverbs().out('array').forEach((c: string) => chunksSet.add(c.trim()));
+
+  // 2. 本地过滤：去除被标点符号污染的词，以及基础虚词
+  let validChunks = Array.from(chunksSet)
+    .map(chunk => {
+      // 核心修复：去除首尾的非字母/数字符号（如逗号、句号）
+      // 这极其重要，因为如果带着逗号，前端的 \b 正则表达式将无法匹配单词边界！
+      let clean = chunk.replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, '').trim();
+      // 移除开头的冠词 (the, a, an)
+      clean = clean.replace(/^(the|a|an)\s+/i, '').trim();
+      return clean;
+    })
+    .filter(chunk => {
+      // 移除只包含标点或数字的无效块
+      if (!/[a-zA-Z]/.test(chunk)) return false;
+      // 移除基础虚词
+      if (shouldSkip(chunk)) return false;
+      return true;
+    });
+
+  // 对数组进行去重
+  validChunks = Array.from(new Set(validChunks));
+
+  // 如果本地引擎没有提炼出任何需要翻译的词，直接返回
+  if (validChunks.length === 0) {
+    return [];
+  }
+
+  // 构建专门的用户请求
+  const userPrompt = `【上下文】：
+${text}
+
+【需要你翻译的短语/单词列表】：
+${JSON.stringify(validChunks)}`;
+
   const response = await fetch(settings.apiEndpoint, {
     method: 'POST',
     headers: {
@@ -59,7 +104,7 @@ export async function translateParagraph(
       model: settings.model,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: text },
+        { role: 'user', content: userPrompt },
       ],
       temperature: 0.1,
     }),
@@ -99,10 +144,7 @@ function parseAIResponse(content: string): AnnotationResult[] {
           res.explanation = parts[2].trim();
         }
         if (parts.length >= 4 && parts[3].trim()) {
-          res.pronunciation = parts[3].trim();
-        }
-        if (parts.length >= 5 && parts[4].trim()) {
-          res.ipa = parts[4].trim();
+          res.ipa = parts[3].trim();
         }
         if (res.word && res.translation) {
            results.push(res);
