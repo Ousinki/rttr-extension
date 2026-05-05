@@ -403,14 +403,14 @@ export default defineContentScript({
             if (rtElement && entry.ipa) {
               originalRtText = rtElement.textContent || '';
               rtElement.textContent = entry.ipa;
-              rtElement.style.color = '#3282ff'; // 高亮蓝色以示反馈
+              wrapper.classList.add('rttr-playing-ipa');
             }
 
             speakText(textToSpeak, () => {
               // 朗读结束或错误时恢复
               if (rtElement && entry.ipa) {
                 rtElement.textContent = originalRtText;
-                rtElement.style.color = entry.color;
+                wrapper.classList.remove('rttr-playing-ipa');
               }
             });
           });
@@ -587,6 +587,15 @@ export default defineContentScript({
           ruby-align: center;
           /* 将上标稍微往下移一点，靠近底部的英文，防止撞到上一行 */
           transform: translateY(0.15em);
+          transition: all 0.2s ease; /* 增加平滑过渡效果 */
+        }
+
+        ruby.rttr-word.rttr-playing-ipa rt.rttr-translation {
+          font-size: 0.8em;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          color: #3282ff !important;
+          opacity: 1;
+          transform: translateY(0); /* 字体变大时恢复标准位置 */
         }
 
         /* 强制给包含标注的段落增加一点行高，防止拥挤 */
