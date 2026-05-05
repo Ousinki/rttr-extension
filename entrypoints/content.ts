@@ -153,12 +153,13 @@ export default defineContentScript({
       paragraph.setAttribute(RTTR_ATTR, 'true');
 
       // 构建词汇映射（大小写不敏感），并分配颜色
-      const wordMap = new Map<string, { translation: string; explanation?: string; pronunciation?: string; color: string }>();
-      results.forEach(({ word, translation, explanation, pronunciation }, i) => {
+      const wordMap = new Map<string, { translation: string; explanation?: string; pronunciation?: string; ipa?: string; color: string }>();
+      results.forEach(({ word, translation, explanation, pronunciation, ipa }, i) => {
         wordMap.set(word.toLowerCase(), {
           translation,
           explanation,
           pronunciation,
+          ipa,
           color: ANNOTATION_COLORS[i % ANNOTATION_COLORS.length],
         });
       });
@@ -264,7 +265,7 @@ export default defineContentScript({
     }
 
     // ─── 语音合成 (TTS) ────────────────────────────────
-    function speakText(text: string) {
+    function speakText(text: string, onComplete?: () => void) {
       console.log(`[RTTR TTS] 准备朗读文本: "${text}"`);
       if (!('speechSynthesis' in window)) {
         console.error('[RTTR TTS] 当前浏览器不支持 speechSynthesis');
@@ -308,8 +309,14 @@ export default defineContentScript({
       }
       
       utterance.onstart = () => console.log('[RTTR TTS] 开始朗读...');
-      utterance.onend = () => console.log('[RTTR TTS] 朗读结束.');
-      utterance.onerror = (e) => console.error('[RTTR TTS] 朗读发生错误:', e);
+      utterance.onend = () => {
+        console.log('[RTTR TTS] 朗读结束.');
+        if (onComplete) onComplete();
+      };
+      utterance.onerror = (e) => {
+        console.error('[RTTR TTS] 朗读发生错误:', e);
+        if (onComplete) onComplete();
+      };
 
       window.speechSynthesis.speak(utterance);
     }
@@ -317,7 +324,7 @@ export default defineContentScript({
     // ─── 标注单个文本节点 ──────────────────────────────
     function annotateTextNode(
       textNode: Node,
-      wordMap: Map<string, { translation: string; explanation?: string; pronunciation?: string; color: string }>
+      wordMap: Map<string, { translation: string; explanation?: string; pronunciation?: string; ipa?: string; color: string }>
     ): DocumentFragment | null {
       const text = textNode.textContent || '';
       if (!text.trim()) return null;
@@ -389,7 +396,23 @@ export default defineContentScript({
             e.preventDefault();
             e.stopPropagation();
             const textToSpeak = entry.pronunciation || part;
-            speakText(textToSpeak);
+            
+            // 查找 rt 元素并替换文本为音标
+            const rtElement = wrapper.querySelector('rt');
+            let originalRtText = '';
+            if (rtElement && entry.ipa) {
+              originalRtText = rtElement.textContent || '';
+              rtElement.textContent = entry.ipa;
+              rtElement.style.color = '#3282ff'; // 高亮蓝色以示反馈
+            }
+
+            speakText(textToSpeak, () => {
+              // 朗读结束或错误时恢复
+              if (rtElement && entry.ipa) {
+                rtElement.textContent = originalRtText;
+                rtElement.style.color = entry.color;
+              }
+            });
           });
 
           // 拖拽标注 → 标记为已知词 (扔掉)
