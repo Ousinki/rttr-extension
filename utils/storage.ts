@@ -1,0 +1,93 @@
+/**
+ * RTTR Storage Layer
+ * 管理用户设置和已知词表，使用 chrome.storage.sync 支持跨设备同步
+ */
+
+import { storage } from '#imports';
+
+// ─── 类型定义 ────────────────────────────────────────────
+
+export interface KnownWord {
+  word: string;          // 单词原形（lemma）
+  dismissedAt: number;   // 标记时间戳
+  dismissCount: number;  // 累计被取消次数（越多越确认掌握）
+}
+
+export interface RTTRSettings {
+  apiKey: string;
+  apiEndpoint: string;     // OpenAI 兼容接口地址
+  model: string;           // 使用的模型名
+  annotationColor: string; // 标注颜色
+  enabled: boolean;        // 全局开关
+  ttsLanguage: string;     // TTS 语言 (如 en-US)
+  ttsRate: number;         // TTS 语速 (0.1 - 2.0)
+  ttsVolume: number;       // TTS 音量 (0.0 - 1.0)
+  ttsVoiceURI: string;     // TTS 发音人 URI
+}
+
+// ─── 默认值 ──────────────────────────────────────────────
+
+const DEFAULT_SETTINGS: RTTRSettings = {
+  apiKey: '',
+  apiEndpoint: 'https://api.openai.com/v1/chat/completions',
+  model: 'gpt-4o-mini',
+  annotationColor: '#4a90d9',
+  enabled: true,
+  ttsLanguage: 'en-US',
+  ttsRate: 0.85,
+  ttsVolume: 1.0,
+  ttsVoiceURI: '',
+};
+
+// ─── Storage Items (WXT 类型安全存储) ────────────────────
+
+export const settingsStorage = storage.defineItem<RTTRSettings>(
+  'sync:rttr-settings',
+  { fallback: DEFAULT_SETTINGS }
+);
+
+export const knownWordsStorage = storage.defineItem<KnownWord[]>(
+  'sync:rttr-known-words',
+  { fallback: [] }
+);
+
+// ─── 辅助函数 ────────────────────────────────────────────
+
+/**
+ * 获取已知词的 Set（用于快速过滤）
+ */
+export async function getKnownWordsSet(): Promise<Set<string>> {
+  const words = await knownWordsStorage.getValue();
+  return new Set(words.map((w) => w.word.toLowerCase()));
+}
+
+/**
+ * 添加已知词（如果已存在则增加 dismissCount）
+ */
+export async function addKnownWord(word: string): Promise<void> {
+  const words = await knownWordsStorage.getValue();
+  const lowerWord = word.toLowerCase();
+  const existing = words.find((w) => w.word.toLowerCase() === lowerWord);
+
+  if (existing) {
+    existing.dismissCount += 1;
+    existing.dismissedAt = Date.now();
+  } else {
+    words.push({
+      word: lowerWord,
+      dismissedAt: Date.now(),
+      dismissCount: 1,
+    });
+  }
+
+  await knownWordsStorage.setValue(words);
+}
+
+/**
+ * 移除已知词（恢复标注）
+ */
+export async function removeKnownWord(word: string): Promise<void> {
+  const words = await knownWordsStorage.getValue();
+  const filtered = words.filter((w) => w.word.toLowerCase() !== word.toLowerCase());
+  await knownWordsStorage.setValue(filtered);
+}
