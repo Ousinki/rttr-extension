@@ -517,6 +517,12 @@ export default defineContentScript({
           transition: opacity 0.3s ease, color 0.2s ease;
         }
 
+        /* 强制选中状态有背景色，防止因为可拖拽属性或行内块导致无选中反馈 */
+        .rttr-word::selection,
+        .rttr-word *::selection {
+          background-color: rgba(50, 130, 255, 0.3) !important;
+        }
+
         .rttr-word:hover {
           color: var(--rttr-color-hover, #2a70b9);
         }
