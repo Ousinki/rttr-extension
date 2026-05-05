@@ -233,6 +233,7 @@ export default defineContentScript({
 
     // ─── 全局悬浮窗管理 ────────────────────────────────
     let tooltipEl: HTMLElement | null = null;
+    let currentUtterance: SpeechSynthesisUtterance | null = null; // 防止 Chrome GC 导致语音中断
 
     function getOrCreateTooltip(): HTMLElement {
       if (!tooltipEl) {
@@ -250,12 +251,13 @@ export default defineContentScript({
       // 先加上 class 以获取实际渲染尺寸
       el.classList.add('rttr-visible');
       
-      // 计算位置：居中显示在单词上方
-      const top = window.scrollY + rect.top - el.offsetHeight - 8;
-      const left = window.scrollX + rect.left + (rect.width / 2) - (el.offsetWidth / 2);
+      // 恢复原有的 -8px，避免普通标注显得太远
+      const top = window.scrollY + rect.top - 8;
+      const left = window.scrollX + rect.left + (rect.width / 2);
       
       el.style.top = `${top}px`;
-      el.style.left = `${Math.max(4, left)}px`; // 防止超出左边界
+      el.style.left = `${left}px`;
+      el.style.transform = 'translate(-50%, -100%) scale(0.95)';
     }
 
     function hideTooltip() {
@@ -314,10 +316,16 @@ export default defineContentScript({
         if (onComplete) onComplete();
       };
       utterance.onerror = (e) => {
-        console.error('[RTTR TTS] 朗读发生错误:', e);
+        if (e.error === 'interrupted') {
+          // 正常打断，不作为错误抛出
+          console.log('[RTTR TTS] 朗读已切换/被打断');
+        } else {
+          console.error('[RTTR TTS] 朗读发生错误, 原因:', e.error);
+        }
         if (onComplete) onComplete();
       };
 
+      currentUtterance = utterance;
       window.speechSynthesis.speak(utterance);
     }
 
@@ -351,34 +359,37 @@ export default defineContentScript({
         if (entry) {
           const isSameTranslation = part.toLowerCase() === entry.translation.toLowerCase();
 
-          let wrapper: HTMLElement;
-
-          if (isSameTranslation && entry.explanation) {
-            // 如果翻译和原文相同但有解释：不显示上标，只显示虚线下划线和悬浮窗
-            wrapper = document.createElement('span');
-            wrapper.className = 'rttr-word rttr-tooltip-only';
-            wrapper.style.color = entry.color;
-            wrapper.textContent = part;
-            wrapper.dataset.explanation = entry.explanation;
-          } else {
-            // 创建完整的 <ruby> 标注
-            wrapper = document.createElement('ruby');
-            wrapper.className = 'rttr-word';
-            wrapper.style.color = entry.color;
-            wrapper.textContent = part;
-
-            if (entry.explanation) {
-              wrapper.dataset.explanation = entry.explanation;
-              wrapper.classList.add('rttr-has-tooltip');
+          // 统一使用 ruby，哪怕翻译和原文一样，我们把 rt 置空即可（点击时仍可显示音标）
+          let wrapper = document.createElement('ruby');
+          wrapper.className = 'rttr-word';
+          wrapper.style.color = entry.color;
+          
+          // 如果包含多个单词，将每个单词用 span 包裹，以便点击时能精确获知点击了哪个词
+          const subWords = part.split(/(\s+)/);
+          subWords.forEach((subWord, idx) => {
+            if (subWord.trim()) {
+              const span = document.createElement('span');
+              span.textContent = subWord;
+              // 记录实义词的索引（忽略空格元素）
+              span.dataset.idx = String(Math.floor(idx / 2));
+              wrapper.appendChild(span);
+            } else {
+              wrapper.appendChild(document.createTextNode(subWord));
             }
+          });
 
-            const rt = document.createElement('rt');
-            rt.className = 'rttr-translation';
-            rt.style.color = entry.color;
-            rt.textContent = entry.translation;
-
-            wrapper.appendChild(rt);
+          if (entry.explanation) {
+            wrapper.dataset.explanation = entry.explanation;
+            wrapper.classList.add('rttr-has-tooltip');
           }
+
+          const rt = document.createElement('rt');
+          rt.className = 'rttr-translation';
+          rt.style.color = entry.color;
+          // 如果翻译等于原文，就不默认显示翻译（但 rt 占位留着，以便点击时闪现音标）
+          rt.textContent = isSameTranslation ? '' : entry.translation;
+
+          wrapper.appendChild(rt);
 
           // 悬浮窗事件
           if (entry.explanation) {
@@ -395,28 +406,81 @@ export default defineContentScript({
           wrapper.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            const textToSpeak = entry.pronunciation || part;
+            
+            const target = e.target as HTMLElement;
+            // 默认整句朗读，但先不急着显示整句音标
+            let textToSpeak = entry.pronunciation || part;
+            let ipaToShow = entry.ipa;
+
+            if (target.tagName === 'RT') {
+              // 用户需求：点击上标时，不要出现长串音标，直接朗读 TTS 即可
+              ipaToShow = '';
+            } else if (target.tagName === 'SPAN' && target.dataset.idx) {
+              const wordIdx = parseInt(target.dataset.idx, 10);
+              
+              // 拆分音标（去除头尾斜杠后按空格拆分）
+              if (entry.ipa) {
+                const cleanIpa = entry.ipa.replace(/^\/|\/$/g, '').trim();
+                const ipaParts = cleanIpa.split(/\s+/);
+                // 确保英文单词数和音标块数一致才进行精确匹配
+                const wordCount = part.trim().split(/\s+/).length;
+                if (ipaParts.length === wordCount && ipaParts[wordIdx]) {
+                  ipaToShow = `/${ipaParts[wordIdx]}/`;
+                  textToSpeak = target.textContent || textToSpeak;
+                } else {
+                  // 如果对不齐（比如AI在缩写里加了空格），为了避免把整个长句的音标塞进一个单词里，我们干脆不显示音标，但仍然只朗读这一个单词
+                  ipaToShow = '';
+                  textToSpeak = target.textContent || textToSpeak;
+                }
+              } else {
+                // 如果没有音标，但也只想读这一个词
+                textToSpeak = target.textContent || textToSpeak;
+              }
+            }
             
             // 查找 rt 元素并替换文本为音标
             const rtElement = wrapper.querySelector('rt');
-            let originalRtText = '';
-            if (rtElement && entry.ipa) {
-              originalRtText = rtElement.textContent || '';
-              rtElement.textContent = entry.ipa;
+            // 使用闭包中安全的初始值，防止快速连续点击时读取到已经被替换成的音标（导致永久卡在音标状态）
+            const trueOriginalRtText = isSameTranslation ? '' : entry.translation;
+            
+            if (rtElement && ipaToShow) {
+              rtElement.textContent = ipaToShow;
               wrapper.classList.add('rttr-playing-ipa');
+              
+              // 当闪现音标时，彻底隐藏悬浮窗以免视觉干扰或遮挡
+              if (wrapper.dataset.explanation) {
+                hideTooltip();
+              }
             }
 
             speakText(textToSpeak, () => {
               // 朗读结束或错误时恢复
-              if (rtElement && entry.ipa) {
-                rtElement.textContent = originalRtText;
+              if (rtElement && ipaToShow) {
+                rtElement.textContent = trueOriginalRtText;
                 wrapper.classList.remove('rttr-playing-ipa');
+                
+                // 如果鼠标仍悬停在该单词上，则重新显示悬浮窗
+                if (wrapper.dataset.explanation && wrapper.matches(':hover')) {
+                  requestAnimationFrame(() => {
+                    showTooltip(wrapper.dataset.explanation!, wrapper.getBoundingClientRect());
+                  });
+                }
               }
             });
           });
 
           // 拖拽标注 → 标记为已知词 (扔掉)
-          wrapper.draggable = true;
+          // 动态设置 draggable：默认 false 不干扰全局文本划选，仅在按住单词时设为 true
+          wrapper.addEventListener('mousedown', () => {
+            wrapper.draggable = true;
+          });
+          wrapper.addEventListener('mouseup', () => {
+            wrapper.draggable = false;
+          });
+          wrapper.addEventListener('dragend', () => {
+            wrapper.draggable = false;
+          });
+
           let dragStartX = 0;
           let dragStartY = 0;
 
@@ -493,7 +557,7 @@ export default defineContentScript({
             );
             
             if (distance > 30) {
-              dismissWord(wrapper, lower);
+              dismissWord(wrapper, lower, part);
             }
           });
 
@@ -508,7 +572,7 @@ export default defineContentScript({
     }
 
     // ─── 取消标注（标记为已知词） ──────────────────────
-    async function dismissWord(ruby: HTMLElement, word: string) {
+    async function dismissWord(ruby: HTMLElement, word: string, originalText: string) {
       // 动画淡出
       ruby.classList.add('rttr-dismissing');
 
@@ -521,8 +585,7 @@ export default defineContentScript({
         if (response.success) {
           // 替换 ruby 为纯文本
           setTimeout(() => {
-            const text = ruby.childNodes[0]?.textContent || '';
-            const textNode = document.createTextNode(text);
+            const textNode = document.createTextNode(originalText);
             ruby.replaceWith(textNode);
             
             // 加入撤销栈
@@ -554,15 +617,18 @@ export default defineContentScript({
         /* ─── RTTR Ruby 标注样式 ─── */
         .rttr-word {
           color: var(--rttr-color, #4a90d9);
-          cursor: pointer;
+          cursor: text;
           position: relative;
           transition: opacity 0.3s ease, color 0.2s ease;
+          user-select: text !important;
+          -webkit-user-select: text !important;
         }
 
         /* 强制选中状态有背景色，防止因为可拖拽属性或行内块导致无选中反馈 */
         .rttr-word::selection,
         .rttr-word *::selection {
-          background-color: rgba(50, 130, 255, 0.3) !important;
+          background-color: #b3d4fc !important;
+          color: #000 !important;
         }
 
         .rttr-word:hover {
@@ -572,10 +638,10 @@ export default defineContentScript({
         /* 带有悬浮窗解释的词 */
         span.rttr-tooltip-only, ruby.rttr-has-tooltip {
           border-bottom: 1px dashed currentColor;
-          cursor: pointer;
         }
 
         ruby.rttr-word rt.rttr-translation {
+          cursor: pointer;
           font-size: 0.55em;
           color: inherit;
           opacity: 0.85;
@@ -585,6 +651,8 @@ export default defineContentScript({
           padding: 0;
           text-align: center;
           ruby-align: center;
+          user-select: none;
+          -webkit-user-select: none;
           /* 将上标稍微往下移一点，靠近底部的英文，防止撞到上一行 */
           transform: translateY(0.15em);
           transition: all 0.2s ease; /* 增加平滑过渡效果 */
@@ -614,24 +682,34 @@ export default defineContentScript({
           transition: all 0.3s ease;
         }
 
-        /* 拖拽中留在原地的词变淡 */
-        .rttr-word.rttr-is-dragging,
+        /* 拖拽中留在原地的词：变成一个具有物理感的凹陷“空槽” (Empty Dropzone Slot) */
+        .rttr-word.rttr-is-dragging {
+          color: transparent !important; /* 彻底隐藏原本的文字，仿佛被拿走了 */
+          background-color: rgba(0, 0, 0, 0.04); /* 浅灰底色 */
+          border-radius: 4px;
+          box-shadow: inset 0 1px 3px rgba(0,0,0,0.1); /* 内阴影制造物理凹陷感 */
+          outline: 1.5px dashed rgba(0, 0, 0, 0.2); /* 虚线框暗示这是个槽位 */
+          outline-offset: 2px;
+          transition: all 0.2s ease;
+          cursor: grabbing !important;
+        }
+        
         .rttr-word.rttr-is-dragging rt.rttr-translation {
-          opacity: 0.15 !important;
-          color: #999 !important; /* 加上灰色，视觉上更像被丢弃的废纸 */
-          transition: opacity 0.1s ease, color 0.1s ease, transform 0.2s ease;
+          color: transparent !important;
         }
 
-        /* 原地吸附的准备状态（拖拽回原位时） */
-        .rttr-word.rttr-will-snap-back {
-          opacity: 0.6 !important;
-          color: var(--rttr-color, #4a90d9) !important; /* 恢复原色暗示可以放回 */
-          transform: scale(1.08); /* 微微放大，产生磁吸感 */
-          transition: all 0.2s cubic-bezier(0.18, 0.89, 0.32, 1.28); /* 带一点弹簧效果 */
+        .rttr-word.rttr-is-dragging * {
+          cursor: grabbing !important;
         }
-        .rttr-word.rttr-will-snap-back rt.rttr-translation {
-          color: var(--rttr-color, #4a90d9) !important;
-          opacity: 0.6 !important;
+        
+        /* 原地吸附的准备状态（拖拽回原位附近）：插槽感应发光 (Magnetic Glow) */
+        .rttr-word.rttr-will-snap-back {
+          background-color: rgba(74, 144, 217, 0.1) !important;
+          outline: 2px dashed rgba(74, 144, 217, 0.9) !important;
+          outline-offset: 3px !important;
+          box-shadow: inset 0 0 6px rgba(74, 144, 217, 0.2), 0 0 12px rgba(74, 144, 217, 0.4) !important; /* 内外双重发光 */
+          transform: scale(1.04); /* 整体轻微放大，准备迎接吸附 */
+          transition: all 0.2s cubic-bezier(0.18, 0.89, 0.32, 1.28); /* Q弹动画 */
         }
 
         /* ─── 悬浮窗样式 (Premium UI) ─── */
