@@ -21,13 +21,22 @@ const SYSTEM_PROMPT = `你是一个精准的英文语境翻译引擎。用户会
 你的任务：
 1. 逐词识别段落中的实义词，给出语境翻译
 2. **只有固定搭配、习语、短语动词**才合并为短语
-3. 对于专有名词、技术术语或需要背景知识的词，再提供一个 \`explanation\` 字段，写一句简短的中文解释（约10-20字）。
-4. **对于纯数字、年份或金额**（如 2025, 1990s, $100），不要强行翻译成中文（\`translation\` 保持和原文完全一致）。请在 \`pronunciation\` 字段提供它地道的**纯英文拼写读法**（例如 "twenty twenty-five"），并在 \`explanation\` 字段中也提供该读法，以悬浮窗形式展示。
-5. **警告：绝对不要在任何地方返回音标（IPA）！**普通的英文单词（如 operating system）**不要**提供 \`pronunciation\` 字段。
+3. 对于专有名词、技术术语或需要背景知识的词，再提供一个中文解释（约10-20字）。
+4. **对于纯数字、年份或金额**（如 2025, 1990s, $100），不要强行翻译成中文（翻译保持和原文一致）。请提供它地道的**纯英文拼写读法**（例如 "twenty twenty-five"）作为发音提示，并在解释中也提供该读法，以悬浮窗展示。
+5. **警告：绝对不要在任何地方返回音标（IPA）！**普通的英文单词不要提供发音提示。
 6. 跳过虚词：冠词、单独介词、连词、代词、be动词、助动词
 
-以 JSON 数组返回，不要包含任何其他文本：
-[{"word":"原文","translation":"语境翻译","explanation":"(可选)名词解释","pronunciation":"(可选)发音提示"}]`;
+**输出格式要求（极其重要）**：
+为了极致的响应速度，**绝对不要使用 JSON**。请严格按照以下格式输出，每行一个词汇结果，使用竖线 | 分隔字段。
+字段顺序：原文|语境翻译|中文解释(可选)|发音提示(可选)
+
+示例：
+Homebrew|Homebrew|macOS 上的包管理器|
+typically|通常||
+supports|支持||
+2025|2025|twenty twenty-five|twenty twenty-five
+
+不要输出任何其他的解释文字、Markdown 标记或代码块语法，直接输出上述格式的纯文本。`;
 
 // ─── API 调用 ────────────────────────────────────────────
 
@@ -52,7 +61,6 @@ export async function translateParagraph(
         { role: 'user', content: text },
       ],
       temperature: 0.1,
-      response_format: { type: 'json_object' },
     }),
   });
 
@@ -75,38 +83,29 @@ export async function translateParagraph(
 
 function parseAIResponse(content: string): AnnotationResult[] {
   try {
-    const parsed = JSON.parse(content);
-
-    // 处理 AI 可能返回 { results: [...] } 或直接 [...]
-    const results = Array.isArray(parsed) ? parsed : parsed.results || parsed.data || parsed.words || [];
-
-    if (!Array.isArray(results)) {
-      throw new Error('AI 返回格式不正确');
-    }
-
-    return results
-      .filter(
-        (item: unknown): item is AnnotationResult =>
-          typeof item === 'object' &&
-          item !== null &&
-          'word' in item &&
-          'translation' in item &&
-          typeof (item as AnnotationResult).word === 'string' &&
-          typeof (item as AnnotationResult).translation === 'string'
-      )
-      .map((item) => {
+    // 过滤掉空行和可能包含 markdown 代码块语法的行
+    const lines = content.split('\n').filter(line => line.trim() !== '' && !line.trim().startsWith('\`'));
+    const results: AnnotationResult[] = [];
+    
+    for (const line of lines) {
+      const parts = line.split('|');
+      if (parts.length >= 2) {
         const res: AnnotationResult = {
-          word: item.word.trim(),
-          translation: item.translation.trim(),
+          word: parts[0].trim(),
+          translation: parts[1].trim(),
         };
-        if ('explanation' in item && typeof item.explanation === 'string' && item.explanation.trim()) {
-          res.explanation = item.explanation.trim();
+        if (parts.length >= 3 && parts[2].trim()) {
+          res.explanation = parts[2].trim();
         }
-        if ('pronunciation' in item && typeof item.pronunciation === 'string' && item.pronunciation.trim()) {
-          res.pronunciation = item.pronunciation.trim();
+        if (parts.length >= 4 && parts[3].trim()) {
+          res.pronunciation = parts[3].trim();
         }
-        return res;
-      });
+        if (res.word && res.translation) {
+           results.push(res);
+        }
+      }
+    }
+    return results;
   } catch (e) {
     console.error('[RTTR] AI 响应解析失败:', content);
     throw new Error('AI 响应解析失败，请检查模型输出格式');
