@@ -274,8 +274,9 @@ export default defineContentScript({
         utterance.volume = currentSettings.ttsVolume ?? 1.0;
         
         const voices = window.speechSynthesis.getVoices();
-        if (currentSettings.ttsVoiceURI) {
-          const selectedVoice = voices.find(v => v.voiceURI === currentSettings.ttsVoiceURI);
+        const voiceURI = currentSettings.ttsVoiceURI;
+        if (voiceURI) {
+          const selectedVoice = voices.find(v => v.voiceURI === voiceURI);
           if (selectedVoice) {
             utterance.voice = selectedVoice;
           }
