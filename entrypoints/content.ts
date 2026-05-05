@@ -153,11 +153,12 @@ export default defineContentScript({
       paragraph.setAttribute(RTTR_ATTR, 'true');
 
       // 构建词汇映射（大小写不敏感），并分配颜色
-      const wordMap = new Map<string, { translation: string; explanation?: string; color: string }>();
-      results.forEach(({ word, translation, explanation }, i) => {
+      const wordMap = new Map<string, { translation: string; explanation?: string; pronunciation?: string; color: string }>();
+      results.forEach(({ word, translation, explanation, pronunciation }, i) => {
         wordMap.set(word.toLowerCase(), {
           translation,
           explanation,
+          pronunciation,
           color: ANNOTATION_COLORS[i % ANNOTATION_COLORS.length],
         });
       });
@@ -296,8 +297,8 @@ export default defineContentScript({
 
     // ─── 标注单个文本节点 ──────────────────────────────
     function annotateTextNode(
-      textNode: Text,
-      wordMap: Map<string, { translation: string; explanation?: string; color: string }>
+      textNode: Node,
+      wordMap: Map<string, { translation: string; explanation?: string; pronunciation?: string; color: string }>
     ): DocumentFragment | null {
       const text = textNode.textContent || '';
       if (!text.trim()) return null;
@@ -368,7 +369,8 @@ export default defineContentScript({
           wrapper.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            speakText(part);
+            const textToSpeak = entry.pronunciation || part;
+            speakText(textToSpeak);
           });
 
           // 拖拽标注 → 标记为已知词 (扔掉)

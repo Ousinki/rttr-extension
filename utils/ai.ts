@@ -11,6 +11,7 @@ export interface AnnotationResult {
   word: string;
   translation: string;
   explanation?: string;
+  pronunciation?: string;
 }
 
 // ─── AI Prompt ──────────────────────────────────────────
@@ -19,18 +20,13 @@ const SYSTEM_PROMPT = `你是一个精准的英文语境翻译引擎。用户会
 
 你的任务：
 1. 逐词识别段落中的实义词，给出语境翻译
-2. **只有固定搭配、习语、短语动词**才合并为短语，例如：
-   - 短语动词：carry out, come up with, look forward to
-   - 固定搭配：as a matter of fact, take advantage of
-   - 专有名词：machine learning, global warming
-   - 不能拆开理解的组合：small-scale, non-commercial
-3. 不要强行合并普通的"形容词+名词"或"动词+宾语"，除非它们是固定搭配
-4. 对于专有名词、技术术语或需要背景知识的词（如 Homebrew, API, React 等），除了 translation 外，再提供一个 \`explanation\` 字段，写一句简短的中文解释（约10-20字）。普通的词不需要此字段。
+2. **只有固定搭配、习语、短语动词**才合并为短语
+3. 对于专有名词、技术术语或需要背景知识的词，再提供一个 \`explanation\` 字段，写一句简短的中文解释（约10-20字）。
+4. **对于纯数字、年份或金额**（如 2025, 1990s, $100），不要强行翻译成中文（\`translation\` 保持和原文完全一致）。请在 \`pronunciation\` 字段提供它地道的英文完整读法（例如 "twenty twenty-five"），并在 \`explanation\` 字段中也提供该读法，以悬浮窗形式展示。
 5. 跳过虚词：冠词、单独介词、连词、代词、be动词、助动词
-6. 每个词/短语根据当前上下文语境翻译
 
 以 JSON 数组返回，不要包含任何其他文本：
-[{"word":"原文","translation":"语境翻译","explanation":"(可选)名词解释"}]`;
+[{"word":"原文","translation":"语境翻译","explanation":"(可选)名词解释","pronunciation":"(可选)发音提示"}]`;
 
 // ─── API 调用 ────────────────────────────────────────────
 
@@ -104,6 +100,9 @@ function parseAIResponse(content: string): AnnotationResult[] {
         };
         if ('explanation' in item && typeof item.explanation === 'string' && item.explanation.trim()) {
           res.explanation = item.explanation.trim();
+        }
+        if ('pronunciation' in item && typeof item.pronunciation === 'string' && item.pronunciation.trim()) {
+          res.pronunciation = item.pronunciation.trim();
         }
         return res;
       });
