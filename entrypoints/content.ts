@@ -87,6 +87,122 @@ export default defineContentScript({
       }
     });
 
+    // ─── 全局点词发音 (Click-to-Pronounce) ────────────────
+    // 点击页面上任何英文单词即可发音 + 显示音标，无需先 Alt+T
+    let pronounceBadge: HTMLElement | null = null;
+    let activeBadgeRect: DOMRect | null = null;
+    let badgeMouseMoveHandler: ((e: MouseEvent) => void) | null = null;
+
+    function getWordAtClick(e: MouseEvent): { word: string; range: Range } | null {
+      // 如果点击的是 RTTR 标注过的单词，由它自己的 handler 处理
+      const target = e.target as HTMLElement;
+      if (target.closest('.rttr-word')) return null;
+      // 不处理输入框等可编辑区域
+      if (target.closest('input, textarea, [contenteditable="true"]')) return null;
+
+      // 利用 caretRangeFromPoint 获取点击位置所在的文本节点
+      let range: Range | null = null;
+      if (document.caretRangeFromPoint) {
+        range = document.caretRangeFromPoint(e.clientX, e.clientY);
+      }
+      if (!range) return null;
+
+      const node = range.startContainer;
+      if (node.nodeType !== Node.TEXT_NODE) return null;
+
+      const text = node.textContent || '';
+      const offset = range.startOffset;
+
+      // 向前后扩展找到完整的英文单词边界
+      let start = offset;
+      let end = offset;
+      while (start > 0 && /[a-zA-Z'-]/.test(text[start - 1])) start--;
+      while (end < text.length && /[a-zA-Z'-]/.test(text[end])) end++;
+
+      const word = text.slice(start, end).replace(/^['-]+|['-]+$/g, '');
+      if (!word || word.length < 2 || !/^[a-zA-Z]/.test(word)) return null;
+
+      // 构造包裹这个单词的 Range（用于定位弹窗）
+      const wordRange = document.createRange();
+      wordRange.setStart(node, start);
+      wordRange.setEnd(node, end);
+      return { word, range: wordRange };
+    }
+
+    function showPronounceBadge(content: string, rect: DOMRect, isHTML = false) {
+      if (!pronounceBadge) {
+        pronounceBadge = document.createElement('div');
+        pronounceBadge.id = 'rttr-pronounce-badge';
+        document.body.appendChild(pronounceBadge);
+      }
+      if (isHTML) {
+        pronounceBadge.innerHTML = content;
+      } else {
+        pronounceBadge.textContent = content;
+      }
+      pronounceBadge.classList.add('rttr-badge-visible');
+
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + window.scrollY - 6;
+      pronounceBadge.style.left = `${x}px`;
+      pronounceBadge.style.top = `${y}px`;
+
+      // 记录当前单词的可视区域，用于鼠标移出检测
+      activeBadgeRect = rect;
+
+      // 清除旧的 mousemove 监听器
+      if (badgeMouseMoveHandler) {
+        document.removeEventListener('mousemove', badgeMouseMoveHandler);
+      }
+
+      // 注册新的 mousemove 监听器：鼠标离开单词区域时隐藏徽章
+      const PAD = 20; // 额外的宽容区域（像素），防止微小移动就触发消失
+      badgeMouseMoveHandler = (e: MouseEvent) => {
+        if (!activeBadgeRect) return;
+        const inX = e.clientX >= activeBadgeRect.left - PAD && e.clientX <= activeBadgeRect.right + PAD;
+        const inY = e.clientY >= activeBadgeRect.top - PAD && e.clientY <= activeBadgeRect.bottom + PAD;
+        if (!inX || !inY) {
+          hidePronounceBadge();
+        }
+      };
+      document.addEventListener('mousemove', badgeMouseMoveHandler);
+    }
+
+    function hidePronounceBadge() {
+      if (pronounceBadge) {
+        pronounceBadge.classList.remove('rttr-badge-visible');
+      }
+      activeBadgeRect = null;
+      if (badgeMouseMoveHandler) {
+        document.removeEventListener('mousemove', badgeMouseMoveHandler);
+        badgeMouseMoveHandler = null;
+      }
+    }
+
+    document.addEventListener('click', async (e) => {
+      const result = getWordAtClick(e);
+      if (!result) return;
+
+      const { word, range } = result;
+      const rect = range.getBoundingClientRect();
+
+      // 1. 立即开始 TTS 朗读（不等音标返回）
+      speakText(word);
+
+      // 2. 通过 Background 的三层瀑布引擎查询音标
+      const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+      try {
+        const resp = await browser.runtime.sendMessage({ type: 'LOOKUP_IPA', word }) as { ipa: string | null };
+        if (resp?.ipa) {
+          showPronounceBadge(resp.ipa, rect);
+        } else {
+          showPronounceBadge(speakerSVG, rect, true);
+        }
+      } catch {
+        showPronounceBadge(speakerSVG, rect, true);
+      }
+    });
+
     // ─── 翻译处理函数 ──────────────────────────────────
     async function handleTranslate(target: HTMLElement | null) {
       if (!target) return;
@@ -402,25 +518,22 @@ export default defineContentScript({
             });
           }
 
-          // 点击标注 → 朗读 (TTS)
-          wrapper.addEventListener('click', (e) => {
+          // 点击标注 → 朗读 (TTS) + 显示音标
+          wrapper.addEventListener('click', async (e) => {
             e.preventDefault();
             e.stopPropagation();
             
             const target = e.target as HTMLElement;
-            // 默认整句朗读，但先不急着显示整句音标
+            // 默认朗读整个短语
             let textToSpeak = entry.pronunciation || part;
-            let ipaToShow = entry.ipa;
+            let ipaToShow = entry.ipa || '';
 
-            if (target.tagName === 'RT') {
-              // 用户需求：点击上标时，不要出现长串音标，直接朗读 TTS 即可
-              ipaToShow = '';
-            } else if (target.tagName === 'SPAN' && target.dataset.idx) {
+            if (target.tagName === 'SPAN' && target.dataset.idx) {
               const wordIdx = parseInt(target.dataset.idx, 10);
               
               // 拆分音标（去除头尾斜杠后按空格拆分）
-              if (entry.ipa) {
-                const cleanIpa = entry.ipa.replace(/^\/|\/$/g, '').trim();
+              if (ipaToShow) {
+                const cleanIpa = ipaToShow.replace(/^\/|\/$/g, '').trim();
                 const ipaParts = cleanIpa.split(/\s+/);
                 // 确保英文单词数和音标块数一致才进行精确匹配
                 const wordCount = part.trim().split(/\s+/).length;
@@ -428,13 +541,45 @@ export default defineContentScript({
                   ipaToShow = `/${ipaParts[wordIdx]}/`;
                   textToSpeak = target.textContent || textToSpeak;
                 } else {
-                  // 如果对不齐（比如AI在缩写里加了空格），为了避免把整个长句的音标塞进一个单词里，我们干脆不显示音标，但仍然只朗读这一个单词
                   ipaToShow = '';
                   textToSpeak = target.textContent || textToSpeak;
                 }
               } else {
-                // 如果没有音标，但也只想读这一个词
                 textToSpeak = target.textContent || textToSpeak;
+              }
+            }
+
+            // 如果没有预加载的音标，尝试按需从 Free Dictionary API 获取
+            if (!ipaToShow && textToSpeak) {
+              const singleWord = textToSpeak.trim();
+              // 仅对纯单词（不含空格）发起按需查询
+              if (!singleWord.includes(' ') && /^[a-zA-Z'-]+$/.test(singleWord)) {
+                try {
+                  const resp = await fetch(
+                    `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(singleWord.toLowerCase())}`,
+                    { signal: AbortSignal.timeout(2000) }
+                  );
+                  if (resp.ok) {
+                    const data = await resp.json();
+                    const phonetics = data?.[0]?.phonetics;
+                    const usEntry = phonetics?.find((p: any) => p.audio?.includes('-us') && p.text);
+                    const anyEntry = phonetics?.find((p: any) => p.text);
+                    const raw = usEntry?.text || anyEntry?.text || data?.[0]?.phonetic || '';
+                    if (raw) {
+                      // 严式→宽式 KK 清洗
+                      const cleaned = raw.replace(/^\/|\/$/g, '')
+                        .replace(/ɹ/g, 'r').replace(/ɫ/g, 'l').replace(/ɾ/g, 't')
+                        .replace(/ɚ/g, 'ər').replace(/ɝ/g, 'ɜːr')
+                        .replace(/t͡ʃ/g, 'tʃ').replace(/d͡ʒ/g, 'dʒ')
+                        .replace(/\./g, '').trim();
+                      ipaToShow = `/${cleaned}/`;
+                      // 缓存回 entry 供后续点击复用
+                      entry.ipa = ipaToShow;
+                    }
+                  }
+                } catch {
+                  // 超时或网络失败，静默跳过
+                }
               }
             }
             
@@ -779,6 +924,45 @@ export default defineContentScript({
         @keyframes rttr-spin {
           to { transform: rotate(360deg); }
         }
+
+        /* ─── 全局点词发音徽章 ─── */
+        #rttr-pronounce-badge {
+          position: absolute;
+          z-index: 2147483647;
+          background: rgba(28, 28, 30, 0.92);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          color: #7eb8ff;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          font-size: 13px;
+          font-weight: 500;
+          padding: 3px 10px;
+          border-radius: 6px;
+          box-shadow: 0 3px 12px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.06);
+          pointer-events: none;
+          white-space: nowrap;
+          transform: translate(-50%, -100%) scale(0.9);
+          opacity: 0;
+          visibility: hidden;
+          transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s;
+        }
+
+        #rttr-pronounce-badge.rttr-badge-visible {
+          opacity: 1;
+          visibility: visible;
+          transform: translate(-50%, -100%) scale(1);
+        }
+
+        #rttr-pronounce-badge::after {
+          content: '';
+          position: absolute;
+          bottom: -4px;
+          left: 50%;
+          margin-left: -4px;
+          border-width: 4px 4px 0 4px;
+          border-style: solid;
+          border-color: rgba(28, 28, 30, 0.92) transparent transparent transparent;
+        }
       `;
       document.head.appendChild(style);
     }
@@ -790,6 +974,9 @@ export default defineContentScript({
       
       const tooltip = document.getElementById('rttr-global-tooltip');
       tooltip?.remove();
+
+      const badge = document.getElementById('rttr-pronounce-badge');
+      badge?.remove();
     });
   },
 });

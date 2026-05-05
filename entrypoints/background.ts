@@ -10,7 +10,8 @@
  */
 
 import { translateParagraph } from '@/utils/ai';
-import type { RTTRMessage, TranslateResponse, DismissWordResponse, UndismissWordResponse } from '@/utils/messaging';
+import { batchLookupIPA, getIpa } from '@/utils/phonetics';
+import type { RTTRMessage, TranslateResponse, DismissWordResponse, UndismissWordResponse, LookupIpaResponse } from '@/utils/messaging';
 import { settingsStorage, getKnownWordsSet, addKnownWord, removeKnownWord } from '@/utils/storage';
 import { shouldSkip } from '@/utils/skip-words';
 
@@ -52,6 +53,12 @@ export default defineBackground(() => {
 
         case 'GET_SETTINGS':
           settingsStorage.getValue().then(sendResponse);
+          return true;
+
+        case 'LOOKUP_IPA':
+          getIpa(message.word)
+            .then((ipa) => sendResponse({ ipa } satisfies LookupIpaResponse))
+            .catch(() => sendResponse({ ipa: null } satisfies LookupIpaResponse));
           return true;
 
         default:
@@ -130,6 +137,22 @@ export default defineBackground(() => {
     const filteredResults = meaningfulResults.filter(
       (item) => !knownWords.has(item.word.toLowerCase())
     );
+
+    // 5. 并行查询音标（Free Dictionary API + 严式→宽式 KK 转换）
+    //    此步骤与 AI 翻译异步并行，不阻塞主流程
+    try {
+      const wordsToLookup = filteredResults.map((item) => item.word);
+      const ipaMap = await batchLookupIPA(wordsToLookup);
+      for (const item of filteredResults) {
+        const ipa = ipaMap.get(item.word);
+        if (ipa) {
+          item.ipa = ipa;
+        }
+      }
+    } catch (err) {
+      // 音标查询失败不影响翻译结果的返回
+      console.warn('[RTTR] 音标查询失败，跳过:', err);
+    }
 
     return {
       success: true,

@@ -40,8 +40,18 @@ export interface GetSettingsRequest {
   type: 'GET_SETTINGS';
 }
 
+export interface LookupIpaRequest {
+  type: 'LOOKUP_IPA';
+  word: string;
+}
+
+export interface LookupIpaResponse {
+  ipa: string | null;
+}
+
 export type RTTRMessage =
   | TranslateRequest
   | DismissWordRequest
   | UndismissWordRequest
-  | GetSettingsRequest;
+  | GetSettingsRequest
+  | LookupIpaRequest;
