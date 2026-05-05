@@ -49,9 +49,21 @@ export interface LookupIpaResponse {
   ipa: string | null;
 }
 
+export interface ExplainWordRequest {
+  type: 'EXPLAIN_WORD';
+  word: string;
+  sentence: string;
+}
+
+export interface OpenOptionsRequest {
+  type: 'OPEN_OPTIONS';
+}
+
 export type RTTRMessage =
   | TranslateRequest
   | DismissWordRequest
   | UndismissWordRequest
   | GetSettingsRequest
-  | LookupIpaRequest;
+  | LookupIpaRequest
+  | ExplainWordRequest
+  | OpenOptionsRequest;

@@ -13,6 +13,7 @@ const settings = ref<RTTRSettings>({
   ttsRate: 0.85,
   ttsVolume: 1.0,
   ttsVoiceURI: '',
+  selectionPronounceMode: 'auto',
 });
 
 const voices = ref<SpeechSynthesisVoice[]>([]);
@@ -147,10 +148,93 @@ watch(settings, () => {
         </div>
       </section>
 
+      <!-- Selection Pronunciation Settings -->
+      <section class="settings-card">
+        <h2>划词发音模式</h2>
+        <p class="section-desc">配置拖动选中文本时的发音行为。直接点击下方卡片即可切换模式。</p>
+
+        <div class="animation-previews">
+          <!-- Single Click Mode Preview -->
+          <div class="preview-box" :class="{ active: settings.enableSingleClickPronounce }" @click="settings.enableSingleClickPronounce = !settings.enableSingleClickPronounce">
+            <div class="preview-title">单击发音演示</div>
+            <div class="anim-container anim-single-click">
+              <div class="anim-text">
+                He was 
+                <span class="anim-selection" style="background: transparent;">
+                  locking
+                  <div class="anim-badge-black">
+                    / 'lɒkɪŋ /
+                  </div>
+                  <div class="anim-click-ripple" style="left: 25px;"></div>
+                  <svg class="anim-cursor" width="24" height="24" viewBox="0 0 24 24"><path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z" fill="#000" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
+                </span> 
+                eyes with her.
+              </div>
+            </div>
+          </div>
+
+          <!-- Auto Mode Preview -->
+          <div class="preview-box" :class="{ active: settings.enableAutoPronounce }" @click="settings.enableAutoPronounce = !settings.enableAutoPronounce">
+            <div class="preview-title">自动发音演示</div>
+            <div class="anim-container anim-auto">
+              <div class="anim-text">
+                He was 
+                <span class="anim-selection">
+                  locking eyes
+                  <div class="anim-badge">
+                    <svg class="anim-speaker" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07" class="wave1"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14" class="wave2"></path></svg>
+                  </div>
+                  <svg class="anim-cursor" width="24" height="24" viewBox="0 0 24 24"><path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z" fill="#000" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
+                </span> 
+                with her.
+              </div>
+            </div>
+          </div>
+
+          <!-- Click Mode Preview -->
+          <div class="preview-box" :class="{ active: settings.enableClickPronounce }" @click="settings.enableClickPronounce = !settings.enableClickPronounce">
+            <div class="preview-title">点击发音演示</div>
+            <div class="anim-container anim-click">
+              <div class="anim-text">
+                He was 
+                <span class="anim-selection">
+                  locking eyes
+                  <div class="anim-badge">
+                    <svg class="anim-speaker" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07" class="wave1"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14" class="wave2"></path></svg>
+                  </div>
+                  <div class="anim-click-ripple"></div>
+                  <svg class="anim-cursor" width="24" height="24" viewBox="0 0 24 24"><path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z" fill="#000" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
+                </span> 
+                with her.
+              </div>
+            </div>
+          </div>
+
+          <!-- Shortcut Mode Preview -->
+          <div class="preview-box" :class="{ active: settings.enableShortcutPronounce }" @click="settings.enableShortcutPronounce = !settings.enableShortcutPronounce">
+            <div class="preview-title">快捷键发音演示</div>
+            <div class="anim-container anim-shortcut">
+              <div class="anim-text">
+                He was 
+                <span class="anim-selection">
+                  locking eyes
+                  <div class="anim-badge">
+                    <svg class="anim-speaker" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07" class="wave1"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14" class="wave2"></path></svg>
+                  </div>
+                  <svg class="anim-cursor" width="24" height="24" viewBox="0 0 24 24"><path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z" fill="#000" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
+                </span> 
+                with her.
+              </div>
+              <div class="anim-keyboard-key">R</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- TTS Settings -->
       <section class="settings-card">
         <h2>语音合成 (TTS) 设置</h2>
-        <p class="section-desc">配置鼠标点击单词时的朗读效果。</p>
+        <p class="section-desc">配置发音人的语言、语速及音量。</p>
         
         <div class="form-row">
           <div class="form-group half">
@@ -411,5 +495,334 @@ body {
 }
 .test-result-inline.error {
   color: #dc2626;
+}
+
+/* Mode Animations & Previews */
+.animation-previews {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.preview-box {
+  flex: 1;
+  border: 2px solid #e5e5e5;
+  border-radius: 8px;
+  padding: 16px;
+  background: #ffffff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+
+.preview-box.active {
+  border-color: #007aff;
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.1);
+}
+
+.preview-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #737373;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.preview-box.active .preview-title {
+  color: #007aff;
+}
+
+.anim-container {
+  position: relative;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 6px;
+  font-size: 15px;
+  font-family: -apple-system, sans-serif;
+  color: #333;
+}
+
+.anim-text {
+  position: relative;
+}
+
+.anim-selection {
+  position: relative;
+  display: inline-block;
+  background: linear-gradient(to right, #b4d7ff 50%, transparent 50%);
+  background-size: 200% 100%;
+  background-position: 100% 0;
+  border-radius: 2px;
+}
+
+.anim-badge {
+  position: absolute;
+  top: -24px;
+  left: 50%;
+  transform: translateX(-50%) scale(0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.anim-speaker {
+  color: #0a84ff;
+  display: block;
+}
+
+.anim-cursor {
+  position: absolute;
+  top: 10px;
+  left: -5px;
+  z-index: 10;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+  transform-origin: top left;
+}
+
+.anim-click-ripple {
+  position: absolute;
+  top: 10px;
+  left: 45px;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #007aff;
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+/* Keyframes for Auto Mode */
+.anim-auto .anim-cursor {
+  animation: autoCursorDrag 4s infinite;
+}
+.anim-auto .anim-selection {
+  animation: autoSelectionHighlight 4s infinite;
+}
+.anim-auto .anim-badge {
+  animation: badgePopAuto 4s infinite;
+}
+.anim-auto .wave1, .anim-auto .wave2 {
+  animation: wavePulse 4s infinite;
+}
+
+/* Keyframes for Click Mode */
+.anim-click .anim-cursor {
+  animation: clickCursorDragAndClick 4s infinite;
+}
+.anim-click .anim-selection {
+  animation: clickSelectionHighlight 4s infinite;
+}
+.anim-click .anim-badge {
+  animation: badgePopClick 4s infinite;
+}
+.anim-click .anim-click-ripple {
+  animation: clickRipple 4s infinite;
+}
+.anim-click .wave1, .anim-click .wave2 {
+  animation: wavePulseClick 4s infinite;
+}
+
+@keyframes autoCursorDrag {
+  0%, 15% { transform: translate(0, 0); }
+  35% { transform: translate(90px, 0); }
+  45%, 100% { transform: translate(110px, 20px); }
+}
+
+@keyframes autoSelectionHighlight {
+  0%, 15% { background-position: 100% 0; }
+  35%, 100% { background-position: 0 0; }
+}
+
+@keyframes badgePopAuto {
+  0%, 35% { opacity: 0; transform: translateX(-50%) translateY(10px) scale(0.8); }
+  40%, 90% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  95%, 100% { opacity: 0; transform: translateX(-50%) translateY(-5px) scale(0.9); }
+}
+
+@keyframes wavePulse {
+  0%, 40% { opacity: 0; }
+  45%, 55%, 65%, 75% { opacity: 1; }
+  50%, 60%, 70%, 80% { opacity: 0.3; }
+  85%, 100% { opacity: 0; }
+}
+
+.anim-badge-black {
+  position: absolute;
+  top: -32px;
+  left: 50%;
+  transform: translateX(-50%) scale(0.8);
+  background: rgba(28, 28, 30, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #7eb8ff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 6px;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.06);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+}
+.anim-badge-black::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 4px 4px 0;
+  border-style: solid;
+  border-color: rgba(28, 28, 30, 0.92) transparent transparent transparent;
+}
+
+@keyframes clickCursorDragAndClick {
+  0%, 15% { transform: translate(0, 0) scale(1); }
+  35% { transform: translate(90px, 0) scale(1); }
+  45%, 55% { transform: translate(110px, 20px) scale(1); }
+  65% { transform: translate(45px, 0) scale(1); }
+  70% { transform: translate(45px, 0) scale(0.85); }
+  75% { transform: translate(45px, 0) scale(1); }
+  85%, 100% { transform: translate(110px, 20px) scale(1); }
+}
+
+@keyframes clickSelectionHighlight {
+  0%, 15% { background-position: 100% 0; }
+  35%, 100% { background-position: 0 0; }
+}
+
+@keyframes clickRipple {
+  0%, 69% { opacity: 0; transform: translate(-50%, -50%) scale(0.1); }
+  70% { opacity: 1; transform: translate(-50%, -50%) scale(0.1); }
+  75% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); }
+  76%, 100% { opacity: 0; }
+}
+
+@keyframes badgePopClick {
+  0%, 72% { opacity: 0; transform: translateX(-50%) translateY(10px) scale(0.8); }
+  76%, 95% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-5px) scale(0.9); }
+}
+
+@keyframes wavePulseClick {
+  0%, 75% { opacity: 0; }
+  78%, 86% { opacity: 1; }
+  82%, 90% { opacity: 0.3; }
+  94%, 100% { opacity: 0; }
+}
+
+/* Keyframes for Shortcut Mode */
+.anim-shortcut .anim-cursor {
+  animation: shortcutCursorDrag 4s infinite;
+}
+.anim-shortcut .anim-selection {
+  animation: shortcutSelectionHighlight 4s infinite;
+}
+.anim-shortcut .anim-badge {
+  animation: badgePopShortcut 4s infinite;
+}
+.anim-shortcut .wave1, .anim-shortcut .wave2 {
+  animation: wavePulseShortcut 4s infinite;
+}
+.anim-keyboard-key {
+  position: absolute;
+  bottom: 15px;
+  right: 15px;
+  width: 28px;
+  height: 28px;
+  background: #fdfdfd;
+  border: 1px solid #d4d4d4;
+  border-bottom: 3px solid #d4d4d4;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: -apple-system, sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  color: #333;
+  opacity: 0;
+  animation: keyboardKeyPress 4s infinite;
+}
+
+@keyframes shortcutCursorDrag {
+  0%, 15% { transform: translate(0, 0); }
+  35% { transform: translate(90px, 0); }
+  45%, 100% { transform: translate(110px, 20px); }
+}
+
+@keyframes shortcutSelectionHighlight {
+  0%, 15% { background-position: 100% 0; }
+  35%, 100% { background-position: 0 0; }
+}
+
+@keyframes badgePopShortcut {
+  0%, 55% { opacity: 0; transform: translateX(-50%) translateY(10px) scale(0.8); }
+  60%, 90% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  95%, 100% { opacity: 0; transform: translateX(-50%) translateY(-5px) scale(0.9); }
+}
+
+@keyframes wavePulseShortcut {
+  0%, 60% { opacity: 0; }
+  65%, 75% { opacity: 1; }
+  70%, 80% { opacity: 0.3; }
+  85%, 100% { opacity: 0; }
+}
+
+@keyframes keyboardKeyPress {
+  0%, 45% { opacity: 0; transform: translateY(10px); }
+  50% { opacity: 1; transform: translateY(0); border-bottom-width: 3px; background: #fdfdfd; }
+  55% { opacity: 1; transform: translateY(2px); border-bottom-width: 1px; background: #f0f0f0; }
+  60% { opacity: 1; transform: translateY(0); border-bottom-width: 3px; background: #fdfdfd; }
+  85%, 100% { opacity: 0; transform: translateY(0); }
+}
+
+/* Keyframes for Single Click */
+.anim-single-click .anim-cursor {
+  animation: singleClickCursor 4s infinite;
+}
+.anim-single-click .anim-badge-black {
+  animation: badgePopSingleClick 4s infinite;
+}
+.anim-single-click .anim-click-ripple {
+  animation: singleClickRipple 4s infinite;
+}
+.anim-single-click .wave1, .anim-single-click .wave2 {
+  animation: wavePulseSingleClick 4s infinite;
+}
+
+@keyframes singleClickCursor {
+  0%, 15% { transform: translate(-30px, 20px) scale(1); }
+  35% { transform: translate(25px, 0px) scale(1); }
+  45% { transform: translate(25px, 0px) scale(0.85); }
+  50%, 65% { transform: translate(25px, 0px) scale(1); }
+  75%, 100% { transform: translate(-30px, 20px) scale(1); }
+}
+
+@keyframes singleClickRipple {
+  0%, 44% { opacity: 0; transform: translate(-50%, -50%) scale(0.1); }
+  45% { opacity: 1; transform: translate(-50%, -50%) scale(0.1); }
+  50% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); }
+  51%, 100% { opacity: 0; }
+}
+
+@keyframes badgePopSingleClick {
+  0%, 46% { opacity: 0; transform: translateX(-50%) translateY(10px) scale(0.8); }
+  50%, 80% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  85%, 100% { opacity: 0; transform: translateX(-50%) translateY(-5px) scale(0.9); }
+}
+
+@keyframes wavePulseSingleClick {
+  0%, 50% { opacity: 0; }
+  53%, 63%, 73% { opacity: 1; }
+  58%, 68%, 78% { opacity: 0.3; }
+  83%, 100% { opacity: 0; }
 }
 </style>

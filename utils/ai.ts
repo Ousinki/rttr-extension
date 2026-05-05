@@ -155,3 +155,54 @@ function parseAIResponse(content: string): AnnotationResult[] {
     throw new Error('AI 响应解析失败，请检查模型输出格式');
   }
 }
+
+// ─── 单词详细语境解释 ──────────────────────────────────────
+
+const EXPLAIN_WORD_PROMPT = `你是一个高水平的英语语境词典引擎。
+
+用户会提供一个【英文句子】和一个【目标词汇】。
+你的任务是为目标词汇生成极其简洁的中文解释，直击要害，拒绝任何废话。
+
+输出格式要求：
+直接输出内容，不要使用 Markdown 代码块，不要废话。
+
+格式规范如下：
+【语境含义】：用一句话解释它在此句中的具体意思和作用。
+【固定搭配】：(如果有) 指出与之相关的常用搭配；(如果没有) 直接忽略此项。`;
+
+export async function explainWord(settings: RTTRSettings, word: string, sentence: string): Promise<string> {
+  const messages = [
+    { role: 'system', content: EXPLAIN_WORD_PROMPT },
+    { role: 'user', content: `【目标词汇】：${word}\n【英文句子】：${sentence}` }
+  ];
+
+  const payload = {
+    model: settings.model || 'gemini-2.5-pro',
+    messages,
+    temperature: 0.1,
+  };
+
+  const url = `${settings.apiEndpoint}/chat/completions`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${settings.apiKey}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`API 请求失败 (${response.status}): ${errorBody}`);
+  }
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content;
+
+  if (!content) {
+    throw new Error('AI 返回内容为空');
+  }
+
+  return content.trim();
+}

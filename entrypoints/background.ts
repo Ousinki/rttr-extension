@@ -9,7 +9,7 @@
  * 5. 转发 Chrome Commands 快捷键事件
  */
 
-import { translateParagraph } from '@/utils/ai';
+import { translateParagraph, explainWord } from '@/utils/ai';
 import { batchLookupIPA, getIpa } from '@/utils/phonetics';
 import type { RTTRMessage, TranslateResponse, DismissWordResponse, UndismissWordResponse, LookupIpaResponse } from '@/utils/messaging';
 import { settingsStorage, getKnownWordsSet, addKnownWord, removeKnownWord } from '@/utils/storage';
@@ -60,6 +60,17 @@ export default defineBackground(() => {
             .then((ipa) => sendResponse({ ipa } satisfies LookupIpaResponse))
             .catch(() => sendResponse({ ipa: null } satisfies LookupIpaResponse));
           return true;
+
+        case 'EXPLAIN_WORD':
+          handleExplainWord(message.word, message.sentence)
+            .then(sendResponse)
+            .catch((err) => sendResponse({ success: false, error: err.message }));
+          return true;
+
+        case 'OPEN_OPTIONS':
+          browser.runtime.openOptionsPage();
+          sendResponse({ success: true });
+          return false;
 
         default:
           return false;
@@ -170,5 +181,27 @@ export default defineBackground(() => {
   async function handleUndismissWord(word: string): Promise<UndismissWordResponse> {
     await removeKnownWord(word);
     return { success: true };
+  }
+
+  // ─── AI 语境解释单词 ────────────────────────────────────
+  async function handleExplainWord(word: string, sentence: string): Promise<{ success: boolean; explanation?: string; ipa?: string | null; error?: string }> {
+    try {
+      const settings = await settingsStorage.getValue();
+      if (!settings.apiKey) {
+        throw new Error('未配置 API Key');
+      }
+      
+      const explanation = await explainWord(settings, word, sentence);
+      const ipa = await getIpa(word);
+      
+      return {
+        success: true,
+        explanation,
+        ipa
+      };
+    } catch (err: any) {
+      console.error('[RTTR] 语境解释请求失败:', err);
+      return { success: false, error: err.message };
+    }
   }
 });

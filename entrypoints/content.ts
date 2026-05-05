@@ -96,7 +96,15 @@ export default defineContentScript({
     function getWordAtClick(e: MouseEvent): { word: string; range: Range } | null {
       // 如果点击的是 RTTR 标注过的单词，由它自己的 handler 处理
       const target = e.target as HTMLElement;
-      if (target.closest('.rttr-word')) return null;
+      // 如果点击的是右键菜单或双击悬浮窗的内部，不要关闭它们
+      if (contextMenu && contextMenu.contains(target)) return null;
+      if (explainPanel && explainPanel.contains(target)) return null;
+      
+      hideContextMenu();
+      hideExplainPanel();
+
+      if (tooltipEl && !target.closest('.rttr-word')) {hideTooltip();}
+      
       // 不处理输入框等可编辑区域
       if (target.closest('input, textarea, [contenteditable="true"]')) return null;
 
@@ -126,6 +134,18 @@ export default defineContentScript({
       const wordRange = document.createRange();
       wordRange.setStart(node, start);
       wordRange.setEnd(node, end);
+
+      const rect = wordRange.getBoundingClientRect();
+      const pad = 6;
+      if (
+        e.clientX < rect.left - pad ||
+        e.clientX > rect.right + pad ||
+        e.clientY < rect.top - pad ||
+        e.clientY > rect.bottom + pad
+      ) {
+        return null;
+      }
+
       return { word, range: wordRange };
     }
 
@@ -179,7 +199,85 @@ export default defineContentScript({
       }
     }
 
+    // ─── 划词发音逻辑 ──────────────────────────────────────
+    let lastSelectionText = '';
+    let lastSelectionRect: DOMRect | null = null;
+    let clickModeWaiting = false;
+
+    async function showPronounceBadgeForSelection(text: string, rect: DOMRect) {
+      const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+      
+      if (!text.includes(' ') && text.length < 30) {
+        try {
+          const resp = await browser.runtime.sendMessage({ type: 'LOOKUP_IPA', word: text }) as { ipa: string | null };
+          if (resp?.ipa) {
+            showPronounceBadge(resp.ipa, rect);
+          } else {
+            showPronounceBadge(speakerSVG, rect, true);
+          }
+        } catch {
+          showPronounceBadge(speakerSVG, rect, true);
+        }
+      } else {
+        showPronounceBadge(speakerSVG, rect, true);
+      }
+    }
+
+    document.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      if (clickModeWaiting && lastSelectionRect) {
+        if (e.clientX >= lastSelectionRect.left && e.clientX <= lastSelectionRect.right && 
+            e.clientY >= lastSelectionRect.top && e.clientY <= lastSelectionRect.bottom) {
+            e.preventDefault();
+            speakText(lastSelectionText);
+            showPronounceBadgeForSelection(lastSelectionText, lastSelectionRect);
+            return;
+        }
+      }
+      clickModeWaiting = false;
+    });
+
+    document.addEventListener('mouseup', (e) => {
+      if (e.button !== 0) return;
+      setTimeout(() => {
+        const autoEnabled = currentSettings?.enableAutoPronounce ?? true;
+        const clickEnabled = currentSettings?.enableClickPronounce ?? false;
+
+        if (!autoEnabled && !clickEnabled) return;
+
+        const selection = window.getSelection();
+        const text = selection ? selection.toString().trim() : '';
+
+        if (text && text.length > 0 && text.length < 200 && /^[a-zA-Z\s'-.,?!]+$/.test(text)) {
+          if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            lastSelectionText = text;
+            lastSelectionRect = rect;
+
+            if (autoEnabled) {
+              speakText(text);
+              showPronounceBadgeForSelection(text, rect);
+            }
+            if (clickEnabled) {
+              clickModeWaiting = true;
+            } else {
+              clickModeWaiting = false;
+            }
+          }
+        } else {
+          clickModeWaiting = false;
+        }
+      }, 10);
+    });
+
     document.addEventListener('click', async (e) => {
+      const singleClickEnabled = currentSettings?.enableSingleClickPronounce ?? true;
+      if (!singleClickEnabled) return;
+
+      const selection = window.getSelection();
+      if (selection && !selection.isCollapsed) return;
+
       const result = getWordAtClick(e);
       if (!result) return;
 
@@ -310,18 +408,38 @@ export default defineContentScript({
     const undoStack: UndoAction[] = [];
 
     document.addEventListener('keydown', (e) => {
-      // Cmd+Z (Mac) or Ctrl+Z (Windows)
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
-        const target = e.target as HTMLElement;
-        // 如果焦点在输入框，则不拦截系统撤销
-        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-          return;
-        }
+      const target = e.target as HTMLElement;
+      // 如果焦点在输入框，忽略快捷键
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
 
+      // Cmd+Z (Mac) or Ctrl+Z (Windows) 撤销标记
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
         const lastAction = undoStack.pop();
         if (lastAction) {
           e.preventDefault();
           undoDismiss(lastAction);
+        }
+        return;
+      }
+
+      // R 键划词发音
+      if (!e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'r') {
+        const shortcutEnabled = currentSettings?.enableShortcutPronounce ?? true;
+        if (!shortcutEnabled) return;
+
+        const selection = window.getSelection();
+        const text = selection ? selection.toString().trim() : '';
+        if (text && text.length > 0 && text.length < 200 && /^[a-zA-Z\s'-.,?!]+$/.test(text)) {
+          if (selection && selection.rangeCount > 0) {
+            e.preventDefault();
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            clickModeWaiting = false;
+            speakText(text);
+            showPronounceBadgeForSelection(text, rect);
+          }
         }
       }
     });
@@ -342,10 +460,350 @@ export default defineContentScript({
           undoStack.push(action);
         }
       } catch (err) {
-        console.error('[RTTR] 撤销失败:', err);
-        undoStack.push(action);
+        console.error('[RTTR] AI 翻译请求失败:', err);
       }
     }
+
+    // ─── 双击查词：语境 AI 解释面板 ─────────────────────────
+    let explainPanel: HTMLElement | null = null;
+
+    function getOrCreateExplainPanel(): HTMLElement {
+      if (!explainPanel) {
+        explainPanel = document.createElement('div');
+        explainPanel.id = 'rttr-explain-panel';
+        document.body.appendChild(explainPanel);
+      }
+      return explainPanel;
+    }
+
+    function showExplainPanelLoading(word: string, rect: DOMRect) {
+      const panel = getOrCreateExplainPanel();
+      panel.innerHTML = `
+        <div class="rttr-ep-header">
+          <span class="rttr-ep-word">${word}</span>
+          <div class="rttr-ep-close">✕</div>
+        </div>
+        <div class="rttr-ep-divider"></div>
+        <div class="rttr-ep-body rttr-ep-loading">
+          <div class="rttr-ep-spinner"></div>
+          正在解析语境和固定搭配...
+        </div>
+      `;
+      positionExplainPanel(panel, rect);
+      bindExplainPanelClose(panel);
+    }
+
+    function showExplainPanel(word: string, ipa: string | null, explanation: string, rect: DOMRect) {
+      const panel = getOrCreateExplainPanel();
+      const htmlContent = explanation
+        .replace(/【语境含义】[：:]?\s*(.*?)(?=\n【|$)/g, '<div class="rttr-ep-section"><div class="rttr-ep-label">语境含义</div><div class="rttr-ep-text">$1</div></div>')
+        .replace(/【固定搭配】[：:]?\s*(.*?)(?=\n【|$)/g, '<div class="rttr-ep-section"><div class="rttr-ep-label">固定搭配</div><div class="rttr-ep-text">$1</div></div>')
+        .replace(/\n/g, '<br/>');
+
+      panel.innerHTML = `
+        <div class="rttr-ep-header">
+          <span class="rttr-ep-word">${word}</span>
+          ${ipa ? `<span class="rttr-ep-ipa">${ipa}</span>` : ''}
+          <button class="rttr-ep-speak" aria-label="朗读">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+            </svg>
+          </button>
+          <div class="rttr-ep-close">✕</div>
+        </div>
+        <div class="rttr-ep-divider"></div>
+        <div class="rttr-ep-body">
+          ${htmlContent}
+        </div>
+      `;
+      positionExplainPanel(panel, rect);
+      bindExplainPanelClose(panel);
+
+      const speakBtn = panel.querySelector('.rttr-ep-speak') as HTMLElement;
+      if (speakBtn) {
+        speakBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          speakText(word);
+        });
+      }
+    }
+
+    function positionExplainPanel(panel: HTMLElement, rect: DOMRect) {
+      panel.classList.add('rttr-ep-visible');
+      const panelRect = panel.getBoundingClientRect();
+      const padding = 12;
+      let top = rect.top + window.scrollY - panelRect.height - padding;
+      let left = rect.left + window.scrollX + (rect.width / 2) - (panelRect.width / 2);
+
+      if (top < window.scrollY + padding) {
+        top = rect.bottom + window.scrollY + padding;
+        panel.classList.add('rttr-ep-bottom');
+      } else {
+        panel.classList.remove('rttr-ep-bottom');
+      }
+
+      if (left < padding) left = padding;
+      if (left + panelRect.width > window.innerWidth - padding) {
+        left = window.innerWidth - panelRect.width - padding;
+      }
+
+      panel.style.top = `${top}px`;
+      panel.style.left = `${left}px`;
+    }
+
+    function hideExplainPanel() {
+      if (explainPanel) {
+        explainPanel.classList.remove('rttr-ep-visible');
+      }
+    }
+
+    function bindExplainPanelClose(panel: HTMLElement) {
+      const closeBtn = panel.querySelector('.rttr-ep-close') as HTMLElement;
+      if (closeBtn) {
+        closeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          hideExplainPanel();
+        });
+      }
+    }
+
+    function getSentenceAroundNode(node: Node): string {
+      let block = node.parentElement;
+      while (block && !BLOCK_TAGS.has(block.tagName)) {
+        block = block.parentElement;
+      }
+      return block ? block.textContent?.trim() || '' : node.textContent || '';
+    }
+
+    /*
+    document.addEventListener('dblclick', async (e) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('.rttr-word')) return;
+      if (target.closest('#rttr-explain-panel')) return;
+
+      const result = getWordAtClick(e);
+      if (!result) return;
+
+      const { word, range } = result;
+      const rect = range.getBoundingClientRect();
+      const sentence = getSentenceAroundNode(range.startContainer);
+
+      showExplainPanelLoading(word, rect);
+      speakText(word);
+
+      try {
+        const resp = await browser.runtime.sendMessage({
+          type: 'EXPLAIN_WORD',
+          word,
+          sentence,
+        }) as { success: boolean; explanation?: string; ipa?: string; error?: string };
+
+        if (resp?.success && resp.explanation) {
+          showExplainPanel(word, resp.ipa || null, resp.explanation, rect);
+        } else {
+          showExplainPanel(word, null, resp?.error || '解释获取失败', rect);
+        }
+      } catch (err) {
+        showExplainPanel(word, null, '网络请求失败，请检查网络连接和 API Key', rect);
+      }
+    });
+    */
+
+    // ─── 自定义右键菜单逻辑 ────────────────────
+    let contextMenu: HTMLElement | null = null;
+
+    function getOrCreateContextMenu(): HTMLElement {
+      if (!contextMenu) {
+        contextMenu = document.createElement('div');
+        contextMenu.id = 'rttr-context-menu';
+        document.body.appendChild(contextMenu);
+      }
+      return contextMenu;
+    }
+
+    function hideContextMenu() {
+      if (contextMenu) {
+        contextMenu.classList.remove('rttr-cm-visible');
+      }
+    }
+
+    const SVG_ICONS = {
+      explain: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>',
+      translate: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>',
+      settings: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+      dismiss: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>',
+      speak: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>',
+    };
+
+    interface MenuItem {
+      icon?: string;
+      label: string;
+      type?: 'header' | 'divider' | 'item';
+      onClick?: () => void;
+      onSpeakClick?: () => void;
+    }
+
+    function showContextMenu(items: MenuItem[], x: number, y: number) {
+      const menu = getOrCreateContextMenu();
+      menu.innerHTML = '';
+      
+      items.forEach(item => {
+        if (item.type === 'divider' || item.label === 'DIVIDER') {
+          const divider = document.createElement('div');
+          divider.className = 'rttr-cm-divider';
+          menu.appendChild(divider);
+          return;
+        }
+
+        if (item.type === 'header') {
+          const el = document.createElement('div');
+          el.className = 'rttr-cm-header';
+          if (item.onSpeakClick) {
+            el.classList.add('clickable');
+            el.innerHTML = `<span class="rttr-cm-header-text">${item.label}</span><span class="rttr-cm-header-speak">${SVG_ICONS.speak}</span>`;
+            el.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              hideContextMenu();
+              if (item.onSpeakClick) item.onSpeakClick();
+            });
+          } else {
+            el.textContent = item.label;
+          }
+          menu.appendChild(el);
+          return;
+        }
+
+        const el = document.createElement('div');
+        el.className = 'rttr-cm-item';
+        el.innerHTML = `<span class="rttr-cm-icon">${item.icon || ''}</span><span>${item.label}</span>`;
+        el.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          hideContextMenu();
+          if (item.onClick) item.onClick();
+        });
+        menu.appendChild(el);
+      });
+
+      menu.classList.add('rttr-cm-visible');
+      
+      requestAnimationFrame(() => {
+        const rect = menu.getBoundingClientRect();
+        let finalX = x;
+        let finalY = y;
+        const padding = 10;
+        if (finalX + rect.width > window.innerWidth) {
+          finalX = window.innerWidth - rect.width - padding;
+        }
+        if (finalY + rect.height > window.innerHeight) {
+          finalY = window.innerHeight - rect.height - padding;
+        }
+        menu.style.left = `${finalX + window.scrollX}px`;
+        menu.style.top = `${finalY + window.scrollY}px`;
+      });
+    }
+
+    document.addEventListener('contextmenu', async (e) => {
+      const target = e.target as HTMLElement;
+
+      const rttrWord = target.closest('.rttr-word') as HTMLElement;
+      if (rttrWord) {
+        e.preventDefault();
+        const wordParts = Array.from(rttrWord.childNodes)
+          .filter(n => n.nodeType === Node.TEXT_NODE || (n.nodeType === Node.ELEMENT_NODE && (n as HTMLElement).tagName === 'SPAN'))
+          .map(n => n.textContent);
+        const word = wordParts.join('');
+
+        showContextMenu([
+          { 
+            type: 'header', 
+            label: word, 
+            onSpeakClick: () => {
+              const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+              rttrWord.dispatchEvent(event);
+            }
+          },
+          { type: 'divider', label: 'DIVIDER' },
+          { icon: SVG_ICONS.settings, label: '设置', onClick: () => browser.runtime.sendMessage({ type: 'OPEN_OPTIONS' }) }
+        ], e.clientX, e.clientY);
+        return;
+      }
+
+      const selection = window.getSelection();
+      let selectedText = selection ? selection.toString().trim() : '';
+      let hoveredWordResult = getWordAtClick(e);
+      
+      if (selectedText || hoveredWordResult) {
+        let targetText = '';
+        let targetRange: Range | null = null;
+        
+        if (selectedText && selection && selection.rangeCount > 0) {
+          const selRange = selection.getRangeAt(0);
+          const rect = selRange.getBoundingClientRect();
+          const isClickInSel = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+          if (isClickInSel) {
+             targetText = selectedText;
+             targetRange = selRange;
+          }
+        }
+        
+        if (!targetText && hoveredWordResult) {
+           targetText = hoveredWordResult.word;
+           targetRange = hoveredWordResult.range;
+        }
+
+        if (targetText && targetRange && /^[a-zA-Z\s'-]+$/.test(targetText)) {
+          e.preventDefault();
+          
+          const items: MenuItem[] = [];
+          
+          if (!targetText.includes(' ') && targetText.length < 30) {
+            items.push({ 
+              type: 'header', 
+              label: targetText,
+              onSpeakClick: () => speakText(targetText)
+            });
+            items.push({ type: 'divider', label: 'DIVIDER' });
+            
+            items.push({
+              icon: SVG_ICONS.explain, label: '分析语境', onClick: () => {
+                const rect = targetRange!.getBoundingClientRect();
+                const sentence = getSentenceAroundNode(targetRange!.startContainer);
+                showExplainPanelLoading(targetText, rect);
+                speakText(targetText);
+                browser.runtime.sendMessage({ type: 'EXPLAIN_WORD', word: targetText, sentence })
+                  .then((resp: any) => {
+                    if (resp?.success && resp.explanation) {
+                      showExplainPanel(targetText, resp.ipa || null, resp.explanation, rect);
+                    } else {
+                      showExplainPanel(targetText, null, resp?.error || '解释获取失败', rect);
+                    }
+                  });
+              }
+            });
+          } else {
+            items.push({ type: 'header', label: targetText });
+            items.push({ type: 'divider', label: 'DIVIDER' });
+            items.push({ icon: SVG_ICONS.speak, label: '朗读选段', onClick: () => speakText(targetText) });
+          }
+          
+          items.push({
+            icon: SVG_ICONS.translate, label: '翻译段落', onClick: () => {
+              handleTranslate(targetRange!.startContainer.parentElement);
+            }
+          });
+          
+          items.push({ type: 'divider', label: 'DIVIDER' });
+          items.push({ icon: SVG_ICONS.settings, label: '设置', onClick: () => browser.runtime.sendMessage({ type: 'OPEN_OPTIONS' }) });
+
+          showContextMenu(items, e.clientX, e.clientY);
+          return;
+        }
+      }
+    });
 
     // ─── 全局悬浮窗管理 ────────────────────────────────
     let tooltipEl: HTMLElement | null = null;
@@ -695,7 +1153,7 @@ export default defineContentScript({
             wrapper.classList.remove('rttr-is-dragging');
             wrapper.classList.remove('rttr-will-snap-back');
             
-            // 如果又放回了原地（拖拽距离小于 30 像素），则不做处理
+            // 如果放回了原地（拖拽距离小于 30 像素），则不做处理
             const distance = Math.sqrt(
               Math.pow(e.clientX - dragStartX, 2) + 
               Math.pow(e.clientY - dragStartY, 2)
@@ -963,6 +1421,291 @@ export default defineContentScript({
           border-style: solid;
           border-color: rgba(28, 28, 30, 0.92) transparent transparent transparent;
         }
+
+        /* ─── AI 双击解释悬浮窗 ─── */
+        #rttr-explain-panel {
+          position: absolute;
+          z-index: 2147483647;
+          width: 320px;
+          background: #fdfaf5; /* 欧路牛皮纸底色 */
+          border: 1px solid rgba(140, 120, 80, 0.2);
+          border-radius: 12px;
+          box-shadow: 0 10px 30px rgba(90, 70, 40, 0.15), 0 2px 10px rgba(90, 70, 40, 0.05);
+          font-family: system-ui, -apple-system, 'PingFang SC', sans-serif;
+          opacity: 0;
+          visibility: hidden;
+          transform: translateY(8px) scale(0.98);
+          transform-origin: bottom center;
+          transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                      transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                      visibility 0.2s;
+          pointer-events: auto;
+        }
+
+        #rttr-explain-panel.rttr-ep-bottom {
+          transform-origin: top center;
+          transform: translateY(-8px) scale(0.98);
+        }
+
+        #rttr-explain-panel.rttr-ep-visible {
+          opacity: 1;
+          visibility: visible;
+          transform: translateY(0) scale(1);
+        }
+
+        .rttr-ep-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 14px 16px 8px;
+        }
+
+        .rttr-ep-word {
+          font-size: 18px;
+          font-weight: 700;
+          color: #2c1e0f;
+          letter-spacing: 0.01em;
+        }
+
+        .rttr-ep-speak {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 28px;
+          height: 28px;
+          border: none;
+          background: rgba(160, 130, 80, 0.12);
+          border-radius: 6px;
+          color: #8b6914;
+          cursor: pointer;
+          transition: background 0.15s;
+          flex-shrink: 0;
+        }
+
+        .rttr-ep-speak:hover {
+          background: rgba(160, 130, 80, 0.25);
+        }
+
+        .rttr-ep-speak:active {
+          transform: scale(0.92);
+        }
+
+        .rttr-ep-ipa {
+          font-size: 13px;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          color: #7a6840;
+          letter-spacing: 0.03em;
+        }
+
+        .rttr-ep-close {
+          margin-left: auto;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 24px;
+          height: 24px;
+          color: #a09070;
+          cursor: pointer;
+          font-size: 14px;
+          border-radius: 4px;
+        }
+
+        .rttr-ep-close:hover {
+          background: rgba(0,0,0,0.04);
+          color: #605040;
+        }
+
+        .rttr-ep-divider {
+          height: 1px;
+          background: rgba(140, 120, 80, 0.15);
+          margin: 0 16px;
+        }
+
+        .rttr-ep-body {
+          padding: 12px 16px 16px;
+          font-size: 14px;
+          line-height: 1.5;
+          color: #4a3f35;
+        }
+
+        .rttr-ep-section {
+          margin-bottom: 8px;
+        }
+        .rttr-ep-section:last-child {
+          margin-bottom: 0;
+        }
+
+        .rttr-ep-label {
+          display: inline-block;
+          font-size: 11px;
+          font-weight: 600;
+          color: #8b6914;
+          background: rgba(160, 130, 80, 0.12);
+          padding: 2px 6px;
+          border-radius: 4px;
+          margin-bottom: 4px;
+          letter-spacing: 0.02em;
+        }
+
+        .rttr-ep-text {
+          color: #3a2f25;
+        }
+
+        .rttr-ep-loading {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: #807060;
+          padding: 20px 16px;
+        }
+
+        .rttr-ep-spinner {
+          width: 16px;
+          height: 16px;
+          border: 2px solid rgba(140, 120, 80, 0.2);
+          border-top-color: #8b6914;
+          border-radius: 50%;
+          animation: rttr-spin 0.7s linear infinite;
+        }
+
+        @media (prefers-color-scheme: dark) {
+          #rttr-explain-panel {
+            background: linear-gradient(145deg, #2a2520 0%, #252018 50%, #201c15 100%);
+            border-color: rgba(120, 100, 70, 0.3);
+            color: #e0d5c5;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.2);
+          }
+          .rttr-ep-word { color: #f0e8d8; }
+          .rttr-ep-speak { background: rgba(200, 170, 100, 0.15); color: #c8a850; }
+          .rttr-ep-speak:hover { background: rgba(200, 170, 100, 0.25); }
+          .rttr-ep-ipa { color: #b0a080; }
+          .rttr-ep-close { color: #807060; }
+          .rttr-ep-close:hover { background: rgba(255,255,255,0.06); color: #c0b0a0; }
+          .rttr-ep-divider { background: rgba(120, 100, 70, 0.25); }
+          .rttr-ep-body { color: #d0c5b0; }
+          .rttr-ep-body.rttr-ep-loading { color: #908070; }
+          .rttr-ep-spinner { border-color: rgba(140, 120, 80, 0.2); border-top-color: #c8a850; }
+          .rttr-ep-text { color: #e0d5c5; }
+        }
+
+        /* ─── 自定义右键菜单 ─── */
+        #rttr-context-menu {
+          position: absolute;
+          z-index: 2147483647;
+          background: rgba(255, 255, 255, 0.85);
+          -webkit-backdrop-filter: blur(16px) saturate(180%);
+          backdrop-filter: blur(16px) saturate(180%);
+          border: 1px solid rgba(0, 0, 0, 0.08);
+          border-radius: 10px;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+          padding: 6px;
+          font-family: system-ui, -apple-system, 'PingFang SC', sans-serif;
+          min-width: 160px;
+          opacity: 0;
+          visibility: hidden;
+          transform: scale(0.95);
+          transform-origin: top left;
+          transition: opacity 0.15s ease, transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.15s;
+          pointer-events: auto;
+        }
+
+        #rttr-context-menu.rttr-cm-visible {
+          opacity: 1;
+          visibility: visible;
+          transform: scale(1);
+        }
+
+        .rttr-cm-header {
+          padding: 8px 12px 4px;
+          font-size: 14px;
+          font-weight: 600;
+          color: #1c1c1e;
+        }
+        
+        .rttr-cm-header.clickable {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          cursor: pointer;
+          border-radius: 6px;
+          transition: background 0.1s ease, color 0.1s ease;
+          padding: 8px 12px;
+          margin-bottom: 2px;
+        }
+
+        .rttr-cm-header.clickable:hover {
+          background: #007aff;
+          color: #ffffff;
+        }
+        
+        .rttr-cm-header.clickable:hover .rttr-cm-header-speak {
+          color: #ffffff;
+        }
+
+        .rttr-cm-header-text {
+          word-break: break-all;
+          max-width: 170px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        
+        .rttr-cm-header-speak {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #007aff;
+        }
+
+        .rttr-cm-item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 8px 12px;
+          font-size: 13px;
+          color: #2c2c2e;
+          cursor: pointer;
+          border-radius: 6px;
+          transition: background 0.1s ease, color 0.1s ease;
+        }
+
+        .rttr-cm-item:hover {
+          background: #007aff;
+          color: #ffffff;
+        }
+        
+        .rttr-cm-item:hover .rttr-cm-icon {
+          color: #ffffff;
+        }
+
+        .rttr-cm-divider {
+          height: 1px;
+          background: rgba(0, 0, 0, 0.08);
+          margin: 6px;
+        }
+
+        .rttr-cm-icon {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #8e8e93;
+        }
+
+        @media (prefers-color-scheme: dark) {
+          #rttr-context-menu {
+            background: rgba(30, 30, 32, 0.85);
+            border-color: rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.2);
+          }
+          .rttr-cm-header { color: #f2f2f7; }
+          .rttr-cm-header.clickable:hover { background: #0a84ff; color: #ffffff; }
+          .rttr-cm-header-speak { color: #0a84ff; }
+          .rttr-cm-item { color: #e5e5ea; }
+          .rttr-cm-item:hover { background: #0a84ff; color: #ffffff; }
+          .rttr-cm-icon { color: #98989d; }
+          .rttr-cm-item:hover .rttr-cm-icon { color: #ffffff; }
+          .rttr-cm-divider { background: rgba(255, 255, 255, 0.1); }
+        }
       `;
       document.head.appendChild(style);
     }
@@ -977,6 +1720,12 @@ export default defineContentScript({
 
       const badge = document.getElementById('rttr-pronounce-badge');
       badge?.remove();
+
+      const epanel = document.getElementById('rttr-explain-panel');
+      epanel?.remove();
+
+      const contextMenu = document.getElementById('rttr-context-menu');
+      contextMenu?.remove();
     });
   },
 });

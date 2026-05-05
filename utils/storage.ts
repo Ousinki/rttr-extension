@@ -23,6 +23,10 @@ export interface RTTRSettings {
   ttsRate: number;         // TTS 语速 (0.1 - 2.0)
   ttsVolume: number;       // TTS 音量 (0.0 - 1.0)
   ttsVoiceURI: string;     // TTS 发音人 URI
+  enableAutoPronounce: boolean;     // 划词自动发音
+  enableClickPronounce: boolean;    // 划词后点击发音
+  enableShortcutPronounce: boolean; // 快捷键发音
+  enableSingleClickPronounce: boolean; // 单词单击发音
 }
 
 // ─── 默认值 ──────────────────────────────────────────────
@@ -37,6 +41,10 @@ const DEFAULT_SETTINGS: RTTRSettings = {
   ttsRate: 0.85,
   ttsVolume: 1.0,
   ttsVoiceURI: '',
+  enableAutoPronounce: true,
+  enableClickPronounce: false,
+  enableShortcutPronounce: true,
+  enableSingleClickPronounce: true,
 };
 
 // ─── Storage Items (WXT 类型安全存储) ────────────────────
