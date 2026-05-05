@@ -265,7 +265,11 @@ export default defineContentScript({
 
     // ─── 语音合成 (TTS) ────────────────────────────────
     function speakText(text: string) {
-      if (!('speechSynthesis' in window)) return;
+      console.log(`[RTTR TTS] 准备朗读文本: "${text}"`);
+      if (!('speechSynthesis' in window)) {
+        console.error('[RTTR TTS] 当前浏览器不支持 speechSynthesis');
+        return;
+      }
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       
@@ -275,23 +279,38 @@ export default defineContentScript({
         utterance.volume = currentSettings.ttsVolume ?? 1.0;
         
         const voices = window.speechSynthesis.getVoices();
+        console.log(`[RTTR TTS] 当前系统可用声音数量: ${voices.length}`);
+        
         const voiceURI = currentSettings.ttsVoiceURI;
         if (voiceURI) {
+          console.log(`[RTTR TTS] 用户配置了指定发音人 URI: ${voiceURI}`);
           const selectedVoice = voices.find(v => v.voiceURI === voiceURI);
           if (selectedVoice) {
             utterance.voice = selectedVoice;
+            console.log(`[RTTR TTS] 成功匹配发音人: ${selectedVoice.name}`);
+          } else {
+            console.warn(`[RTTR TTS] 未找到指定的发音人，将使用系统默认`);
           }
         } else {
+          console.log(`[RTTR TTS] 用户未配置发音人，尝试匹配 Google US English`);
           const googleVoice = voices.find(v => v.name.includes('Google US English'));
           if (googleVoice) {
             utterance.voice = googleVoice;
+            console.log(`[RTTR TTS] 成功匹配到 Google US English`);
+          } else {
+            console.warn(`[RTTR TTS] 未找到 Google US English，将使用系统默认`);
           }
         }
       } else {
+        console.warn(`[RTTR TTS] currentSettings 为空，使用兜底配置`);
         utterance.lang = 'en-US';
         utterance.rate = 0.85;
       }
       
+      utterance.onstart = () => console.log('[RTTR TTS] 开始朗读...');
+      utterance.onend = () => console.log('[RTTR TTS] 朗读结束.');
+      utterance.onerror = (e) => console.error('[RTTR TTS] 朗读发生错误:', e);
+
       window.speechSynthesis.speak(utterance);
     }
 
