@@ -59,7 +59,7 @@ function openOptions() {
     <header class="header">
       <div class="header-left">
         <div class="logo">
-          <span class="logo-icon">文</span>
+          <img class="logo-icon" src="/icon.svg" alt="RTTR Logo" />
           <span class="logo-text">RTTR</span>
         </div>
         <span class="version">v0.1.0</span>
@@ -150,16 +150,9 @@ body {
 }
 
 .logo-icon {
-  background: #171717;
-  color: #ffffff;
   width: 24px;
   height: 24px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
+  display: block;
 }
 
 .logo-text {

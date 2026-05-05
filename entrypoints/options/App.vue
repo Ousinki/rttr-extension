@@ -99,7 +99,7 @@ watch(settings, () => {
   <div class="options-container">
     <header class="header">
       <div class="logo">
-        <span class="logo-icon">文</span>
+        <img class="logo-icon" src="/icon.svg" alt="RTTR Logo" />
         <span class="logo-text">RTTR 高级设置</span>
       </div>
     </header>
@@ -225,16 +225,9 @@ body {
 }
 
 .logo-icon {
-  background: #171717;
-  color: #ffffff;
   width: 32px;
   height: 32px;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  font-weight: 700;
+  display: block;
 }
 
 .logo-text {

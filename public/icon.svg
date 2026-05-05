@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <!-- 深色学术科技感背景 -->
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+    
+    <!-- 四层金属渐变，从左到右越来越亮，配合叠加层级 -->
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#94a3b8" />
+      <stop offset="100%" stop-color="#475569" />
+    </linearGradient>
+    <linearGradient id="grad2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#cbd5e1" />
+      <stop offset="100%" stop-color="#64748b" />
+    </linearGradient>
+    <linearGradient id="grad3" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#e2e8f0" />
+      <stop offset="100%" stop-color="#94a3b8" />
+    </linearGradient>
+    <linearGradient id="grad4" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#cbd5e1" />
+    </linearGradient>
+
+    <!-- 赛博紫蓝霓虹渐变（属于 Ruby 悬浮框） -->
+    <linearGradient id="rubyGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#06b6d4" />
+      <stop offset="100%" stop-color="#8b5cf6" />
+    </linearGradient>
+
+    <!-- 强烈的阴影层，强化字母间的遮挡与高度差 -->
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="-15" dy="15" stdDeviation="12" flood-color="#000000" flood-opacity="0.8"/>
+    </filter>
+
+    <!-- 发光滤镜 -->
+    <filter id="neonGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="20" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+
+
+  <!-- 2. R T T R 几何镂空重叠字母组合 (越靠右的在越上层) -->
+  <g transform="translate(56, 324) scale(1.25)">
+    <!-- 第一层：R1 -->
+    <g transform="translate(0, 0)" filter="url(#shadow)">
+      <path d="M 0 0 h 140 c 44 0 80 36 80 80 v 20 c 0 32 -18 60 -45 72 l 75 128 h -70 l -65 -115 h -55 v 115 h -60 z M 60 60 v 65 h 70 c 14 0 25 -11 25 -25 v -15 c 0 -14 -11 -25 -25 -25 h -70 z" 
+            fill-rule="evenodd" fill="url(#grad1)" stroke="#020617" stroke-width="12" stroke-linejoin="round" />
+    </g>
+
+    <!-- 第二层：T1 (覆盖 R1) -->
+    <g transform="translate(160, 0)" filter="url(#shadow)">
+      <path d="M 0 0 h 200 v 60 h -70 v 240 h -60 v -240 h -70 z" 
+            fill="url(#grad2)" stroke="#020617" stroke-width="12" stroke-linejoin="round" />
+    </g>
+
+    <!-- 第三层：T2 (覆盖 T1) -->
+    <g transform="translate(320, 0)" filter="url(#shadow)">
+      <path d="M 0 0 h 200 v 60 h -70 v 240 h -60 v -240 h -70 z" 
+            fill="url(#grad3)" stroke="#020617" stroke-width="12" stroke-linejoin="round" />
+    </g>
+
+    <!-- 第四层：R2 (最高层，覆盖 T2) -->
+    <g transform="translate(480, 0)" filter="url(#shadow)">
+      <path d="M 0 0 h 140 c 44 0 80 36 80 80 v 20 c 0 32 -18 60 -45 72 l 75 128 h -70 l -65 -115 h -55 v 115 h -60 z M 60 60 v 65 h 70 c 14 0 25 -11 25 -25 v -15 c 0 -14 -11 -25 -25 -25 h -70 z" 
+            fill-rule="evenodd" fill="url(#grad4)" stroke="#020617" stroke-width="12" stroke-linejoin="round" />
+    </g>
+  </g>
+
+</svg>
