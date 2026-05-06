@@ -31,6 +31,8 @@ export interface RTTRSettings {
   translationPosition: 'top' | 'bottom';          // 翻译悬浮窗位置
   showTranslationEngine: boolean;                 // 是否显示引擎标识
   showSingleClickIPA: boolean;                    // 单击发音时是否显示音标悬浮窗
+  enableAutoTranslate: boolean;                   // 划词松手自动翻译
+  enableClickTranslate: boolean;                  // 划词后点击选区翻译
 }
 
 // ─── 默认值 ──────────────────────────────────────────────
@@ -53,6 +55,8 @@ const DEFAULT_SETTINGS: RTTRSettings = {
   translationPosition: 'bottom',
   showTranslationEngine: true,
   showSingleClickIPA: true,
+  enableAutoTranslate: true,
+  enableClickTranslate: false,
 };
 
 // ─── Storage Items (WXT 类型安全存储) ────────────────────

@@ -243,6 +243,51 @@ watch(settings, () => {
         </div>
       </section>
 
+      <!-- Selection Translation Mode -->
+      <section class="settings-card">
+        <h2>划词翻译模式</h2>
+        <p class="section-desc">配置拖动选中文本时的翻译行为。翻译悬浮窗与发音相互独立，可同时启用。</p>
+
+        <div class="animation-previews" style="grid-template-columns: 1fr 1fr;">
+          <!-- 选中自动翻译 -->
+          <div class="preview-box" :class="{ active: settings.enableAutoTranslate && settings.translationEngine !== 'none' }" @click="settings.translationEngine !== 'none' && (settings.enableAutoTranslate = !settings.enableAutoTranslate)">
+            <div class="preview-title">选中自动翻译</div>
+            <div class="anim-container anim-sel-trans-auto" style="height: 120px;">
+              <div class="anim-text">
+                He was
+                <span class="anim-selection sel-trans-sel">
+                  locking eyes
+                  <div class="anim-translation-tooltip-bottom sel-trans-tooltip-auto">
+                    <strong>锁定目光</strong><span class="engine-tag" v-if="settings.showTranslationEngine && settings.translationEngine !== 'none'">{{ settings.translationEngine === 'google' ? 'Google' : settings.translationEngine === 'deepl' ? 'DeepL' : 'Bing' }}</span>
+                  </div>
+                  <svg class="anim-cursor" width="24" height="24" viewBox="0 0 24 24"><path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z" fill="#000" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
+                </span>
+                with her.
+              </div>
+            </div>
+          </div>
+
+          <!-- 选中点击翻译 -->
+          <div class="preview-box" :class="{ active: settings.enableClickTranslate && settings.translationEngine !== 'none' }" @click="settings.translationEngine !== 'none' && (settings.enableClickTranslate = !settings.enableClickTranslate)">
+            <div class="preview-title">选中点击翻译</div>
+            <div class="anim-container anim-sel-trans-click" style="height: 120px;">
+              <div class="anim-text">
+                He was
+                <span class="anim-selection sel-trans-sel-click">
+                  locking eyes
+                  <div class="anim-translation-tooltip-bottom sel-trans-tooltip-click">
+                    <strong>锁定目光</strong><span class="engine-tag" v-if="settings.showTranslationEngine && settings.translationEngine !== 'none'">{{ settings.translationEngine === 'google' ? 'Google' : settings.translationEngine === 'deepl' ? 'DeepL' : 'Bing' }}</span>
+                  </div>
+                  <div class="anim-click-ripple sel-trans-ripple"></div>
+                  <svg class="anim-cursor" width="24" height="24" viewBox="0 0 24 24"><path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z" fill="#000" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
+                </span>
+                with her.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Selection Pronunciation Settings -->
       <section class="settings-card">
         <h2>划词发音模式</h2>
@@ -1087,5 +1132,75 @@ body {
   0%, 46% { opacity: 0; transform: translateX(-50%) translateY(5px) scale(0.9); }
   50%, 80% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
   85%, 100% { opacity: 0; transform: translateX(-50%) translateY(-5px) scale(0.9); }
+}
+
+/* ─── Selection Auto-Translate Animations ─── */
+.anim-sel-trans-auto .anim-cursor {
+  animation: selTransAutoCursor 4s infinite;
+}
+.anim-sel-trans-auto .sel-trans-sel {
+  animation: selTransAutoHighlight 4s infinite;
+}
+.anim-sel-trans-auto .sel-trans-tooltip-auto {
+  animation: selTransAutoTooltip 4s infinite;
+}
+
+@keyframes selTransAutoCursor {
+  0%, 15% { transform: translate(0, 0) scale(1); }
+  35% { transform: translate(90px, 0) scale(1); }
+  45%, 100% { transform: translate(110px, 20px) scale(1); }
+}
+
+@keyframes selTransAutoHighlight {
+  0%, 15% { background-position: 100% 0; }
+  35%, 100% { background-position: 0 0; }
+}
+
+@keyframes selTransAutoTooltip {
+  0%, 37% { opacity: 0; margin-top: -5px; }
+  42%, 90% { opacity: 1; margin-top: 0px; }
+  95%, 100% { opacity: 0; margin-top: 5px; }
+}
+
+/* ─── Selection Click-Translate Animations ─── */
+.anim-sel-trans-click .anim-cursor {
+  animation: selTransClickCursor 4s infinite;
+}
+.anim-sel-trans-click .sel-trans-sel-click {
+  animation: selTransClickHighlight 4s infinite;
+}
+.anim-sel-trans-click .sel-trans-tooltip-click {
+  animation: selTransClickTooltip 4s infinite;
+}
+.anim-sel-trans-click .sel-trans-ripple {
+  animation: selTransClickRipple 4s infinite;
+}
+
+@keyframes selTransClickCursor {
+  0%, 15% { transform: translate(0, 0) scale(1); }
+  35% { transform: translate(90px, 0) scale(1); }
+  45%, 55% { transform: translate(110px, 20px) scale(1); }
+  65% { transform: translate(45px, 0) scale(1); }
+  70% { transform: translate(45px, 0) scale(0.85); }
+  75% { transform: translate(45px, 0) scale(1); }
+  85%, 100% { transform: translate(110px, 20px) scale(1); }
+}
+
+@keyframes selTransClickHighlight {
+  0%, 15% { background-position: 100% 0; }
+  35%, 100% { background-position: 0 0; }
+}
+
+@keyframes selTransClickRipple {
+  0%, 69% { opacity: 0; transform: translate(-50%, -50%) scale(0.1); }
+  70% { opacity: 1; transform: translate(-50%, -50%) scale(0.1); }
+  75% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); }
+  76%, 100% { opacity: 0; }
+}
+
+@keyframes selTransClickTooltip {
+  0%, 72% { opacity: 0; margin-top: -5px; }
+  76%, 92% { opacity: 1; margin-top: 0px; }
+  97%, 100% { opacity: 0; margin-top: 5px; }
 }
 </style>

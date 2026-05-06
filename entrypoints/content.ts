@@ -224,18 +224,28 @@ export default defineContentScript({
       }
     }
 
+    let clickTranslateWaiting = false; // 划词后点击选区翻译的等待标记
+
     document.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
-      if (clickModeWaiting && lastSelectionRect) {
-        if (e.clientX >= lastSelectionRect.left && e.clientX <= lastSelectionRect.right && 
-            e.clientY >= lastSelectionRect.top && e.clientY <= lastSelectionRect.bottom) {
-            e.preventDefault();
-            speakText(lastSelectionText);
-            showPronounceBadgeForSelection(lastSelectionText, lastSelectionRect);
-            return;
+      if (lastSelectionRect &&
+          e.clientX >= lastSelectionRect.left && e.clientX <= lastSelectionRect.right &&
+          e.clientY >= lastSelectionRect.top && e.clientY <= lastSelectionRect.bottom) {
+        // 点击发音 (TTS)
+        if (clickModeWaiting) {
+          e.preventDefault();
+          speakText(lastSelectionText);
+          showPronounceBadgeForSelection(lastSelectionText, lastSelectionRect);
         }
+        // 点击翻译
+        if (clickTranslateWaiting) {
+          e.preventDefault();
+          doFetchTranslationAndShowBadge(lastSelectionText, lastSelectionRect, false);
+        }
+        if (clickModeWaiting || clickTranslateWaiting) return;
       }
       clickModeWaiting = false;
+      clickTranslateWaiting = false;
     });
 
     document.addEventListener('mouseup', (e) => {
@@ -243,8 +253,10 @@ export default defineContentScript({
       setTimeout(() => {
         const autoEnabled = currentSettings?.enableAutoPronounce ?? true;
         const clickEnabled = currentSettings?.enableClickPronounce ?? false;
+        const autoTranslate = currentSettings?.enableAutoTranslate ?? true;
+        const clickTranslate = currentSettings?.enableClickTranslate ?? false;
 
-        if (!autoEnabled && !clickEnabled) return;
+        if (!autoEnabled && !clickEnabled && !autoTranslate && !clickTranslate) return;
 
         const selection = window.getSelection();
         const text = selection ? selection.toString().trim() : '';
@@ -256,18 +268,22 @@ export default defineContentScript({
             lastSelectionText = text;
             lastSelectionRect = rect;
 
+            // TTS 发音逻辑
             if (autoEnabled) {
               speakText(text);
               showPronounceBadgeForSelection(text, rect);
             }
-            if (clickEnabled) {
-              clickModeWaiting = true;
-            } else {
-              clickModeWaiting = false;
+            clickModeWaiting = clickEnabled;
+
+            // 翻译逻辑
+            if (autoTranslate) {
+              doFetchTranslationAndShowBadge(text, rect, false);
             }
+            clickTranslateWaiting = clickTranslate;
           }
         } else {
           clickModeWaiting = false;
+          clickTranslateWaiting = false;
         }
       }, 10);
     });
