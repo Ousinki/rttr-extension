@@ -25,6 +25,8 @@ export interface RTTRSettings {
   ttsVoiceURI: string;     // TTS 发音人 URI
   enableAutoPronounce: boolean;     // 划词自动发音
   enableClickPronounce: boolean;    // 划词后点击发音
+  enableShortcutPronounce: boolean; // 快捷键发音
+  enableSingleClickPronounce: boolean; // 单击发音
   translationEngine: 'none' | 'google' | 'deepl' | 'bing'; // 悬浮窗翻译引擎
   translationPosition: 'top' | 'bottom';          // 翻译悬浮窗位置
   showTranslationEngine: boolean;                 // 是否显示引擎标识

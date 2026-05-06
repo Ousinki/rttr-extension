@@ -1206,59 +1206,63 @@ export default defineContentScript({
         return;
       }
       window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
       
-      if (currentSettings) {
-        utterance.lang = currentSettings.ttsLanguage || 'en-US';
-        utterance.rate = currentSettings.ttsRate || 0.85;
-        utterance.volume = currentSettings.ttsVolume ?? 1.0;
+      // 解决 Chrome 等浏览器中 cancel() 后立刻 speak() 会被忽略导致不发音的 Bug
+      setTimeout(() => {
+        const utterance = new SpeechSynthesisUtterance(text);
         
-        const voices = window.speechSynthesis.getVoices();
-        console.log(`[RTTR TTS] 当前系统可用声音数量: ${voices.length}`);
-        
-        const voiceURI = currentSettings.ttsVoiceURI;
-        if (voiceURI) {
-          console.log(`[RTTR TTS] 用户配置了指定发音人 URI: ${voiceURI}`);
-          const selectedVoice = voices.find(v => v.voiceURI === voiceURI);
-          if (selectedVoice) {
-            utterance.voice = selectedVoice;
-            console.log(`[RTTR TTS] 成功匹配发音人: ${selectedVoice.name}`);
+        if (currentSettings) {
+          utterance.lang = currentSettings.ttsLanguage || 'en-US';
+          utterance.rate = currentSettings.ttsRate || 0.85;
+          utterance.volume = currentSettings.ttsVolume ?? 1.0;
+          
+          const voices = window.speechSynthesis.getVoices();
+          console.log(`[RTTR TTS] 当前系统可用声音数量: ${voices.length}`);
+          
+          const voiceURI = currentSettings.ttsVoiceURI;
+          if (voiceURI) {
+            console.log(`[RTTR TTS] 用户配置了指定发音人 URI: ${voiceURI}`);
+            const selectedVoice = voices.find(v => v.voiceURI === voiceURI);
+            if (selectedVoice) {
+              utterance.voice = selectedVoice;
+              console.log(`[RTTR TTS] 成功匹配发音人: ${selectedVoice.name}`);
+            } else {
+              console.warn(`[RTTR TTS] 未找到指定的发音人，将使用系统默认`);
+            }
           } else {
-            console.warn(`[RTTR TTS] 未找到指定的发音人，将使用系统默认`);
+            console.log(`[RTTR TTS] 用户未配置发音人，尝试匹配 Google US English`);
+            const googleVoice = voices.find(v => v.name.includes('Google US English'));
+            if (googleVoice) {
+              utterance.voice = googleVoice;
+              console.log(`[RTTR TTS] 成功匹配到 Google US English`);
+            } else {
+              console.warn(`[RTTR TTS] 未找到 Google US English，将使用系统默认`);
+            }
           }
         } else {
-          console.log(`[RTTR TTS] 用户未配置发音人，尝试匹配 Google US English`);
-          const googleVoice = voices.find(v => v.name.includes('Google US English'));
-          if (googleVoice) {
-            utterance.voice = googleVoice;
-            console.log(`[RTTR TTS] 成功匹配到 Google US English`);
+          console.warn(`[RTTR TTS] currentSettings 为空，使用兜底配置`);
+          utterance.lang = 'en-US';
+          utterance.rate = 0.85;
+        }
+        
+        utterance.onstart = () => console.log('[RTTR TTS] 开始朗读...');
+        utterance.onend = () => {
+          console.log('[RTTR TTS] 朗读结束.');
+          if (onComplete) onComplete();
+        };
+        utterance.onerror = (e) => {
+          if (e.error === 'interrupted') {
+            // 正常打断，不作为错误抛出
+            console.log('[RTTR TTS] 朗读已切换/被打断');
           } else {
-            console.warn(`[RTTR TTS] 未找到 Google US English，将使用系统默认`);
+            console.error('[RTTR TTS] 朗读发生错误, 原因:', e.error);
           }
-        }
-      } else {
-        console.warn(`[RTTR TTS] currentSettings 为空，使用兜底配置`);
-        utterance.lang = 'en-US';
-        utterance.rate = 0.85;
-      }
-      
-      utterance.onstart = () => console.log('[RTTR TTS] 开始朗读...');
-      utterance.onend = () => {
-        console.log('[RTTR TTS] 朗读结束.');
-        if (onComplete) onComplete();
-      };
-      utterance.onerror = (e) => {
-        if (e.error === 'interrupted') {
-          // 正常打断，不作为错误抛出
-          console.log('[RTTR TTS] 朗读已切换/被打断');
-        } else {
-          console.error('[RTTR TTS] 朗读发生错误, 原因:', e.error);
-        }
-        if (onComplete) onComplete();
-      };
+          if (onComplete) onComplete();
+        };
 
-      currentUtterance = utterance;
-      window.speechSynthesis.speak(utterance);
+        currentUtterance = utterance;
+        window.speechSynthesis.speak(utterance);
+      }, 50);
     }
 
     // ─── 标注单个文本节点 ──────────────────────────────
