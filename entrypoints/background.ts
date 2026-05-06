@@ -68,7 +68,7 @@ export default defineBackground(() => {
           return true;
 
         case 'OPEN_OPTIONS':
-          browser.tabs.create({ url: browser.runtime.getURL('options.html') });
+          browser.tabs.create({ url: browser.runtime.getURL('/options.html') });
           sendResponse({ success: true });
           return false;
 
