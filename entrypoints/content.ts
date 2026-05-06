@@ -789,11 +789,20 @@ export default defineContentScript({
         // Crop size based on CSS pixels (to handle Retina/high-res images)
         const cssCropWidth = 400;
         const cssCropHeight = 150;
-        const cropWidth = cssCropWidth * scaleX;
-        const cropHeight = cssCropHeight * scaleY;
+        let cropWidth = cssCropWidth * scaleX;
+        let cropHeight = cssCropHeight * scaleY;
 
-        const cropX = Math.max(0, clickX - cropWidth / 2);
-        const cropY = Math.max(0, clickY - cropHeight / 2);
+        // If the crop would cover most of the image, just use the full image
+        const useFullImage = cropWidth >= safeImg.naturalWidth * 0.8 || cropHeight >= safeImg.naturalHeight * 0.8;
+        if (useFullImage) {
+          cropWidth = safeImg.naturalWidth;
+          cropHeight = safeImg.naturalHeight;
+        }
+
+        const cropX = useFullImage ? 0 : Math.max(0, clickX - cropWidth / 2);
+        const cropY = useFullImage ? 0 : Math.max(0, clickY - cropHeight / 2);
+
+        console.log('[RTTR OCR] Image natural:', safeImg.naturalWidth, 'x', safeImg.naturalHeight, useFullImage ? '→ using FULL image' : '→ using crop');
 
         const canvas = document.createElement('canvas');
         canvas.width = cropWidth;
@@ -819,22 +828,42 @@ export default defineContentScript({
         let sum = 0;
         for (let i = 0; i < gray.length; i++) sum += gray[i];
         const avgBrightness = sum / gray.length;
-        const isLightOnDark = avgBrightness < 140;
 
-        console.log('[RTTR OCR] Avg brightness:', avgBrightness, isLightOnDark ? '(light-on-dark, will invert)' : '(dark-on-light)');
+        console.log('[RTTR OCR] Avg brightness:', avgBrightness);
 
-        // Binarize: Otsu-like simple threshold
-        const threshold = avgBrightness;
-        for (let i = 0; i < gray.length; i++) {
-          let val = gray[i] > threshold ? 255 : 0;
-          if (isLightOnDark) val = 255 - val; // Invert for light-on-dark
-          pixels[i * 4] = val;
-          pixels[i * 4 + 1] = val;
-          pixels[i * 4 + 2] = val;
+        // Helper: apply binarization to canvas with given inversion setting
+        function applyBinarize(invert: boolean) {
+          const d = ctx.getImageData(0, 0, cropWidth, cropHeight);
+          const p = d.data;
+          for (let i = 0; i < gray.length; i++) {
+            let val = gray[i] > avgBrightness ? 255 : 0;
+            if (invert) val = 255 - val;
+            p[i * 4] = val;
+            p[i * 4 + 1] = val;
+            p[i * 4 + 2] = val;
+          }
+          ctx.putImageData(d, 0, 0);
+          return canvas.toDataURL('image/png');
         }
-        ctx.putImageData(imgData, 0, 0);
 
-        const base64Image = canvas.toDataURL('image/png');
+        // Helper: extract words from Tesseract blocks
+        function extractWords(data: any): any[] {
+          const w: any[] = [];
+          if (data.blocks) {
+            for (const block of data.blocks) {
+              if (block.paragraphs) {
+                for (const para of block.paragraphs) {
+                  if (para.lines) {
+                    for (const line of para.lines) {
+                      if (line.words) w.push(...line.words);
+                    }
+                  }
+                }
+              }
+            }
+          }
+          return w;
+        }
 
         console.log('[RTTR OCR] Target Point in Natural Image:', clickX, clickY);
         console.log('[RTTR OCR] Crop Origin:', cropX, cropY, 'Size:', cropWidth, cropHeight);
@@ -846,48 +875,33 @@ export default defineContentScript({
         ], clientX, clientY);
 
         const worker = await createWorker('eng');
-        let { data } = await worker.recognize(base64Image, {}, { blocks: true });
 
-        // If no words found with preprocessed image, retry with original (un-processed) crop
+        // Triple-pass OCR: 1) normal binarize, 2) inverted binarize, 3) original image
         let words: any[] = [];
-        if (data.blocks) {
-          for (const block of data.blocks) {
-            if (block.paragraphs) {
-              for (const para of block.paragraphs) {
-                if (para.lines) {
-                  for (const line of para.lines) {
-                    if (line.words) words.push(...line.words);
-                  }
-                }
-              }
-            }
-          }
+
+        // Pass 1: binarize (dark text assumed)
+        const img1 = applyBinarize(false);
+        const r1 = await worker.recognize(img1, {}, { blocks: true });
+        words = extractWords(r1.data);
+        console.log('[RTTR OCR] Pass 1 (normal binarize):', words.length, 'words');
+
+        // Pass 2: inverted binarize (light text on dark background)
+        if (words.length === 0) {
+          const img2 = applyBinarize(true);
+          const r2 = await worker.recognize(img2, {}, { blocks: true });
+          words = extractWords(r2.data);
+          console.log('[RTTR OCR] Pass 2 (inverted binarize):', words.length, 'words');
         }
 
+        // Pass 3: original unprocessed crop
         if (words.length === 0) {
-          console.log('[RTTR OCR] Preprocessed image yielded no words, retrying with original crop...');
-          // Redraw original image
           ctx.fillStyle = 'white';
           ctx.fillRect(0, 0, cropWidth, cropHeight);
           ctx.drawImage(safeImg, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
-          const originalBase64 = canvas.toDataURL('image/png');
-          const ret2 = await worker.recognize(originalBase64, {}, { blocks: true });
-          data = ret2.data;
-          // Re-extract words
-          words = [];
-          if (data.blocks) {
-            for (const block of data.blocks) {
-              if (block.paragraphs) {
-                for (const para of block.paragraphs) {
-                  if (para.lines) {
-                    for (const line of para.lines) {
-                      if (line.words) words.push(...line.words);
-                    }
-                  }
-                }
-              }
-            }
-          }
+          const img3 = canvas.toDataURL('image/png');
+          const r3 = await worker.recognize(img3, {}, { blocks: true });
+          words = extractWords(r3.data);
+          console.log('[RTTR OCR] Pass 3 (original):', words.length, 'words');
         }
 
         await worker.terminate();
@@ -896,21 +910,26 @@ export default defineContentScript({
         const pointY = clickY - cropY;
         
         console.log('[RTTR OCR] Mouse Point inside Crop:', pointX, pointY);
-
         console.log('[RTTR OCR] All recognized words:', words.map(w => ({text: w.text, bbox: w.bbox})));
 
         let targetWord = '';
         if (words.length > 0) {
+          // Find the closest word to the click point by center-to-center distance
+          let minDist = Infinity;
+          let bestWord = '';
           for (const w of words) {
-            // Give a generous tolerance bounding box
-            const tolerance = 15 * scaleX; // Scale tolerance based on resolution
-            if (pointX >= w.bbox.x0 - tolerance && pointX <= w.bbox.x1 + tolerance && pointY >= w.bbox.y0 - tolerance && pointY <= w.bbox.y1 + tolerance) {
-              targetWord = w.text.trim();
-              // Remove punctuation
-              targetWord = targetWord.replace(/^[.,\/#!$%\^&\*;:{}=\-_`~()]+|[.,\/#!$%\^&\*;:{}=\-_`~()]+$/g, '');
-              break;
+            const cx = (w.bbox.x0 + w.bbox.x1) / 2;
+            const cy = (w.bbox.y0 + w.bbox.y1) / 2;
+            const dist = Math.sqrt((pointX - cx) ** 2 + (pointY - cy) ** 2);
+            // Only consider words within a reasonable range (half the word height)
+            const wordHeight = w.bbox.y1 - w.bbox.y0;
+            const maxDist = Math.max(wordHeight, 30 * scaleX);
+            if (dist < minDist && dist < maxDist) {
+              minDist = dist;
+              bestWord = w.text.trim().replace(/[^a-zA-Z'-]/g, '');
             }
           }
+          targetWord = bestWord;
         }
 
         if (targetWord) {
@@ -920,27 +939,29 @@ export default defineContentScript({
             { icon: SVG_ICONS.settings, label: '设置', onClick: () => browser.runtime.sendMessage({ type: 'OPEN_OPTIONS' }) }
           ], clientX, clientY);
         } else {
-          const fallbackText = words.length > 0 
-            ? `未命中鼠标。切片内容: ${words.map(w => w.text).join(' ').substring(0, 20)}...`
-            : '切片内未识别到任何文本';
-            
-          showContextMenu([
-            { type: 'header', label: `⚠️ ${fallbackText}` },
+          // Fallback: warning header + ALT text as readable item
+          const items: any[] = [
+            { type: 'header', label: 'No text detected' },
             { type: 'divider', label: 'DIVIDER' },
-            { icon: SVG_ICONS.speak, label: '朗读全图备用描述', onClick: () => speakText(altText) },
-            { type: 'divider', label: 'DIVIDER' },
-            { icon: SVG_ICONS.settings, label: '设置', onClick: () => browser.runtime.sendMessage({ type: 'OPEN_OPTIONS' }) }
-          ], clientX, clientY);
+          ];
+          if (altText && altText !== '图片没有可用描述') {
+            items.push({ icon: SVG_ICONS.speak, label: altText, onClick: () => speakText(altText) });
+            items.push({ type: 'divider', label: 'DIVIDER' });
+          }
+          items.push({ icon: SVG_ICONS.settings, label: '设置', onClick: () => browser.runtime.sendMessage({ type: 'OPEN_OPTIONS' }) });
+          showContextMenu(items, clientX, clientY);
         }
       } catch (err) {
         console.error('Local OCR Error:', err);
-        showContextMenu([
-          { type: 'header', label: '❌ 本地 OCR 失败 (可能是 CSP 限制)' },
-          { type: 'divider', label: 'DIVIDER' },
-          { icon: SVG_ICONS.speak, label: '朗读备用描述', onClick: () => speakText(altText) },
-          { type: 'divider', label: 'DIVIDER' },
-          { icon: SVG_ICONS.settings, label: '设置', onClick: () => browser.runtime.sendMessage({ type: 'OPEN_OPTIONS' }) }
-        ], clientX, clientY);
+        const items: any[] = [];
+        if (altText && altText !== '图片没有可用描述') {
+          items.push({ type: 'header', label: altText, onSpeakClick: () => speakText(altText) });
+        } else {
+          items.push({ type: 'header', label: 'OCR failed' });
+        }
+        items.push({ type: 'divider', label: 'DIVIDER' });
+        items.push({ icon: SVG_ICONS.settings, label: '设置', onClick: () => browser.runtime.sendMessage({ type: 'OPEN_OPTIONS' }) });
+        showContextMenu(items, clientX, clientY);
       }
     }
 

@@ -29,3 +29,4 @@ web-ext.config.ts
 .gemini/
 eng.traineddata
 test_tesseract.mjs
+test_img.jpg
