@@ -7,7 +7,7 @@ const settings = ref<RTTRSettings>({
   apiKey: '',
   apiEndpoint: 'https://api.openai.com/v1/chat/completions',
   model: 'gpt-4o-mini',
-  annotationColor: '#4a90d9',
+
   enabled: true,
   ttsLanguage: 'en-US',
   ttsRate: 0.85,
@@ -21,6 +21,8 @@ const saved = ref(false);
 const showApiKey = ref(false);
 const testing = ref(false);
 const testResult = ref<string>('');
+const testingTTS = ref(false);
+const testResultTTS = ref<string>('');
 
 const loadVoices = () => {
   const synth = window.speechSynthesis;
@@ -43,6 +45,13 @@ onMounted(async () => {
   }
 });
 
+watch(() => settings.value.translationEngine, (newVal, oldVal) => {
+  if (oldVal === 'none' && newVal !== 'none') {
+    settings.value.translationPosition = 'bottom';
+  }
+  saveSettings();
+});
+
 async function saveSettings() {
   await settingsStorage.setValue(settings.value);
   saved.value = true;
@@ -50,16 +59,38 @@ async function saveSettings() {
 }
 
 function testTTS() {
+  testingTTS.value = true;
+  testResultTTS.value = '';
+  
   const synth = window.speechSynthesis;
   synth.cancel();
   
-  const utterance = new SpeechSynthesisUtterance('Hello! This is a test of your RTTR text to speech settings.');
-  utterance.lang = settings.value.ttsLanguage;
-  utterance.rate = settings.value.ttsRate;
-  utterance.volume = settings.value.ttsVolume;
+  const utterance = new SpeechSynthesisUtterance("Testing pronunciation. The quick brown fox jumps over the lazy dog.");
   
-  if (settings.value.ttsVoiceURI) {
-    const selectedVoice = voices.value.find(v => v.voiceURI === settings.value.ttsVoiceURI);
+  utterance.onend = () => {
+    testingTTS.value = false;
+    testResultTTS.value = '✅ 测试成功';
+    setTimeout(() => { testResultTTS.value = ''; }, 3000);
+  };
+  
+  utterance.onerror = (e) => {
+    testingTTS.value = false;
+    testResultTTS.value = `❌ 测试失败: ${e.error}`;
+  };
+
+  if (settings.value.ttsLanguage) {
+    utterance.lang = settings.value.ttsLanguage;
+  }
+  if (settings.value.ttsRate) {
+    utterance.rate = settings.value.ttsRate;
+  }
+  if (settings.value.ttsVolume !== undefined) {
+    utterance.volume = settings.value.ttsVolume;
+  }
+  
+  const voiceURI = settings.value.ttsVoiceURI;
+  if (voiceURI) {
+    const selectedVoice = voices.value.find(v => v.voiceURI === voiceURI);
     if (selectedVoice) {
       utterance.voice = selectedVoice;
     }
@@ -70,7 +101,7 @@ function testTTS() {
 
 async function testTranslation() {
   testing.value = true;
-  testResult.value = '⏳ 正在测试...';
+  testResult.value = '';
 
   try {
     await settingsStorage.setValue(settings.value);
@@ -109,13 +140,16 @@ watch(settings, () => {
       <!-- API Settings -->
       <section class="settings-card">
         <h2>翻译 API 设置</h2>
-        <p class="section-desc">配置 OpenAI 兼容的接口信息用于划词翻译。</p>
+        <p class="section-desc">配置 OpenAI 兼容的接口信息用于长句/段落的 AI 划词翻译。</p>
 
         <div class="form-group">
-          <label class="label">API Key</label>
+          <label class="label">AI 长句翻译 API Key (OpenAI 格式)</label>
           <div class="input-with-toggle">
             <input :type="showApiKey ? 'text' : 'password'" v-model="settings.apiKey" placeholder="sk-..." class="input" />
-            <button class="eye-btn" @click="showApiKey = !showApiKey">{{ showApiKey ? '🙈' : '👁️' }}</button>
+            <button class="eye-btn" @click="showApiKey = !showApiKey" aria-label="Toggle visibility">
+              <svg v-if="showApiKey" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+              <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+            </button>
           </div>
         </div>
 
@@ -130,21 +164,82 @@ watch(settings, () => {
           </div>
         </div>
 
-        <div class="form-group">
-          <label class="label">标注颜色 (Ruby Color)</label>
-          <div class="color-row">
-            <input type="color" v-model="settings.annotationColor" class="color-picker" />
-            <span class="color-value">{{ settings.annotationColor }}</span>
-            <ruby class="preview-ruby" :style="{ color: settings.annotationColor }">
-              example
-              <rt :style="{ color: settings.annotationColor }">示例</rt>
-            </ruby>
+        <div class="actions">
+          <button class="test-btn" @click="testTranslation" :disabled="testing" :class="{ 'is-loading': testing }">
+            <svg v-if="testing" class="spinner" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="4.93" x2="19.07" y2="7.76"></line></svg>
+            <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            {{ testing ? '测试中...' : '测试 API' }}
+          </button>
+          <span v-if="testResult" class="test-result-inline" :class="{ error: testResult.includes('失败') || testResult.includes('错误') }">
+            <svg v-if="testResult.includes('成功')" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+            {{ testResult.replace(/❌|✅|⏳|正在/g, '').trim() }}
+          </span>
+        </div>
+      </section>
+
+      <!-- Translation Tooltip Preview -->
+      <section class="settings-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <h2 style="margin: 0;">翻译悬浮窗与引擎</h2>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #555; cursor: pointer;" :style="{ opacity: settings.translationEngine === 'none' ? 0.5 : 1, pointerEvents: settings.translationEngine === 'none' ? 'none' : 'auto' }">
+              <input type="checkbox" v-model="settings.showTranslationEngine" :disabled="settings.translationEngine === 'none'" />
+              显示引擎尾标
+            </label>
+            <select v-model="settings.translationEngine" class="select" style="width: auto; padding: 6px 12px; font-size: 13px;">
+              <option value="none">不启用</option>
+              <option value="google">Google Translate</option>
+              <option value="deepl">DeepL</option>
+              <option value="bing">Bing Microsoft</option>
+            </select>
           </div>
         </div>
+        <p class="section-desc">直角灰底设计。点击下方卡片选择翻译框的默认弹出位置。</p>
+        
+        <div class="animation-previews" style="grid-template-columns: 1fr 1fr;">
+          <!-- 位置 1：下方 -->
+          <div class="preview-box" :class="{ active: settings.translationEngine !== 'none' && settings.translationPosition === 'bottom' }" @click="settings.translationEngine !== 'none' && (settings.translationPosition = 'bottom')">
+            <div class="preview-title">显示于文字下方</div>
+            <div class="anim-container anim-translation" style="height: 140px;">
+              <div class="anim-text" style="padding-top: 40px;">
+                <span class="trans-target-word">
+                  <span style="color: #007aff;">hypothesis</span>
+                  <!-- 黑色音标悬浮窗 (模拟) -->
+                  <div class="anim-badge-black trans-ipa-badge" :style="{ top: '-24px', opacity: settings.showSingleClickIPA ? '' : '0 !important', transition: 'opacity 0.2s ease' }">
+                    / haɪˈpɒθəsɪs /
+                  </div>
+                  <div class="anim-translation-tooltip-bottom">
+                    <strong>假设</strong><span class="engine-tag" v-if="settings.showTranslationEngine && settings.translationEngine !== 'none'">{{ settings.translationEngine === 'google' ? 'Google' : settings.translationEngine === 'deepl' ? 'DeepL' : 'Bing' }}</span>
+                  </div>
+                  <div class="anim-click-ripple-trans"></div>
+                  <svg class="anim-cursor-trans" width="24" height="24" viewBox="0 0 24 24"><path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z" fill="#000" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
+                </span>
+              </div>
+            </div>
+          </div>
 
-        <div class="actions">
-          <button class="test-btn" @click="testTranslation" :disabled="testing">{{ testing ? '⏳ 测试中...' : '🧪 测试 API' }}</button>
-          <span v-if="testResult" class="test-result-inline" :class="{ error: testResult.startsWith('❌') }">{{ testResult }}</span>
+          <!-- 位置 2：上方 -->
+          <div class="preview-box" :class="{ active: settings.translationEngine !== 'none' && settings.translationPosition === 'top' }" @click="settings.translationEngine !== 'none' && (settings.translationPosition = 'top')">
+            <div class="preview-title">显示于文字上方</div>
+            <div class="anim-container anim-translation" style="height: 140px;">
+              <div class="anim-text" style="padding-top: 40px;">
+                <span class="trans-target-word">
+                  <span style="color: #007aff;">hypothesis</span>
+                  <!-- 黑色音标悬浮窗 (模拟) -->
+                  <div class="anim-badge-black trans-ipa-badge" :style="{ top: '-24px', opacity: settings.showSingleClickIPA ? '' : '0 !important', transition: 'opacity 0.2s ease' }">
+                    / haɪˈpɒθəsɪs /
+                  </div>
+                  <!-- 直角灰色翻译悬浮窗避让到上方 -->
+                  <div class="anim-translation-tooltip-top" :style="{ top: settings.showSingleClickIPA ? '-68px' : '-34px', transition: 'top 0.2s ease' }">
+                    <strong>假设</strong><span class="engine-tag" v-if="settings.showTranslationEngine && settings.translationEngine !== 'none'">{{ settings.translationEngine === 'google' ? 'Google' : settings.translationEngine === 'deepl' ? 'DeepL' : 'Bing' }}</span>
+                  </div>
+                  <div class="anim-click-ripple-trans"></div>
+                  <svg class="anim-cursor-trans" width="24" height="24" viewBox="0 0 24 24"><path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z" fill="#000" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -156,14 +251,23 @@ watch(settings, () => {
         <div class="animation-previews">
           <!-- Single Click Mode Preview -->
           <div class="preview-box" :class="{ active: settings.enableSingleClickPronounce }" @click="settings.enableSingleClickPronounce = !settings.enableSingleClickPronounce">
-            <div class="preview-title">单击发音演示</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 12px; margin-bottom: 8px;">
+              <div class="preview-title" style="margin-bottom: 0;">单击发音</div>
+              <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: #666; cursor: pointer; z-index: 10;" @click.stop>
+                <input type="checkbox" v-model="settings.showSingleClickIPA" style="margin: 0; width: 12px; height: 12px;" />
+                显示音标悬浮窗
+              </label>
+            </div>
             <div class="anim-container anim-single-click">
               <div class="anim-text">
                 He was 
                 <span class="anim-selection" style="background: transparent;">
                   locking
-                  <div class="anim-badge-black">
+                  <div class="anim-badge-black" :style="{ opacity: settings.showSingleClickIPA ? '' : '0 !important' }">
                     / 'lɒkɪŋ /
+                  </div>
+                  <div class="anim-badge" :style="{ top: '-24px', marginLeft: settings.showSingleClickIPA ? '65px' : '0', transition: 'margin-left 0.2s ease' }">
+                    <svg class="anim-speaker" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07" class="wave1"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14" class="wave2"></path></svg>
                   </div>
                   <div class="anim-click-ripple" style="left: 25px;"></div>
                   <svg class="anim-cursor" width="24" height="24" viewBox="0 0 24 24"><path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z" fill="#000" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
@@ -175,7 +279,7 @@ watch(settings, () => {
 
           <!-- Auto Mode Preview -->
           <div class="preview-box" :class="{ active: settings.enableAutoPronounce }" @click="settings.enableAutoPronounce = !settings.enableAutoPronounce">
-            <div class="preview-title">自动发音演示</div>
+            <div class="preview-title">选中自动发音</div>
             <div class="anim-container anim-auto">
               <div class="anim-text">
                 He was 
@@ -193,7 +297,7 @@ watch(settings, () => {
 
           <!-- Click Mode Preview -->
           <div class="preview-box" :class="{ active: settings.enableClickPronounce }" @click="settings.enableClickPronounce = !settings.enableClickPronounce">
-            <div class="preview-title">点击发音演示</div>
+            <div class="preview-title">选中点击发音</div>
             <div class="anim-container anim-click">
               <div class="anim-text">
                 He was 
@@ -212,7 +316,7 @@ watch(settings, () => {
 
           <!-- Shortcut Mode Preview -->
           <div class="preview-box" :class="{ active: settings.enableShortcutPronounce }" @click="settings.enableShortcutPronounce = !settings.enableShortcutPronounce">
-            <div class="preview-title">快捷键发音演示</div>
+            <div class="preview-title">快捷键发音</div>
             <div class="anim-container anim-shortcut">
               <div class="anim-text">
                 He was 
@@ -263,7 +367,20 @@ watch(settings, () => {
         </div>
 
         <div class="actions">
-          <button class="test-btn" @click="testTTS">▶️ 测试发音</button>
+          <button class="test-btn" @click="testTTS" :disabled="testingTTS" :class="{ 'is-loading': testingTTS }">
+            <svg v-if="testingTTS" class="playing-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+              <path class="wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+              <path class="wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+            </svg>
+            <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            {{ testingTTS ? '播放中...' : '测试发音' }}
+          </button>
+          <span v-if="testResultTTS" class="test-result-inline" :class="{ error: testResultTTS.includes('失败') }">
+            <svg v-if="testResultTTS.includes('成功')" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            <svg v-else-if="testResultTTS.includes('失败')" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+            {{ testResultTTS.replace(/❌|✅/g, '').trim() }}
+          </span>
           <span class="save-status" :class="{ visible: saved }">✓ 已自动保存</span>
         </div>
       </section>
@@ -455,6 +572,10 @@ body {
 }
 
 .test-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 10px 24px;
   background: #171717;
   color: #ffffff;
@@ -463,7 +584,7 @@ body {
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .test-btn:hover {
@@ -479,6 +600,51 @@ body {
   cursor: not-allowed;
 }
 
+.test-btn.is-loading {
+  background: #404040;
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+.playing-icon .wave1 {
+  animation: audioWave 1s infinite;
+}
+
+.playing-icon .wave2 {
+  animation: audioWave 1s infinite 0.2s;
+}
+
+@keyframes audioWave {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 1; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.test-result-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #10b981;
+  font-weight: 500;
+  animation: fadeIn 0.3s ease;
+}
+
+.test-result-inline.error {
+  color: #ef4444;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .save-status {
   font-size: 13px;
   color: #737373;
@@ -489,13 +655,7 @@ body {
   opacity: 1;
 }
 
-.test-result-inline {
-  font-size: 13px;
-  color: #16a34a;
-}
-.test-result-inline.error {
-  color: #dc2626;
-}
+
 
 /* Mode Animations & Previews */
 .animation-previews {
@@ -655,7 +815,7 @@ body {
 
 .anim-badge-black {
   position: absolute;
-  top: -32px;
+  top: -24px;
   left: 50%;
   transform: translateX(-50%) scale(0.8);
   background: rgba(28, 28, 30, 0.92);
@@ -788,7 +948,8 @@ body {
 .anim-single-click .anim-cursor {
   animation: singleClickCursor 4s infinite;
 }
-.anim-single-click .anim-badge-black {
+.anim-single-click .anim-badge-black,
+.anim-single-click .anim-badge {
   animation: badgePopSingleClick 4s infinite;
 }
 .anim-single-click .anim-click-ripple {
@@ -824,5 +985,107 @@ body {
   53%, 63%, 73% { opacity: 1; }
   58%, 68%, 78% { opacity: 0.3; }
   83%, 100% { opacity: 0; }
+}
+
+/* Translation Preview Animations */
+.trans-target-word {
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+}
+
+.anim-translation .trans-ipa-badge {
+  opacity: 0;
+  animation: transIpaPop 4s infinite;
+}
+
+.anim-translation .anim-cursor-trans {
+  position: absolute;
+  top: 10px;
+  left: -5px;
+  z-index: 10;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+  transform-origin: top left;
+  animation: transClickCursor 4s infinite;
+}
+
+.anim-translation .anim-click-ripple-trans {
+  position: absolute;
+  top: 10px;
+  left: 30px;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #007aff;
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: singleClickRipple 4s infinite;
+}
+
+.anim-translation-tooltip-bottom,
+.anim-translation-tooltip-top {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%); /* Base centering to fix offset */
+  background-color: #f0f0f0;
+  color: #333333;
+  border: 1px solid #dcdcdc;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  padding: 6px 10px;
+  font-size: 13px;
+  z-index: 20;
+  border-radius: 0px;
+  pointer-events: none;
+  white-space: nowrap;
+  opacity: 0;
+}
+
+.anim-translation-tooltip-bottom {
+  top: 30px;
+  animation: transTooltipPopBottom 4s infinite;
+}
+
+.anim-translation-tooltip-top {
+  top: -68px; /* High enough above the IPA badge */
+  animation: transTooltipPopTop 4s infinite;
+  z-index: 30;
+}
+
+.anim-translation-tooltip-bottom .engine-tag,
+.anim-translation-tooltip-top .engine-tag {
+  display: inline-block;
+  font-size: 10px;
+  color: #888;
+  margin-left: 8px;
+  border-left: 1px solid #ccc;
+  padding-left: 6px;
+  line-height: 1;
+}
+
+@keyframes transClickCursor {
+  0%, 15% { transform: translate(-30px, 20px) scale(1); }
+  35% { transform: translate(30px, 0px) scale(1); }
+  45% { transform: translate(30px, 0px) scale(0.85); }
+  50%, 75% { transform: translate(30px, 0px) scale(1); }
+  85%, 100% { transform: translate(-30px, 20px) scale(1); }
+}
+
+@keyframes transTooltipPopBottom {
+  0%, 46% { opacity: 0; margin-top: -5px; }
+  50%, 80% { opacity: 1; margin-top: 0px; }
+  85%, 100% { opacity: 0; margin-top: 5px; }
+}
+
+@keyframes transTooltipPopTop {
+  0%, 46% { opacity: 0; margin-top: 5px; }
+  50%, 80% { opacity: 1; margin-top: 0px; }
+  85%, 100% { opacity: 0; margin-top: -5px; }
+}
+
+@keyframes transIpaPop {
+  0%, 46% { opacity: 0; transform: translateX(-50%) translateY(5px) scale(0.9); }
+  50%, 80% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  85%, 100% { opacity: 0; transform: translateX(-50%) translateY(-5px) scale(0.9); }
 }
 </style>

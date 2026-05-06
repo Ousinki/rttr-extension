@@ -7,7 +7,7 @@ const settings = ref<RTTRSettings>({
   apiKey: '',
   apiEndpoint: 'https://api.openai.com/v1/chat/completions',
   model: 'gpt-4o-mini',
-  annotationColor: '#4a90d9',
+
   enabled: true,
   ttsLanguage: 'en-US',
   ttsRate: 0.85,

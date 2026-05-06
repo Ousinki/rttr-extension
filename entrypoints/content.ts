@@ -287,18 +287,23 @@ export default defineContentScript({
 
       // 1. 立即开始 TTS 朗读（不等音标返回）
       speakText(word);
+      
+      // 1.5. 触发翻译悬浮窗 (isAnnotated: false)
+      doFetchTranslationAndShowBadge(word, rect, false);
 
-      // 2. 通过 Background 的三层瀑布引擎查询音标
-      const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
-      try {
-        const resp = await browser.runtime.sendMessage({ type: 'LOOKUP_IPA', word }) as { ipa: string | null };
-        if (resp?.ipa) {
-          showPronounceBadge(resp.ipa, rect);
-        } else {
+      // 2. 通过 Background 的三层瀑布引擎查询音标 (如果开启了显示音标悬浮窗)
+      if (currentSettings?.showSingleClickIPA !== false) {
+        const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+        try {
+          const resp = await browser.runtime.sendMessage({ type: 'LOOKUP_IPA', word }) as { ipa: string | null };
+          if (resp?.ipa) {
+            showPronounceBadge(resp.ipa, rect);
+          } else {
+            showPronounceBadge(speakerSVG, rect, true);
+          }
+        } catch {
           showPronounceBadge(speakerSVG, rect, true);
         }
-      } catch {
-        showPronounceBadge(speakerSVG, rect, true);
       }
     });
 
@@ -1096,6 +1101,103 @@ export default defineContentScript({
       }
     }
 
+    // ─── 独立翻译悬浮窗逻辑 ──────────────────────────────
+    let translationBadge: HTMLElement | null = null;
+    let transMouseMoveHandler: ((e: MouseEvent) => void) | null = null;
+    let activeTransRect: DOMRect | null = null;
+
+    function showTranslationBadge(text: string, engine: string, targetRect: DOMRect, isAnnotated: boolean) {
+      if (!translationBadge) {
+        translationBadge = document.createElement('div');
+        translationBadge.className = 'rttr-translation-tooltip';
+        document.body.appendChild(translationBadge);
+      }
+      
+      const safeEngine = engine.charAt(0).toUpperCase() + engine.slice(1);
+      
+      if (currentSettings?.showTranslationEngine !== false) {
+        translationBadge.innerHTML = `<strong>${text}</strong><span class="engine-tag">${safeEngine}</span>`;
+      } else {
+        translationBadge.innerHTML = `<strong>${text}</strong>`;
+      }
+      
+      translationBadge.classList.add('rttr-visible');
+
+      // 决定位置：根据用户在设置中选择的悬浮窗位置 (默认下方)
+      let posClass = currentSettings?.translationPosition === 'top' ? 'pos-top' : 'pos-bottom';
+      translationBadge.classList.remove('pos-top', 'pos-bottom');
+      translationBadge.classList.add(posClass);
+
+      const x = targetRect.left + targetRect.width / 2;
+      let y = window.scrollY;
+      
+      if (posClass === 'pos-top') {
+        // 在上方：如果目标本身是一个 <ruby>，它的边界可能已经包含了上方的拼音。
+        // 如果启用了音标悬浮窗，为了避开音标框，需要向上偏移更多
+        if (currentSettings?.showSingleClickIPA !== false) {
+          y += targetRect.top - 46;
+        } else {
+          y += targetRect.top - 12;
+        }
+      } else {
+        // 在下方
+        y += targetRect.bottom + 12;
+      }
+
+      translationBadge.style.left = `${x}px`;
+      translationBadge.style.top = `${y}px`;
+
+      activeTransRect = targetRect;
+
+      if (transMouseMoveHandler) {
+        document.removeEventListener('mousemove', transMouseMoveHandler);
+      }
+
+      // 距离稍大一点，防止离开
+      const PAD = 30;
+      transMouseMoveHandler = (e: MouseEvent) => {
+        if (!activeTransRect) return;
+        const inX = e.clientX >= activeTransRect.left - PAD && e.clientX <= activeTransRect.right + PAD;
+        const inY = e.clientY >= activeTransRect.top - PAD && e.clientY <= activeTransRect.bottom + PAD;
+        if (!inX || !inY) {
+          hideTranslationBadge();
+        }
+      };
+      document.addEventListener('mousemove', transMouseMoveHandler);
+    }
+
+    function hideTranslationBadge() {
+      if (translationBadge) {
+        translationBadge.classList.remove('rttr-visible');
+      }
+      activeTransRect = null;
+      if (transMouseMoveHandler) {
+        document.removeEventListener('mousemove', transMouseMoveHandler);
+        transMouseMoveHandler = null;
+      }
+    }
+
+    async function doFetchTranslationAndShowBadge(text: string, targetRect: DOMRect, isAnnotated: boolean) {
+      const engine = currentSettings?.translationEngine || 'google';
+      if (engine === 'none') return; // 如果选择了不启用，则直接返回，不发起翻译请求
+
+      try {
+        const resp = await browser.runtime.sendMessage({
+          type: 'FETCH_TRANSLATION',
+          text,
+          sourceLang: 'auto',
+          targetLang: navigator.language.startsWith('zh') ? 'zh-CN' : 'zh-TW',
+          engine
+        }) as any;
+
+        if (resp && resp.targetText) {
+          showTranslationBadge(resp.targetText, resp.engine || engine, targetRect, isAnnotated);
+        }
+      } catch (e) {
+        console.error('[RTTR] Translation fetch error:', e);
+      }
+    }
+
     // ─── 语音合成 (TTS) ────────────────────────────────
     function speakText(text: string, onComplete?: () => void) {
       console.log(`[RTTR TTS] 准备朗读文本: "${text}"`);
@@ -1265,6 +1367,9 @@ export default defineContentScript({
 
             // 立即开始发音，不被音标查询阻塞
             speakText(textToSpeak);
+            
+            // 触发翻译悬浮窗 (isAnnotated: true)
+            doFetchTranslationAndShowBadge(textToSpeak, target.getBoundingClientRect(), true);
 
             const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
 
@@ -1577,6 +1682,59 @@ export default defineContentScript({
           border-width: 5px 5px 0 5px;
           border-style: solid;
           border-color: rgba(28, 28, 30, 0.95) transparent transparent transparent;
+        }
+
+        /* ─── 独立翻译悬浮窗 (Translation Tooltip) ─── */
+        .rttr-translation-tooltip {
+          position: absolute;
+          background-color: #f0f0f0; /* 偏灰一点，不要太暗 */
+          color: #333333;
+          border: 1px solid #dcdcdc;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+          padding: 6px 10px;
+          font-size: 14px;
+          z-index: 2147483647;
+          border-radius: 0px; /* 直角矩形 */
+          pointer-events: none;
+          white-space: pre-wrap;
+          max-width: 300px;
+          text-align: center;
+          font-family: system-ui, -apple-system, sans-serif;
+          
+          /* 初始动画状态 */
+          opacity: 0;
+          transition: opacity 0.2s ease-out, transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .rttr-translation-tooltip.rttr-visible {
+          opacity: 1;
+        }
+
+        /* 位置 1：显示在最上方（含初始微小位移） */
+        .rttr-translation-tooltip.pos-top {
+          transform: translate(-50%, 8px);
+        }
+        .rttr-translation-tooltip.pos-top.rttr-visible {
+          transform: translate(-50%, 0);
+        }
+
+        /* 位置 2：显示在最下方（含初始微小位移） */
+        .rttr-translation-tooltip.pos-bottom {
+          transform: translate(-50%, -8px);
+        }
+        .rttr-translation-tooltip.pos-bottom.rttr-visible {
+          transform: translate(-50%, 0);
+        }
+
+        /* 翻译引擎标识标签 */
+        .rttr-translation-tooltip .engine-tag {
+          display: inline-block;
+          font-size: 10px;
+          color: #888;
+          margin-left: 8px;
+          border-left: 1px solid #ccc;
+          padding-left: 6px;
+          line-height: 1;
         }
 
         /* 加载指示器 — 行末旋转圆环 */

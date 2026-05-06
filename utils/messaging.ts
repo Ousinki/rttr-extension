@@ -68,6 +68,23 @@ export interface FetchImageBase64Response {
   base64: string | null;
 }
 
+export type TranslationEngine = 'google' | 'deepl' | 'bing';
+
+export interface FetchTranslationRequest {
+  type: 'FETCH_TRANSLATION';
+  text: string;
+  sourceLang: string;
+  targetLang: string;
+  engine: TranslationEngine;
+}
+
+export interface FetchTranslationResponse {
+  targetText: string;
+  detectedLang?: string;
+  engine: TranslationEngine;
+  error?: string;
+}
+
 export type RTTRMessage =
   | TranslateRequest
   | DismissWordRequest
@@ -76,4 +93,5 @@ export type RTTRMessage =
   | LookupIpaRequest
   | ExplainWordRequest
   | OpenOptionsRequest
-  | FetchImageBase64Request;
+  | FetchImageBase64Request
+  | FetchTranslationRequest;

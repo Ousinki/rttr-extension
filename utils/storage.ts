@@ -17,7 +17,7 @@ export interface RTTRSettings {
   apiKey: string;
   apiEndpoint: string;     // OpenAI 兼容接口地址
   model: string;           // 使用的模型名
-  annotationColor: string; // 标注颜色
+
   enabled: boolean;        // 全局开关
   ttsLanguage: string;     // TTS 语言 (如 en-US)
   ttsRate: number;         // TTS 语速 (0.1 - 2.0)
@@ -25,8 +25,10 @@ export interface RTTRSettings {
   ttsVoiceURI: string;     // TTS 发音人 URI
   enableAutoPronounce: boolean;     // 划词自动发音
   enableClickPronounce: boolean;    // 划词后点击发音
-  enableShortcutPronounce: boolean; // 快捷键发音
-  enableSingleClickPronounce: boolean; // 单词单击发音
+  translationEngine: 'none' | 'google' | 'deepl' | 'bing'; // 悬浮窗翻译引擎
+  translationPosition: 'top' | 'bottom';          // 翻译悬浮窗位置
+  showTranslationEngine: boolean;                 // 是否显示引擎标识
+  showSingleClickIPA: boolean;                    // 单击发音时是否显示音标悬浮窗
 }
 
 // ─── 默认值 ──────────────────────────────────────────────
@@ -35,7 +37,7 @@ const DEFAULT_SETTINGS: RTTRSettings = {
   apiKey: '',
   apiEndpoint: 'https://api.openai.com/v1/chat/completions',
   model: 'gpt-4o-mini',
-  annotationColor: '#4a90d9',
+
   enabled: true,
   ttsLanguage: 'en-US',
   ttsRate: 0.85,
@@ -45,6 +47,10 @@ const DEFAULT_SETTINGS: RTTRSettings = {
   enableClickPronounce: false,
   enableShortcutPronounce: true,
   enableSingleClickPronounce: true,
+  translationEngine: 'google',
+  translationPosition: 'bottom',
+  showTranslationEngine: true,
+  showSingleClickIPA: true,
 };
 
 // ─── Storage Items (WXT 类型安全存储) ────────────────────

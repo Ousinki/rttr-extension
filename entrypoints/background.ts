@@ -11,6 +11,7 @@
 
 import { translateParagraph, explainWord } from '@/utils/ai';
 import { batchLookupIPA, getIpa } from '@/utils/phonetics';
+import { handleFetchTranslation } from '@/utils/translator';
 import type { RTTRMessage, TranslateResponse, DismissWordResponse, UndismissWordResponse, LookupIpaResponse } from '@/utils/messaging';
 import { settingsStorage, getKnownWordsSet, addKnownWord, removeKnownWord } from '@/utils/storage';
 import { shouldSkip } from '@/utils/skip-words';
@@ -76,6 +77,12 @@ export default defineBackground(() => {
           handleFetchImageBase64(message.url)
             .then((base64) => sendResponse({ base64 }))
             .catch(() => sendResponse({ base64: null }));
+          return true;
+
+        case 'FETCH_TRANSLATION':
+          handleFetchTranslation(message.text, message.sourceLang, message.targetLang, message.engine)
+            .then((res) => sendResponse(res))
+            .catch((err) => sendResponse({ targetText: '', engine: message.engine, error: err.message }));
           return true;
 
         default:
