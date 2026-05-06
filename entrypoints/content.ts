@@ -645,6 +645,44 @@ export default defineContentScript({
       onSpeakClick?: () => void;
     }
 
+    function buildWordMenuItems(targetText: string, rectProvider: () => DOMRect, sentenceProvider: () => string): MenuItem[] {
+      const items: MenuItem[] = [];
+
+      if (!targetText.includes(' ') && targetText.length < 30) {
+        items.push({
+          type: 'header',
+          label: targetText,
+          onSpeakClick: () => speakText(targetText),
+        });
+        items.push({ type: 'divider', label: 'DIVIDER' });
+
+        items.push({
+          icon: SVG_ICONS.explain,
+          label: '分析语境',
+          onClick: () => {
+            const rect = rectProvider();
+            const sentence = sentenceProvider();
+            showExplainPanelLoading(targetText, rect);
+            speakText(targetText);
+            browser.runtime.sendMessage({ type: 'EXPLAIN_WORD', word: targetText, sentence })
+              .then((resp: any) => {
+                if (resp?.success && resp.explanation) {
+                  showExplainPanel(targetText, resp.ipa || null, resp.explanation, rect);
+                } else {
+                  showExplainPanel(targetText, null, resp?.error || '解释获取失败', rect);
+                }
+              });
+          },
+        });
+      } else {
+        items.push({ type: 'header', label: targetText });
+        items.push({ type: 'divider', label: 'DIVIDER' });
+        items.push({ icon: SVG_ICONS.speak, label: '朗读选段', onClick: () => speakText(targetText) });
+      }
+
+      return items;
+    }
+
     function showContextMenu(items: MenuItem[], x: number, y: number) {
       const menu = getOrCreateContextMenu();
       menu.innerHTML = '';
@@ -735,6 +773,27 @@ export default defineContentScript({
         return;
       }
 
+      const imageTarget = target.closest('img') as HTMLImageElement | null;
+      if (imageTarget) {
+        e.preventDefault();
+        const imageText =
+          imageTarget.alt?.trim() ||
+          imageTarget.title?.trim() ||
+          imageTarget.getAttribute('aria-label')?.trim() ||
+          imageTarget.dataset.title?.trim() ||
+          imageTarget.dataset.description?.trim() ||
+          '图片没有可用描述';
+
+        showContextMenu([
+          { type: 'header', label: imageText },
+          { type: 'divider', label: 'DIVIDER' },
+          { icon: SVG_ICONS.speak, label: '朗读图片描述', onClick: () => speakText(imageText) },
+          { type: 'divider', label: 'DIVIDER' },
+          { icon: SVG_ICONS.settings, label: '设置', onClick: () => browser.runtime.sendMessage({ type: 'OPEN_OPTIONS' }) }
+        ], e.clientX, e.clientY);
+        return;
+      }
+
       const selection = window.getSelection();
       let selectedText = selection ? selection.toString().trim() : '';
       let hoveredWordResult = getWordAtClick(e);
@@ -761,37 +820,11 @@ export default defineContentScript({
         if (targetText && targetRange && /^[a-zA-Z\s'-]+$/.test(targetText)) {
           e.preventDefault();
           
-          const items: MenuItem[] = [];
-          
-          if (!targetText.includes(' ') && targetText.length < 30) {
-            items.push({ 
-              type: 'header', 
-              label: targetText,
-              onSpeakClick: () => speakText(targetText)
-            });
-            items.push({ type: 'divider', label: 'DIVIDER' });
-            
-            items.push({
-              icon: SVG_ICONS.explain, label: '分析语境', onClick: () => {
-                const rect = targetRange!.getBoundingClientRect();
-                const sentence = getSentenceAroundNode(targetRange!.startContainer);
-                showExplainPanelLoading(targetText, rect);
-                speakText(targetText);
-                browser.runtime.sendMessage({ type: 'EXPLAIN_WORD', word: targetText, sentence })
-                  .then((resp: any) => {
-                    if (resp?.success && resp.explanation) {
-                      showExplainPanel(targetText, resp.ipa || null, resp.explanation, rect);
-                    } else {
-                      showExplainPanel(targetText, null, resp?.error || '解释获取失败', rect);
-                    }
-                  });
-              }
-            });
-          } else {
-            items.push({ type: 'header', label: targetText });
-            items.push({ type: 'divider', label: 'DIVIDER' });
-            items.push({ icon: SVG_ICONS.speak, label: '朗读选段', onClick: () => speakText(targetText) });
-          }
+          const items = buildWordMenuItems(
+            targetText,
+            () => targetRange!.getBoundingClientRect(),
+            () => getSentenceAroundNode(targetRange!.startContainer)
+          );
           
           items.push({
             icon: SVG_ICONS.translate, label: '翻译段落', onClick: () => {
