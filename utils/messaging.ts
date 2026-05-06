@@ -59,6 +59,15 @@ export interface OpenOptionsRequest {
   type: 'OPEN_OPTIONS';
 }
 
+export interface FetchImageBase64Request {
+  type: 'FETCH_IMAGE_BASE64';
+  url: string;
+}
+
+export interface FetchImageBase64Response {
+  base64: string | null;
+}
+
 export type RTTRMessage =
   | TranslateRequest
   | DismissWordRequest
@@ -66,4 +75,5 @@ export type RTTRMessage =
   | GetSettingsRequest
   | LookupIpaRequest
   | ExplainWordRequest
-  | OpenOptionsRequest;
+  | OpenOptionsRequest
+  | FetchImageBase64Request;

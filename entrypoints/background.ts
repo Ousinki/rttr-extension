@@ -72,11 +72,33 @@ export default defineBackground(() => {
           sendResponse({ success: true });
           return false;
 
+        case 'FETCH_IMAGE_BASE64':
+          handleFetchImageBase64(message.url)
+            .then((base64) => sendResponse({ base64 }))
+            .catch(() => sendResponse({ base64: null }));
+          return true;
+
         default:
           return false;
       }
     }
   );
+
+  async function handleFetchImageBase64(url: string): Promise<string | null> {
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const reader = new FileReader();
+      return new Promise((resolve) => {
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      });
+    } catch (e) {
+      console.error('[RTTR] Failed to fetch image cross-origin:', e);
+      return null;
+    }
+  }
 
   // ─── Chrome Commands API（全局快捷键） ─────────────────
   browser.commands.onCommand.addListener(async (command) => {

@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "compromise": "^14.15.0",
+    "tesseract.js": "^7.0.0",
     "vue": "^3.5.29"
   },
   "devDependencies": {

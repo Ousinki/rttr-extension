@@ -12,6 +12,7 @@
 import type { AnnotationResult } from '@/utils/ai';
 import type { TranslateResponse, DismissWordResponse } from '@/utils/messaging';
 import { settingsStorage, type RTTRSettings } from '@/utils/storage';
+import { createWorker } from 'tesseract.js';
 
 // ─── 常量 ────────────────────────────────────────────────
 
@@ -747,6 +748,202 @@ export default defineContentScript({
       });
     }
 
+    async function recognizeImageWord(img: HTMLImageElement, clientX: number, clientY: number, altText: string) {
+      try {
+        showContextMenu([
+          { type: 'header', label: '⏳ Fetching image...' },
+          { type: 'divider', label: 'DIVIDER' },
+          { icon: SVG_ICONS.speak, label: '朗读备用描述', onClick: () => speakText(altText) },
+          { type: 'divider', label: 'DIVIDER' },
+          { icon: SVG_ICONS.settings, label: '设置', onClick: () => browser.runtime.sendMessage({ type: 'OPEN_OPTIONS' }) }
+        ], clientX, clientY);
+
+        let safeImg = img;
+        try {
+          // Check if canvas would be tainted
+          const testCanvas = document.createElement('canvas');
+          testCanvas.width = 1; testCanvas.height = 1;
+          const testCtx = testCanvas.getContext('2d');
+          testCtx?.drawImage(img, 0, 0, 1, 1);
+          testCanvas.toDataURL(); 
+        } catch (e) {
+          // Tainted, fetch cross-origin base64 from background
+          const res = await browser.runtime.sendMessage({ type: 'FETCH_IMAGE_BASE64', url: img.src });
+          if (res && res.base64) {
+            safeImg = new Image();
+            safeImg.src = res.base64;
+            await new Promise((resolve) => { safeImg.onload = resolve; });
+          } else {
+            throw new Error("无法跨域获取图片数据");
+          }
+        }
+
+        const rect = img.getBoundingClientRect();
+        // Use the original image's natural dimensions for scale, not safeImg (which might vary if SVG or modified)
+        const scaleX = safeImg.naturalWidth / rect.width;
+        const scaleY = safeImg.naturalHeight / rect.height;
+
+        const clickX = (clientX - rect.left) * scaleX;
+        const clickY = (clientY - rect.top) * scaleY;
+
+        // Crop size based on CSS pixels (to handle Retina/high-res images)
+        const cssCropWidth = 400;
+        const cssCropHeight = 150;
+        const cropWidth = cssCropWidth * scaleX;
+        const cropHeight = cssCropHeight * scaleY;
+
+        const cropX = Math.max(0, clickX - cropWidth / 2);
+        const cropY = Math.max(0, clickY - cropHeight / 2);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = cropWidth;
+        canvas.height = cropHeight;
+        const ctx = canvas.getContext('2d')!;
+        if (!ctx) return;
+
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, cropWidth, cropHeight);
+        ctx.drawImage(safeImg, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+
+        // Preprocess: grayscale + adaptive binarization
+        const imgData = ctx.getImageData(0, 0, cropWidth, cropHeight);
+        const pixels = imgData.data;
+
+        // Convert to grayscale first
+        const gray = new Uint8Array(cropWidth * cropHeight);
+        for (let i = 0; i < gray.length; i++) {
+          gray[i] = Math.round(pixels[i * 4] * 0.299 + pixels[i * 4 + 1] * 0.587 + pixels[i * 4 + 2] * 0.114);
+        }
+
+        // Calculate average brightness to determine if text is light-on-dark
+        let sum = 0;
+        for (let i = 0; i < gray.length; i++) sum += gray[i];
+        const avgBrightness = sum / gray.length;
+        const isLightOnDark = avgBrightness < 140;
+
+        console.log('[RTTR OCR] Avg brightness:', avgBrightness, isLightOnDark ? '(light-on-dark, will invert)' : '(dark-on-light)');
+
+        // Binarize: Otsu-like simple threshold
+        const threshold = avgBrightness;
+        for (let i = 0; i < gray.length; i++) {
+          let val = gray[i] > threshold ? 255 : 0;
+          if (isLightOnDark) val = 255 - val; // Invert for light-on-dark
+          pixels[i * 4] = val;
+          pixels[i * 4 + 1] = val;
+          pixels[i * 4 + 2] = val;
+        }
+        ctx.putImageData(imgData, 0, 0);
+
+        const base64Image = canvas.toDataURL('image/png');
+
+        console.log('[RTTR OCR] Target Point in Natural Image:', clickX, clickY);
+        console.log('[RTTR OCR] Crop Origin:', cropX, cropY, 'Size:', cropWidth, cropHeight);
+
+        showContextMenu([
+          { type: 'header', label: '⏳ Recognizing...' },
+          { type: 'divider', label: 'DIVIDER' },
+          { icon: SVG_ICONS.settings, label: '设置', onClick: () => browser.runtime.sendMessage({ type: 'OPEN_OPTIONS' }) }
+        ], clientX, clientY);
+
+        const worker = await createWorker('eng');
+        let { data } = await worker.recognize(base64Image, {}, { blocks: true });
+
+        // If no words found with preprocessed image, retry with original (un-processed) crop
+        let words: any[] = [];
+        if (data.blocks) {
+          for (const block of data.blocks) {
+            if (block.paragraphs) {
+              for (const para of block.paragraphs) {
+                if (para.lines) {
+                  for (const line of para.lines) {
+                    if (line.words) words.push(...line.words);
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        if (words.length === 0) {
+          console.log('[RTTR OCR] Preprocessed image yielded no words, retrying with original crop...');
+          // Redraw original image
+          ctx.fillStyle = 'white';
+          ctx.fillRect(0, 0, cropWidth, cropHeight);
+          ctx.drawImage(safeImg, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+          const originalBase64 = canvas.toDataURL('image/png');
+          const ret2 = await worker.recognize(originalBase64, {}, { blocks: true });
+          data = ret2.data;
+          // Re-extract words
+          words = [];
+          if (data.blocks) {
+            for (const block of data.blocks) {
+              if (block.paragraphs) {
+                for (const para of block.paragraphs) {
+                  if (para.lines) {
+                    for (const line of para.lines) {
+                      if (line.words) words.push(...line.words);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        await worker.terminate();
+
+        const pointX = clickX - cropX;
+        const pointY = clickY - cropY;
+        
+        console.log('[RTTR OCR] Mouse Point inside Crop:', pointX, pointY);
+
+        console.log('[RTTR OCR] All recognized words:', words.map(w => ({text: w.text, bbox: w.bbox})));
+
+        let targetWord = '';
+        if (words.length > 0) {
+          for (const w of words) {
+            // Give a generous tolerance bounding box
+            const tolerance = 15 * scaleX; // Scale tolerance based on resolution
+            if (pointX >= w.bbox.x0 - tolerance && pointX <= w.bbox.x1 + tolerance && pointY >= w.bbox.y0 - tolerance && pointY <= w.bbox.y1 + tolerance) {
+              targetWord = w.text.trim();
+              // Remove punctuation
+              targetWord = targetWord.replace(/^[.,\/#!$%\^&\*;:{}=\-_`~()]+|[.,\/#!$%\^&\*;:{}=\-_`~()]+$/g, '');
+              break;
+            }
+          }
+        }
+
+        if (targetWord) {
+          showContextMenu([
+            { type: 'header', label: targetWord, onSpeakClick: () => speakText(targetWord) },
+            { type: 'divider', label: 'DIVIDER' },
+            { icon: SVG_ICONS.settings, label: '设置', onClick: () => browser.runtime.sendMessage({ type: 'OPEN_OPTIONS' }) }
+          ], clientX, clientY);
+        } else {
+          const fallbackText = words.length > 0 
+            ? `未命中鼠标。切片内容: ${words.map(w => w.text).join(' ').substring(0, 20)}...`
+            : '切片内未识别到任何文本';
+            
+          showContextMenu([
+            { type: 'header', label: `⚠️ ${fallbackText}` },
+            { type: 'divider', label: 'DIVIDER' },
+            { icon: SVG_ICONS.speak, label: '朗读全图备用描述', onClick: () => speakText(altText) },
+            { type: 'divider', label: 'DIVIDER' },
+            { icon: SVG_ICONS.settings, label: '设置', onClick: () => browser.runtime.sendMessage({ type: 'OPEN_OPTIONS' }) }
+          ], clientX, clientY);
+        }
+      } catch (err) {
+        console.error('Local OCR Error:', err);
+        showContextMenu([
+          { type: 'header', label: '❌ 本地 OCR 失败 (可能是 CSP 限制)' },
+          { type: 'divider', label: 'DIVIDER' },
+          { icon: SVG_ICONS.speak, label: '朗读备用描述', onClick: () => speakText(altText) },
+          { type: 'divider', label: 'DIVIDER' },
+          { icon: SVG_ICONS.settings, label: '设置', onClick: () => browser.runtime.sendMessage({ type: 'OPEN_OPTIONS' }) }
+        ], clientX, clientY);
+      }
+    }
+
     document.addEventListener('contextmenu', async (e) => {
       const target = e.target as HTMLElement;
 
@@ -785,12 +982,14 @@ export default defineContentScript({
           '图片没有可用描述';
 
         showContextMenu([
-          { type: 'header', label: imageText },
+          { type: 'header', label: '⏳ Recognizing...' },
           { type: 'divider', label: 'DIVIDER' },
-          { icon: SVG_ICONS.speak, label: '朗读图片描述', onClick: () => speakText(imageText) },
+          { icon: SVG_ICONS.speak, label: '朗读全图备用描述', onClick: () => speakText(imageText) },
           { type: 'divider', label: 'DIVIDER' },
           { icon: SVG_ICONS.settings, label: '设置', onClick: () => browser.runtime.sendMessage({ type: 'OPEN_OPTIONS' }) }
         ], e.clientX, e.clientY);
+
+        recognizeImageWord(imageTarget, e.clientX, e.clientY, imageText).catch(console.error);
         return;
       }
 

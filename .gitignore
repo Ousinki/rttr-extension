@@ -27,3 +27,5 @@ web-ext.config.ts
 
 # Antigravity AI assistant workspace
 .gemini/
+eng.traineddata
+test_tesseract.mjs
