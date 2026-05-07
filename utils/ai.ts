@@ -211,13 +211,13 @@ export async function explainWord(settings: RTTRSettings, word: string, sentence
 
 const CONTEXTUAL_TRANSLATE_PROMPT = `你是一个精准的英文翻译引擎。
 
-用户会提供一个【英文句子】和一个【需要翻译的文本（单词或短语）】。
-你的任务是：根据句子的具体语境，仅仅输出该文本最贴切的【中文翻译】。
+用户会提供一个【英文句子】和一个【需要翻译的文本（可能是单词、短语，也可能是一整句话）】。
+你的任务是：根据语境，输出该文本最贴切的【中文翻译】。
 
 【极其重要的强制规则】：
-1. 直接输出翻译结果，不要输出任何多余内容！
-2. 绝对不要解释！绝对不要输出拼音！绝对不要复述原词！绝对不要包含 Markdown 代码块！
-3. 输出的字数应当极简，只包含翻译本身。`;
+1. 直接输出翻译结果，绝不要输出任何多余的开头语或解释！
+2. 绝对不要输出拼音！绝对不要复述英文原词！绝对不要包含 Markdown 代码块！
+3. 务必做到“等价翻译”：如果需要翻译的是一整句话，请**完整翻译所有细节**，绝不能擅自缩写或省略；如果需要翻译的只是一个单词或短语，请保持译文极简，仅输出该词/短语在语境下的含义即可。`;
 
 export async function contextualTranslate(settings: RTTRSettings, word: string, sentence: string): Promise<string> {
   const messages = [
