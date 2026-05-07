@@ -1343,11 +1343,21 @@ export default defineContentScript({
       
       const safeEngine = engine.charAt(0).toUpperCase() + engine.slice(1);
       
-      if (currentSettings?.showTranslationEngine !== false) {
-        translationBadge.innerHTML = `<strong>${text}</strong><span class="engine-tag">${safeEngine}</span>`;
-      } else {
-        translationBadge.innerHTML = `<strong>${text}</strong>`;
+      let htmlContent = `<strong>${text}</strong>`;
+      
+      // 解析 "English (Chinese)" 或 "English （Chinese）" 格式
+      const match = text.match(/^(.*?)\s*[\(（](.*?)[\)）]$/);
+      if (match) {
+        const en = match[1].trim();
+        const zh = match[2].trim();
+        htmlContent = `<span class="trans-en">${en}</span><span class="trans-zh">(${zh})</span>`;
       }
+      
+      if (currentSettings?.showTranslationEngine !== false) {
+        htmlContent += `<span class="engine-tag">${safeEngine}</span>`;
+      }
+      
+      translationBadge.innerHTML = htmlContent;
       
       translationBadge.classList.add('rttr-visible');
 
@@ -2020,6 +2030,17 @@ export default defineContentScript({
           line-height: 1;
           white-space: nowrap;
           flex-shrink: 0;
+        }
+
+        /* 搭配/原文与中文样式 */
+        .rttr-translation-tooltip .trans-en {
+          font-weight: 500;
+          color: #555;
+          margin-right: 4px;
+        }
+        .rttr-translation-tooltip .trans-zh {
+          font-weight: 700;
+          color: #1a1a1a;
         }
 
         /* 加载指示器 — 行末旋转圆环 */

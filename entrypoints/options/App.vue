@@ -437,7 +437,7 @@ watch(settings, () => {
                 <span class="anim-selection sel-trans-sel-longpress">
                   locking eyes
                   <div class="anim-translation-tooltip-bottom sel-trans-tooltip-longpress">
-                    <strong>锁定目光</strong><span class="engine-tag" v-if="settings.showTranslationEngine && settings.translationEngine !== 'none'">AI</span>
+                    <span class="trans-en">locked eyes</span><span class="trans-zh">(锁定目光)</span><span class="engine-tag" v-if="settings.showTranslationEngine && settings.translationEngine !== 'none'">AI</span>
                   </div>
                   <div class="anim-longpress-ring-container">
                     <svg class="anim-longpress-ring" viewBox="0 0 32 32">
