@@ -209,28 +209,35 @@ export async function explainWord(settings: RTTRSettings, word: string, sentence
 
 // ─── AI 极简语境翻译 (仅翻译文本) ────────────────────────────────
 
-const CONTEXTUAL_TRANSLATE_PROMPT = `你是一个精准的英文翻译引擎。
+const CONTEXTUAL_TRANSLATE_PROMPT = `你是一个高级的英文语境分析与翻译引擎。
 
-用户会提供一个【英文句子】和一个【需要翻译的文本（可能是单词、短语，也可能是一整句话）】。
-你的任务是：根据语境，输出该文本最贴切的【中文翻译】。
+【核心任务】：
+用户在阅读英文句子时，鼠标点击（或长按）了其中一个单词。你需要结合整个句子的语境，判断用户真正想了解的是什么，并给出最精准的中文翻译。
 
-【极其重要的强制规则】：
-1. 直接输出翻译结果，绝不要输出任何多余的开头语或解释！
-2. 绝对不要输出拼音！绝对不要复述英文原词！绝对不要包含 Markdown 代码块！
-3. 务必做到“等价翻译”：如果需要翻译的是一整句话，请**完整翻译所有细节**，绝不能擅自缩写或省略；如果需要翻译的只是一个单词或短语，请保持译文极简，仅输出该词/短语在语境下的含义即可。`;
+【强制规则】：
+1. 绝不要输出任何多余的开头语、解释、拼音或 Markdown 语法！
+2. 翻译必须精准贴合当前语境。`;
 
 export async function contextualTranslate(settings: RTTRSettings, word: string, sentence: string): Promise<string> {
   let systemPrompt = CONTEXTUAL_TRANSLATE_PROMPT;
   
   if (settings.enableContextualCollocation) {
-    systemPrompt += `\n4. 【智能语境搭配分析】：请务必优先检查目标文本在句子中是否属于某个密切相关的“复合名词”（如 boxing match）、“固定搭配”或“动词短语”。
-只要目标文本和相邻的单词组合在一起能表达一个完整、特定的概念，就**必须**将整个词组作为一个整体提取并翻译！只有在绝对没有上下文搭配的情况下，才只翻译目标文本。
-输出格式必须严格为："搭配/单词的英文原文 (中文翻译)"。例如："boxing match (拳击比赛)"。绝不能只输出中文。`;
+    systemPrompt += `
+3. 【智能语境搭配（最高优先级）】：请务必检查用户点击的单词，在句子中是否与相邻的单词组成了“复合名词”（如 boxing match）、“固定搭配”（如 locked eyes）或“动词短语”（如 take off）。
+   - 如果是，你**必须自动向外扩展**，将整个词组作为一个整体提取出来，并输出该词组的翻译！
+   - 如果没有搭配，才只翻译用户点击的独立单词。
+4. 【输出格式】：不管你提取的是词组还是独立单词，输出格式必须严格为："英文原文 (中文翻译)"。
+   - 正确示例（复合名词）："boxing match (拳击比赛)"
+   - 正确示例（普通单词）："before (在...之前)"
+   - 错误示例（只输出中文）："拳击比赛"`;
+  } else {
+    systemPrompt += `
+3. 【输出格式】：只翻译用户点击的单词，输出格式必须严格为："英文原文 (中文翻译)"。例如："boxing (拳击)"。`;
   }
 
   const messages = [
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: `【需要翻译的文本】：${word}\n【英文句子】：${sentence}` }
+    { role: 'user', content: `【用户点击的单词】：${word}\n【所在句子】：${sentence}` }
   ];
 
   const payload = {
