@@ -541,6 +541,8 @@ watch(settings, () => {
               <div class="anim-floating-shortcut" v-if="settings.paragraphShortcut">
                 <span class="key" v-for="key in getShortcutKeys(settings.paragraphShortcut)" :key="key">{{ key }}</span>
               </div>
+              <!-- Floating mouse cursor -->
+              <svg class="anim-cursor anim-paragraph-cursor" width="24" height="24" viewBox="0 0 24 24"><path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z" fill="#000" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
             </div>
           </div>
         </div>
@@ -1457,28 +1459,37 @@ body {
   position: relative;
   text-align: center;
   margin: 0 4px;
+  line-height: 1; /* Fix line-height to prevent bottom: 100% from floating too high */
 }
 
+/* Base text will inherit color from wrapper */
 .anim-ruby-base {
   display: inline-block;
+  transition: color 0.3s;
 }
 
 .anim-ruby-text {
   position: absolute;
-  bottom: 100%;
+  bottom: calc(100% + 2px); /* Position slightly above the word */
   left: 50%;
   transform: translateX(-50%);
   font-size: 11px;
-  color: #10b981; /* Default emerald green for translation */
   font-weight: 500;
   white-space: nowrap;
   opacity: 0;
   animation: rubyTextFadeIn 4s infinite;
 }
 
+/* First ruby wrapper colors both base and text */
+.anim-ruby-wrapper:nth-of-type(1) {
+  color: #10b981; /* Emerald green */
+}
+
 /* Second ruby wrapper gets a different color to look more dynamic */
-.anim-ruby-wrapper:nth-child(2) .anim-ruby-text {
+.anim-ruby-wrapper:nth-of-type(2) {
   color: #3b82f6; /* Blue */
+}
+.anim-ruby-wrapper:nth-of-type(2) .anim-ruby-text {
   animation-delay: 0.1s;
 }
 
@@ -1519,5 +1530,21 @@ body {
   /* Fade out */
   85% { opacity: 1; transform: translateY(0); }
   90%, 100% { opacity: 0; transform: translateY(10px); }
+}
+
+.anim-paragraph-cursor {
+  position: absolute;
+  top: 50%;
+  left: 30%;
+  animation: paragraphCursorAnim 4s infinite;
+  z-index: 10;
+}
+
+@keyframes paragraphCursorAnim {
+  0%, 5% { transform: translate(-80px, 80px); opacity: 0; }
+  10%, 15% { transform: translate(0px, 0px); opacity: 1; }
+  /* Hover while keyboard is pressed and translation happens */
+  15%, 85% { transform: translate(0px, 0px); opacity: 1; }
+  90%, 100% { transform: translate(-80px, 80px); opacity: 0; }
 }
 </style>
