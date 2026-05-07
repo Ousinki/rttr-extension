@@ -223,9 +223,9 @@ export async function contextualTranslate(settings: RTTRSettings, word: string, 
   let systemPrompt = CONTEXTUAL_TRANSLATE_PROMPT;
   
   if (settings.enableContextualCollocation) {
-    systemPrompt += `\n4. 【智能语境搭配分析】：请务必检查目标文本在句子中是否属于某个密切相关的固定搭配或动词短语。
-如果是，请将该搭配作为一个整体提取；如果不是，则只针对目标文本。
-不管是不是固定搭配，输出格式必须严格为："英文原文 (中文翻译)"。绝不能只输出中文。`;
+    systemPrompt += `\n4. 【智能语境搭配分析】：请务必优先检查目标文本在句子中是否属于某个密切相关的“复合名词”（如 boxing match）、“固定搭配”或“动词短语”。
+只要目标文本和相邻的单词组合在一起能表达一个完整、特定的概念，就**必须**将整个词组作为一个整体提取并翻译！只有在绝对没有上下文搭配的情况下，才只翻译目标文本。
+输出格式必须严格为："搭配/单词的英文原文 (中文翻译)"。例如："boxing match (拳击比赛)"。绝不能只输出中文。`;
   }
 
   const messages = [
