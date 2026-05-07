@@ -1618,10 +1618,9 @@ body {
   15%, 23% { opacity: 1; transform: translateY(0); }
   /* Key press effect */
   25% { transform: translateY(2px); }
-  26% { opacity: 1; transform: translateY(0); }
-  /* Fade out */
-  85% { opacity: 1; transform: translateY(0); }
-  90%, 100% { opacity: 0; transform: translateY(10px); }
+  26%, 45% { opacity: 1; transform: translateY(0); }
+  /* Fade out right as translation pops up (56%) */
+  50%, 100% { opacity: 0; transform: translateY(10px); }
 }
 
 .anim-paragraph-cursor {
