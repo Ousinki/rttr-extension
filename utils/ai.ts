@@ -221,7 +221,8 @@ const CONTEXTUAL_TRANSLATE_PROMPT = `你是一个高级的英文语境分析与�
 export async function contextualTranslate(settings: RTTRSettings, word: string, sentence: string): Promise<string> {
   let systemPrompt = CONTEXTUAL_TRANSLATE_PROMPT;
   
-  if (settings.enableContextualCollocation) {
+  const collocEnabled = settings.enableContextualCollocation ?? true;
+  if (collocEnabled) {
     systemPrompt += `
 3. 【智能语境搭配（最高优先级）】：请务必检查用户点击的单词，在句子中是否与相邻的单词组成了复合名词、固定搭配或动词短语。
    - 如果是，你**必须自动向外扩展**，将整个词组作为一个整体提取出来，并输出该词组的翻译！
