@@ -376,6 +376,7 @@ export default defineContentScript({
             
             if (longPressTarget) {
               const { text, rect, sentence } = longPressTarget;
+              translationSessionId++; // 递增 session，使任何进行中的 API 翻译失效
               speakText(text);
               showTranslationBadge('Translating...', 'AI', rect, false);
               safeSendMessage({ type: 'CONTEXTUAL_TRANSLATE', word: text, sentence })
@@ -495,6 +496,7 @@ export default defineContentScript({
 
     document.addEventListener('click', async (e) => {
       if (currentSettings && !currentSettings.enabled) return;
+      // 长按已触发，或者长按定时器仍在等待中（说明用户正在进行长按操作），阻止单击行为
       if (isLongPressFired) {
         isLongPressFired = false;
         e.preventDefault();
@@ -1333,6 +1335,7 @@ export default defineContentScript({
     let translationBadge: HTMLElement | null = null;
     let transMouseMoveHandler: ((e: MouseEvent) => void) | null = null;
     let activeTransRect: DOMRect | null = null;
+    let translationSessionId = 0; // 防止 API 翻译覆盖 AI 翻译
 
     function showTranslationBadge(text: string, engine: string, targetRect: DOMRect, isAnnotated: boolean) {
       if (!translationBadge) {
@@ -1419,6 +1422,8 @@ export default defineContentScript({
       const engine = currentSettings?.translationEngine || 'google';
       if (engine === 'none') return; // 如果选择了不启用，则直接返回，不发起翻译请求
 
+      const mySession = translationSessionId; // 记录发起时的 session
+
       try {
         const resp = await safeSendMessage({
           type: 'FETCH_TRANSLATION',
@@ -1429,6 +1434,8 @@ export default defineContentScript({
         }) as any;
 
         if (resp && resp.targetText) {
+          // 如果 session 已变（说明 AI 翻译已接管），丢弃 API 翻译结果
+          if (mySession !== translationSessionId) return;
           showTranslationBadge(resp.targetText, resp.engine || engine, targetRect, isAnnotated);
         }
       } catch (e) {
