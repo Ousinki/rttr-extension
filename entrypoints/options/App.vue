@@ -523,11 +523,11 @@ watch(settings, () => {
         <div class="animation-previews" style="grid-template-columns: 1fr;">
           <div class="preview-box" :class="{ active: !!settings.paragraphShortcut }">
             <div class="preview-title">沉浸式 Ruby 注音效果演示</div>
-            <div class="anim-container anim-paragraph-trans" style="height: 180px; padding: 24px; display: flex; flex-direction: column; justify-content: center; background: #fafafa; gap: 16px;">
-              <div class="anim-text" style="font-size: 15px; line-height: 1.8; color: #333; opacity: 0.5;">
-                This is an ordinary paragraph that is not being translated.
+            <div class="anim-container anim-paragraph-trans" style="height: 220px; padding: 24px 32px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; background: #fafafa; gap: 16px;">
+              <div class="anim-text" style="font-size: 15px; line-height: 1.8; color: #333; text-align: left; width: 100%;">
+                Before reading the text, make sure to check the context.
               </div>
-              <div class="anim-text anim-paragraph-text" style="font-size: 15px; line-height: 1.8; color: #333; position: relative;">
+              <div class="anim-text anim-paragraph-text" style="font-size: 15px; line-height: 1.8; color: #333; position: relative; text-align: left; width: 100%;">
                 This feature injects
                 <span class="anim-ruby-wrapper ruby-color-1">
                   <span class="anim-ruby-base">seamless</span>
@@ -539,6 +539,9 @@ watch(settings, () => {
                   <span class="anim-ruby-text">上方</span>
                 </span>
                 the English words.
+              </div>
+              <div class="anim-text" style="font-size: 15px; line-height: 1.8; color: #333; text-align: left; width: 100%;">
+                It helps you read and learn efficiently without interruption.
               </div>
               <!-- Floating keyboard hint animation -->
               <div class="anim-floating-shortcut" v-if="settings.paragraphShortcut">
