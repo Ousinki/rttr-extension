@@ -523,15 +523,18 @@ watch(settings, () => {
         <div class="animation-previews" style="grid-template-columns: 1fr;">
           <div class="preview-box" :class="{ active: !!settings.paragraphShortcut }">
             <div class="preview-title">沉浸式 Ruby 注音效果演示</div>
-            <div class="anim-container anim-paragraph-trans" style="height: 140px; padding: 24px; display: flex; align-items: center; justify-content: center; background: #fafafa;">
-              <div class="anim-text" style="font-size: 15px; line-height: 2.2; color: #333;">
+            <div class="anim-container anim-paragraph-trans" style="height: 180px; padding: 24px; display: flex; flex-direction: column; justify-content: center; background: #fafafa; gap: 16px;">
+              <div class="anim-text" style="font-size: 15px; line-height: 1.8; color: #333; opacity: 0.5;">
+                This is an ordinary paragraph that is not being translated.
+              </div>
+              <div class="anim-text" style="font-size: 15px; line-height: 1.8; color: #333; position: relative;">
                 This feature injects
-                <span class="anim-ruby-wrapper">
+                <span class="anim-ruby-wrapper ruby-color-1">
                   <span class="anim-ruby-base">seamless</span>
                   <span class="anim-ruby-text">无缝的</span>
                 </span>
                 translations directly
-                <span class="anim-ruby-wrapper">
+                <span class="anim-ruby-wrapper ruby-color-2">
                   <span class="anim-ruby-base">above</span>
                   <span class="anim-ruby-text">上方</span>
                 </span>
@@ -1458,14 +1461,33 @@ body {
   display: inline-block;
   position: relative;
   text-align: center;
-  margin: 0 4px;
   line-height: 1; /* Fix line-height to prevent bottom: 100% from floating too high */
 }
 
-/* Base text will inherit color from wrapper */
+/* Base text is normal color initially, then animates */
 .anim-ruby-base {
   display: inline-block;
-  transition: color 0.3s;
+  color: #333; 
+}
+
+.ruby-color-1 .anim-ruby-base {
+  animation: rubyBaseColor1 4s infinite;
+}
+
+@keyframes rubyBaseColor1 {
+  0%, 35% { color: #333; }
+  45%, 85% { color: #10b981; }
+  90%, 100% { color: #333; }
+}
+
+.ruby-color-2 .anim-ruby-base {
+  animation: rubyBaseColor2 4s infinite;
+}
+
+@keyframes rubyBaseColor2 {
+  0%, 35% { color: #333; }
+  45%, 85% { color: #3b82f6; }
+  90%, 100% { color: #333; }
 }
 
 .anim-ruby-text {
@@ -1480,16 +1502,12 @@ body {
   animation: rubyTextFadeIn 4s infinite;
 }
 
-/* First ruby wrapper colors both base and text */
-.anim-ruby-wrapper:nth-of-type(1) {
+.ruby-color-1 .anim-ruby-text {
   color: #10b981; /* Emerald green */
 }
 
-/* Second ruby wrapper gets a different color to look more dynamic */
-.anim-ruby-wrapper:nth-of-type(2) {
+.ruby-color-2 .anim-ruby-text {
   color: #3b82f6; /* Blue */
-}
-.anim-ruby-wrapper:nth-of-type(2) .anim-ruby-text {
   animation-delay: 0.1s;
 }
 
