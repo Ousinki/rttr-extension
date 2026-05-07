@@ -365,17 +365,16 @@ export default defineContentScript({
             if (longPressTarget) {
               const { text, rect, sentence } = longPressTarget;
               speakText(text);
-              
-              showTranslationBadge('AI 翻译中...', 'AI', rect, false);
+              showTranslationBadge('Translating...', 'AI', rect, false);
               safeSendMessage({ type: 'CONTEXTUAL_TRANSLATE', word: text, sentence })
                 .then((res: any) => {
                   if (res?.success && res.translation) {
                     showTranslationBadge(res.translation, 'AI', rect, false);
                   } else {
-                    showTranslationBadge('翻译失败', 'AI', rect, false);
+                    showTranslationBadge('Translation failed', 'AI', rect, false);
                   }
                 }).catch(() => {
-                  showTranslationBadge('翻译失败', 'AI', rect, false);
+                  showTranslationBadge('Translation failed', 'AI', rect, false);
                 });
             }
           }, 600);
