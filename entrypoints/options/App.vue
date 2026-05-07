@@ -582,6 +582,7 @@ watch(settings, () => {
                   <span class="anim-ruby-text">上方</span>
                 </span>
                 the English words.
+                <svg class="anim-paragraph-spinner" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
               </div>
               <div class="anim-text" style="font-size: 15px; line-height: 1.8; color: #333; text-align: left; width: 100%;">
                 It helps you read and learn efficiently without interruption.
@@ -1517,35 +1518,50 @@ body {
 }
 
 .ruby-color-1 .anim-ruby-base {
-  animation: rubyBaseColor1 4s infinite;
+  animation: rubyBaseColor1 6s infinite;
 }
 
 @keyframes rubyBaseColor1 {
-  0%, 35% { color: inherit; }
-  45%, 85% { color: #10b981; }
+  0%, 55% { color: inherit; }
+  56%, 85% { color: #10b981; }
   90%, 100% { color: inherit; }
 }
 
 .ruby-color-2 .anim-ruby-base {
-  animation: rubyBaseColor2 4s infinite;
+  animation: rubyBaseColor2 6s infinite;
 }
 
 @keyframes rubyBaseColor2 {
-  0%, 35% { color: inherit; }
-  45%, 85% { color: #3b82f6; }
+  0%, 55% { color: inherit; }
+  56%, 85% { color: #3b82f6; }
   90%, 100% { color: inherit; }
 }
 
 .anim-paragraph-text {
-  animation: paragraphTextGray 4s infinite;
+  animation: paragraphTextGray 6s infinite;
   transition: color 0.2s;
 }
 
 @keyframes paragraphTextGray {
-  0%, 31% { color: #333; }
-  33%, 44% { color: #9ca3af; } /* Turn gray right after shortcut (32%) for loading state */
-  45%, 85% { color: #333; } /* Restore to black when translation finishes */
+  0%, 24% { color: #333; }
+  26%, 55% { color: #9ca3af; } /* Turn gray right after shortcut (25%) for loading state */
+  56%, 85% { color: #333; } /* Restore to black when translation finishes */
   90%, 100% { color: #333; }
+}
+
+.anim-paragraph-spinner {
+  display: inline-block;
+  vertical-align: text-bottom;
+  margin-left: 6px;
+  margin-bottom: 2px;
+  animation: paragraphSpinnerOp 6s infinite;
+}
+
+@keyframes paragraphSpinnerOp {
+  0%, 24% { opacity: 0; transform: rotate(0deg); }
+  26% { opacity: 1; transform: rotate(0deg); }
+  55% { opacity: 1; transform: rotate(1044deg); } /* Spin roughly 3 times */
+  56%, 100% { opacity: 0; transform: rotate(1044deg); }
 }
 
 .anim-ruby-text {
@@ -1557,7 +1573,7 @@ body {
   font-weight: 500;
   white-space: nowrap;
   opacity: 0;
-  animation: rubyTextFadeIn 4s infinite;
+  animation: rubyTextFadeIn 6s infinite;
 }
 
 .ruby-color-1 .anim-ruby-text {
@@ -1570,8 +1586,8 @@ body {
 }
 
 @keyframes rubyTextFadeIn {
-  0%, 35% { opacity: 0; transform: translateX(-50%) translateY(5px) scale(0.9); }
-  45%, 85% { opacity: 1; transform: translateX(-50%) translateY(-2px) scale(1); }
+  0%, 55% { opacity: 0; transform: translateX(-50%) translateY(5px) scale(0.9); }
+  56%, 85% { opacity: 1; transform: translateX(-50%) translateY(-2px) scale(1); }
   90%, 100% { opacity: 0; transform: translateX(-50%) translateY(0px) scale(0.9); }
 }
 
@@ -1582,7 +1598,7 @@ body {
   display: flex;
   gap: 6px;
   opacity: 0;
-  animation: floatingShortcutAnim 4s infinite;
+  animation: floatingShortcutAnim 6s infinite;
 }
 
 .anim-floating-shortcut .key {
@@ -1598,11 +1614,11 @@ body {
 }
 
 @keyframes floatingShortcutAnim {
-  0%, 15% { opacity: 0; transform: translateY(10px); }
-  20%, 30% { opacity: 1; transform: translateY(0); }
+  0%, 10% { opacity: 0; transform: translateY(10px); }
+  15%, 23% { opacity: 1; transform: translateY(0); }
   /* Key press effect */
-  32% { transform: translateY(2px); }
-  33% { opacity: 1; transform: translateY(0); }
+  25% { transform: translateY(2px); }
+  26% { opacity: 1; transform: translateY(0); }
   /* Fade out */
   85% { opacity: 1; transform: translateY(0); }
   90%, 100% { opacity: 0; transform: translateY(10px); }
@@ -1612,7 +1628,7 @@ body {
   position: absolute;
   top: 50%;
   left: 30%;
-  animation: paragraphCursorAnim 4s infinite;
+  animation: paragraphCursorAnim 6s infinite;
   z-index: 10;
 }
 
