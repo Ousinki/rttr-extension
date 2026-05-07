@@ -34,6 +34,7 @@ export interface RTTRSettings {
   enableAutoTranslate: boolean;                   // 划词松手自动翻译
   enableClickTranslate: boolean;                  // 划词后点击选区翻译
   enableLongPressTranslate: boolean;              // 长按/选中长按进行 AI 语境翻译
+  enableContextualCollocation: boolean;           // 智能语境搭配分析
   paragraphShortcut: string;                      // 段落翻译快捷键 (例如 'Alt+KeyT')
 }
 
@@ -60,6 +61,7 @@ const DEFAULT_SETTINGS: RTTRSettings = {
   enableAutoTranslate: true,
   enableClickTranslate: false,
   enableLongPressTranslate: true,
+  enableContextualCollocation: true,
   paragraphShortcut: '',
 };
 

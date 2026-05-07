@@ -220,8 +220,14 @@ const CONTEXTUAL_TRANSLATE_PROMPT = `你是一个精准的英文翻译引擎。
 3. 务必做到“等价翻译”：如果需要翻译的是一整句话，请**完整翻译所有细节**，绝不能擅自缩写或省略；如果需要翻译的只是一个单词或短语，请保持译文极简，仅输出该词/短语在语境下的含义即可。`;
 
 export async function contextualTranslate(settings: RTTRSettings, word: string, sentence: string): Promise<string> {
+  let systemPrompt = CONTEXTUAL_TRANSLATE_PROMPT;
+  
+  if (settings.enableContextualCollocation) {
+    systemPrompt += `\n4. 【智能语境搭配分析】：如果目标文本是单个单词，请务必检查它在句子中是否属于某个密切相关的固定搭配或动词短语。如果是，请自动将该搭配作为一个整体进行翻译，输出格式要求为："搭配原文 (中文翻译)"。例如用户查 "locked"，语境是 "locked eyes"，请直接输出 "locked eyes (四目相对)"。如果不存在固定搭配，则退回基本规则，仅输出目标文本的最简翻译。`;
+  }
+
   const messages = [
-    { role: 'system', content: CONTEXTUAL_TRANSLATE_PROMPT },
+    { role: 'system', content: systemPrompt },
     { role: 'user', content: `【需要翻译的文本】：${word}\n【英文句子】：${sentence}` }
   ];
 

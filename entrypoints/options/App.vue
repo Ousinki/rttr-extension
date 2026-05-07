@@ -424,7 +424,13 @@ watch(settings, () => {
         <div class="animation-previews" style="grid-template-columns: 1fr; margin-top: 16px;">
           <!-- 选中长按翻译 -->
           <div class="preview-box" :class="{ active: settings.enableLongPressTranslate && settings.translationEngine !== 'none' }" @click="settings.translationEngine !== 'none' && (settings.enableLongPressTranslate = !settings.enableLongPressTranslate)">
-            <div class="preview-title">长按 AI 翻译</div>
+            <div class="preview-title" style="display: flex; justify-content: space-between; align-items: center;">
+              <span>长按 AI 翻译</span>
+              <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: #666; cursor: pointer; z-index: 10;" @click.stop>
+                <input type="checkbox" v-model="settings.enableContextualCollocation" style="margin: 0; width: 12px; height: 12px;" />
+                语境搭配分析
+              </label>
+            </div>
             <div class="anim-container anim-sel-trans-longpress" style="height: 120px;">
               <div class="anim-text">
                 He was
