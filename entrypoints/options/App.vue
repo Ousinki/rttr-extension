@@ -128,6 +128,37 @@ function getShortcutKeys(shortcutStr: string | undefined): string[] {
   });
 }
 
+const shortcutWarning = computed(() => {
+  const shortcut = settings.value.paragraphShortcut;
+  if (!shortcut) return '';
+  
+  const systemConflicts = [
+    // Meta (Mac) browser conflicts
+    'Meta+KeyC', 'Meta+KeyV', 'Meta+KeyX', 'Meta+KeyZ', 'Meta+KeyA',
+    'Meta+KeyT', 'Meta+KeyW', 'Meta+KeyN', 'Meta+Shift+KeyT', 'Meta+Shift+KeyW',
+    'Meta+KeyR', 'Meta+Shift+KeyR',
+    'Meta+KeyF', 'Meta+KeyG',
+    'Meta+KeyS', 'Meta+KeyP',
+    'Meta+Space',
+    
+    // Control (Win/Linux) browser conflicts
+    'Control+KeyC', 'Control+KeyV', 'Control+KeyX', 'Control+KeyZ', 'Control+KeyA',
+    'Control+KeyT', 'Control+KeyW', 'Control+KeyN', 'Control+Shift+KeyT', 'Control+Shift+KeyW',
+    'Control+KeyR', 'Control+Shift+KeyR',
+    'Control+KeyF', 'Control+KeyG',
+    'Control+KeyS', 'Control+KeyP',
+    
+    // Global conflicts
+    'Alt+F4',
+    'Alt+ArrowLeft', 'Alt+ArrowRight'
+  ];
+  
+  if (systemConflicts.includes(shortcut)) {
+    return '此组合键是系统或浏览器的保留快捷键，可能会冲突导致无法触发。';
+  }
+  return '';
+});
+
 function startRecordingShortcut(e?: MouseEvent) {
   if (e) {
     e.stopPropagation();
@@ -525,6 +556,11 @@ watch(settings, () => {
           >
             {{ isRecordingShortcut ? '请按下组合键...' : formatShortcutDisplay(settings.paragraphShortcut) }}
           </button>
+        </div>
+        
+        <div v-if="shortcutWarning" style="margin-top: -16px; margin-bottom: 24px; padding: 12px 16px; background: #fffbeb; border-radius: 8px; border: 1px solid #fde68a; display: flex; align-items: flex-start; gap: 8px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-top: 2px; flex-shrink: 0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          <span style="font-size: 13px; color: #92400e; line-height: 1.5;">{{ shortcutWarning }}</span>
         </div>
 
         <div class="animation-previews" style="grid-template-columns: 1fr;">
