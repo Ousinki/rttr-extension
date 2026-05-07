@@ -356,10 +356,7 @@ export default defineContentScript({
         if (result) {
           targetText = result.word;
           targetRect = result.range.getBoundingClientRect();
-          // 如果获取不到 getSentenceAroundNode，就暂用整段文本
-          sentence = (window as any).getSentenceAroundNode 
-            ? (window as any).getSentenceAroundNode(result.range.startContainer) 
-            : targetText;
+          sentence = getSentenceAroundNode(result.range.startContainer);
         }
       }
 
