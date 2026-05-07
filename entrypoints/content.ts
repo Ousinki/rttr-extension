@@ -1594,6 +1594,12 @@ export default defineContentScript({
             e.preventDefault();
             e.stopPropagation();
             
+            // 长按已触发 AI 翻译，阻止标注词的单击行为（发音+API翻译）
+            if (isLongPressFired) {
+              isLongPressFired = false;
+              return;
+            }
+            
             const target = e.target as HTMLElement;
             // 默认朗读整个短语
             let textToSpeak = entry.pronunciation || part;
