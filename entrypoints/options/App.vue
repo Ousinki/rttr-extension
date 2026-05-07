@@ -527,7 +527,7 @@ watch(settings, () => {
               <div class="anim-text" style="font-size: 15px; line-height: 1.8; color: #333; opacity: 0.5;">
                 This is an ordinary paragraph that is not being translated.
               </div>
-              <div class="anim-text" style="font-size: 15px; line-height: 1.8; color: #333; position: relative;">
+              <div class="anim-text anim-paragraph-text" style="font-size: 15px; line-height: 1.8; color: #333; position: relative;">
                 This feature injects
                 <span class="anim-ruby-wrapper ruby-color-1">
                   <span class="anim-ruby-base">seamless</span>
@@ -1467,7 +1467,7 @@ body {
 /* Base text is normal color initially, then animates */
 .anim-ruby-base {
   display: inline-block;
-  color: #333; 
+  color: inherit; 
 }
 
 .ruby-color-1 .anim-ruby-base {
@@ -1475,9 +1475,9 @@ body {
 }
 
 @keyframes rubyBaseColor1 {
-  0%, 35% { color: #333; }
+  0%, 35% { color: inherit; }
   45%, 85% { color: #10b981; }
-  90%, 100% { color: #333; }
+  90%, 100% { color: inherit; }
 }
 
 .ruby-color-2 .anim-ruby-base {
@@ -1485,8 +1485,19 @@ body {
 }
 
 @keyframes rubyBaseColor2 {
-  0%, 35% { color: #333; }
+  0%, 35% { color: inherit; }
   45%, 85% { color: #3b82f6; }
+  90%, 100% { color: inherit; }
+}
+
+.anim-paragraph-text {
+  animation: paragraphTextGray 4s infinite;
+  transition: color 0.2s;
+}
+
+@keyframes paragraphTextGray {
+  0%, 31% { color: #333; }
+  33%, 85% { color: #9ca3af; } /* Turn gray right after shortcut (32%) */
   90%, 100% { color: #333; }
 }
 
