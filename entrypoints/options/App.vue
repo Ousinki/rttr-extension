@@ -105,10 +105,10 @@ const isRecordingShortcut = ref(false);
 function formatShortcutDisplay(shortcutStr: string | undefined): string {
   if (!shortcutStr) return '未启用';
   return shortcutStr.split('+').map(part => {
-    if (part === 'Alt') return '⌥ Option';
-    if (part === 'Meta') return '⌘ Command';
-    if (part === 'Control') return '⌃ Control';
-    if (part === 'Shift') return '⇧ Shift';
+    if (part === 'Alt') return 'Option(⌥)';
+    if (part === 'Meta') return 'Command(⌘)';
+    if (part === 'Control') return 'Ctrl(⌃)';
+    if (part === 'Shift') return 'Shift(⇧)';
     if (part.startsWith('Key')) return part.replace('Key', '');
     if (part.startsWith('Digit')) return part.replace('Digit', '');
     return part;
