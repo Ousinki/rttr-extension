@@ -286,6 +286,31 @@ watch(settings, () => {
             </div>
           </div>
         </div>
+
+        <div class="animation-previews" style="grid-template-columns: 1fr; margin-top: 16px;">
+          <!-- 选中长按翻译 -->
+          <div class="preview-box" :class="{ active: settings.enableLongPressTranslate && settings.translationEngine !== 'none' }" @click="settings.translationEngine !== 'none' && (settings.enableLongPressTranslate = !settings.enableLongPressTranslate)">
+            <div class="preview-title">长按 AI 翻译</div>
+            <div class="anim-container anim-sel-trans-longpress" style="height: 120px;">
+              <div class="anim-text">
+                He was
+                <span class="anim-selection sel-trans-sel-longpress">
+                  locking eyes
+                  <div class="anim-translation-tooltip-bottom sel-trans-tooltip-longpress">
+                    <strong>锁定目光</strong><span class="engine-tag" v-if="settings.showTranslationEngine && settings.translationEngine !== 'none'">AI</span>
+                  </div>
+                  <div class="anim-longpress-ring-container">
+                    <svg class="anim-longpress-ring" viewBox="0 0 32 32">
+                      <circle class="ring-progress" cx="16" cy="16" r="14"></circle>
+                    </svg>
+                  </div>
+                  <svg class="anim-cursor" width="24" height="24" viewBox="0 0 24 24"><path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z" fill="#000" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
+                </span>
+                with her.
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- Selection Pronunciation Settings -->
@@ -1082,8 +1107,14 @@ body {
   z-index: 20;
   border-radius: 0px;
   pointer-events: none;
-  white-space: nowrap;
   opacity: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: left;
+  gap: 8px;
+  white-space: nowrap;
+  width: max-content;
 }
 
 .anim-translation-tooltip-bottom {
@@ -1099,13 +1130,13 @@ body {
 
 .anim-translation-tooltip-bottom .engine-tag,
 .anim-translation-tooltip-top .engine-tag {
-  display: inline-block;
   font-size: 10px;
   color: #888;
-  margin-left: 8px;
   border-left: 1px solid #ccc;
-  padding-left: 6px;
+  padding-left: 8px;
   line-height: 1;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 @keyframes transClickCursor {
@@ -1202,5 +1233,75 @@ body {
   0%, 72% { opacity: 0; margin-top: -5px; }
   76%, 92% { opacity: 1; margin-top: 0px; }
   97%, 100% { opacity: 0; margin-top: 5px; }
+}
+
+/* ─── Selection LongPress-Translate Animations ─── */
+.anim-sel-trans-longpress .anim-cursor {
+  animation: selTransLongPressCursor 4s infinite;
+}
+.anim-sel-trans-longpress .sel-trans-sel-longpress {
+  animation: selTransClickHighlight 4s infinite;
+}
+.anim-sel-trans-longpress .sel-trans-tooltip-longpress {
+  animation: selTransLongPressTooltip 4s infinite;
+}
+.anim-sel-trans-longpress .anim-longpress-ring-container {
+  position: absolute;
+  top: 15px;
+  left: 45px;
+  width: 32px;
+  height: 32px;
+  margin-top: -16px;
+  margin-left: -16px;
+  pointer-events: none;
+  animation: selTransLongPressRingContainer 4s infinite;
+}
+.anim-sel-trans-longpress .anim-longpress-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.anim-sel-trans-longpress .anim-longpress-ring .ring-progress {
+  fill: transparent;
+  stroke: #4a90d9;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-dasharray: 87.96;
+  stroke-dashoffset: 87.96;
+  opacity: 0.6;
+  animation: selTransLongPressRing 4s infinite;
+}
+
+@keyframes selTransLongPressCursor {
+  0%, 15% { transform: translate(0, 0) scale(1); }
+  30% { transform: translate(90px, 0) scale(1); }
+  40%, 45% { transform: translate(110px, 20px) scale(1); }
+  55% { transform: translate(45px, 0) scale(1); }
+  60%, 75% { transform: translate(45px, 0) scale(0.85); }
+  80% { transform: translate(45px, 0) scale(1); }
+  85%, 100% { transform: translate(110px, 20px) scale(1); }
+}
+
+@keyframes selTransLongPressRingContainer {
+  0%, 57% { opacity: 0; transform: scale(1); }
+  60% { opacity: 1; transform: scale(1); }
+  75% { opacity: 1; transform: scale(1); }
+  78% { opacity: 0; transform: scale(1.15); }
+  79%, 100% { opacity: 0; transform: scale(1); }
+}
+
+@keyframes selTransLongPressRing {
+  0%, 59% { stroke-dashoffset: 87.96; }
+  60% { stroke-dashoffset: 87.96; }
+  75% { stroke-dashoffset: 0; }
+  76%, 100% { stroke-dashoffset: 0; }
+}
+
+@keyframes selTransLongPressTooltip {
+  0%, 76% { opacity: 0; margin-top: -5px; }
+  78%, 95% { opacity: 1; margin-top: 0px; }
+  98%, 100% { opacity: 0; margin-top: 5px; }
 }
 </style>

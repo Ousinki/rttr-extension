@@ -182,7 +182,56 @@ export async function explainWord(settings: RTTRSettings, word: string, sentence
     temperature: 0.1,
   };
 
-  const url = `${settings.apiEndpoint}/chat/completions`;
+  const url = settings.apiEndpoint;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${settings.apiKey}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`API 请求失败 (${response.status}): ${errorBody}`);
+  }
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content;
+
+  if (!content) {
+    throw new Error('AI 返回内容为空');
+  }
+
+  return content.trim();
+}
+
+// ─── AI 极简语境翻译 (仅翻译文本) ────────────────────────────────
+
+const CONTEXTUAL_TRANSLATE_PROMPT = `你是一个精准的英文翻译引擎。
+
+用户会提供一个【英文句子】和一个【需要翻译的文本（单词或短语）】。
+你的任务是：根据句子的具体语境，仅仅输出该文本最贴切的【中文翻译】。
+
+【极其重要的强制规则】：
+1. 直接输出翻译结果，不要输出任何多余内容！
+2. 绝对不要解释！绝对不要输出拼音！绝对不要复述原词！绝对不要包含 Markdown 代码块！
+3. 输出的字数应当极简，只包含翻译本身。`;
+
+export async function contextualTranslate(settings: RTTRSettings, word: string, sentence: string): Promise<string> {
+  const messages = [
+    { role: 'system', content: CONTEXTUAL_TRANSLATE_PROMPT },
+    { role: 'user', content: `【需要翻译的文本】：${word}\n【英文句子】：${sentence}` }
+  ];
+
+  const payload = {
+    model: settings.model || 'gemini-2.5-pro',
+    messages,
+    temperature: 0.1,
+  };
+
+  const url = settings.apiEndpoint;
   const response = await fetch(url, {
     method: 'POST',
     headers: {

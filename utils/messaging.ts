@@ -55,6 +55,12 @@ export interface ExplainWordRequest {
   sentence: string;
 }
 
+export interface ContextualTranslateRequest {
+  type: 'CONTEXTUAL_TRANSLATE';
+  word: string;
+  sentence: string;
+}
+
 export interface OpenOptionsRequest {
   type: 'OPEN_OPTIONS';
 }
@@ -92,6 +98,7 @@ export type RTTRMessage =
   | GetSettingsRequest
   | LookupIpaRequest
   | ExplainWordRequest
+  | ContextualTranslateRequest
   | OpenOptionsRequest
   | FetchImageBase64Request
   | FetchTranslationRequest;

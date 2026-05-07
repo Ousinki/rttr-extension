@@ -45,6 +45,31 @@ export default defineContentScript({
     let isDraggingRttrWord = false;
     let currentSettings: RTTRSettings | null = null;
 
+    // 预热 TTS 引擎（解决首次点击发音慢的问题）
+    document.addEventListener('pointerover', () => {
+      if ('speechSynthesis' in window && window.speechSynthesis.getVoices().length === 0) {
+        window.speechSynthesis.getVoices();
+      }
+    }, { once: true });
+
+    // ─── 安全的消息发送（防止扩展重载后 runtime 断开） ────
+    async function safeSendMessage(message: any): Promise<any> {
+      try {
+        if (!browser?.runtime?.id) {
+          console.warn('[RTTR] 扩展上下文已失效，请刷新页面');
+          return null;
+        }
+        return await browser.runtime.sendMessage(message);
+      } catch (e: any) {
+        if (e?.message?.includes('Extension context invalidated') ||
+            e?.message?.includes('Cannot read properties of undefined')) {
+          console.warn('[RTTR] 扩展上下文已失效，请刷新页面');
+          return null;
+        }
+        throw e;
+      }
+    }
+
     // ─── 初始化并监听设置变化 ──────────────────────────────
     settingsStorage.getValue().then((val) => {
       currentSettings = val;
@@ -74,6 +99,7 @@ export default defineContentScript({
 
     // ─── 监听快捷键（Alt+T） ───────────────────────────
     document.addEventListener('keydown', (e) => {
+      if (currentSettings && !currentSettings.enabled) return;
       // macOS 上 Option+T 会产生 '†'，所以用 e.code 而非 e.key
       if (e.altKey && e.code === 'KeyT') {
         e.preventDefault();
@@ -83,6 +109,7 @@ export default defineContentScript({
 
     // ─── 监听来自 Background 的命令（Chrome Commands API）
     browser.runtime.onMessage.addListener((message) => {
+      if (currentSettings && !currentSettings.enabled) return;
       if (message.type === 'TRIGGER_TRANSLATE') {
         handleTranslate(hoveredElement);
       }
@@ -210,7 +237,7 @@ export default defineContentScript({
       
       if (!text.includes(' ') && text.length < 30) {
         try {
-          const resp = await browser.runtime.sendMessage({ type: 'LOOKUP_IPA', word: text }) as { ipa: string | null };
+          const resp = await safeSendMessage({ type: 'LOOKUP_IPA', word: text }) as { ipa: string | null };
           if (resp?.ipa) {
             showPronounceBadge(resp.ipa, rect);
           } else {
@@ -226,30 +253,195 @@ export default defineContentScript({
 
     let clickTranslateWaiting = false; // 划词后点击选区翻译的等待标记
 
+    // ─── 长按 AI 翻译状态 ──────────────────────────────────
+    let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+    let longPressRingTimer: ReturnType<typeof setTimeout> | null = null;
+    let longPressTarget: { type: 'selection' | 'word', text: string, rect: DOMRect, sentence: string } | null = null;
+    let isLongPressFired = false;
+    let startX = 0;
+    let startY = 0;
+    let longPressRing: HTMLDivElement | null = null;
+    let originalSelectionRange: Range | null = null;
+
+    function showLongPressRing(x: number, y: number) {
+      if (longPressRing) hideLongPressRing();
+      
+      longPressRing = document.createElement('div');
+      longPressRing.className = 'rttr-long-press-ring';
+      longPressRing.style.left = `${x}px`;
+      longPressRing.style.top = `${y}px`;
+      
+      longPressRing.innerHTML = `
+        <svg viewBox="0 0 32 32">
+          <circle class="ring-progress" cx="16" cy="16" r="14"></circle>
+        </svg>
+      `;
+      
+      document.body.appendChild(longPressRing);
+      
+      // 触发重绘以启动动画
+      longPressRing.getBoundingClientRect();
+      longPressRing.classList.add('active');
+    }
+
+    function hideLongPressRing(pop = false) {
+      if (longPressRingTimer) {
+        clearTimeout(longPressRingTimer);
+        longPressRingTimer = null;
+      }
+      if (longPressRing) {
+        if (pop) {
+          longPressRing.classList.add('pop');
+          const ring = longPressRing;
+          setTimeout(() => {
+            if (ring.parentNode) ring.parentNode.removeChild(ring);
+          }, 200);
+        } else {
+          if (longPressRing.parentNode) longPressRing.parentNode.removeChild(longPressRing);
+        }
+        longPressRing = null;
+      }
+    }
+
     document.addEventListener('mousedown', (e) => {
+      if (currentSettings && !currentSettings.enabled) return;
       if (e.button !== 0) return;
+      
+      isLongPressFired = false;
+      longPressTarget = null;
+      startX = e.clientX;
+      startY = e.clientY;
+
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        originalSelectionRange = selection.getRangeAt(0).cloneRange();
+      } else {
+        originalSelectionRange = null;
+      }
+
+      let targetText = '';
+      let targetRect: DOMRect | null = null;
+      let sentence = '';
+      let isSelection = false;
+
+      // 检查是否在已有的选区上按下
       if (lastSelectionRect &&
           e.clientX >= lastSelectionRect.left && e.clientX <= lastSelectionRect.right &&
           e.clientY >= lastSelectionRect.top && e.clientY <= lastSelectionRect.bottom) {
-        // 点击发音 (TTS)
+        targetText = lastSelectionText;
+        targetRect = lastSelectionRect;
+        sentence = lastSelectionText; // 选区用其自身作为语境
+        isSelection = true;
+        
+        // 阻止浏览器默认行为，防止在选区上按下鼠标瞬间选区（蓝色背景）消失
+        e.preventDefault();
+      } else {
+        // 检查是否在单词上按下
+        const result = getWordAtClick(e);
+        if (result) {
+          targetText = result.word;
+          targetRect = result.range.getBoundingClientRect();
+          // 如果获取不到 getSentenceAroundNode，就暂用整段文本
+          sentence = (window as any).getSentenceAroundNode 
+            ? (window as any).getSentenceAroundNode(result.range.startContainer) 
+            : targetText;
+        }
+      }
+
+      if (targetText && targetRect) {
+        longPressTarget = { type: isSelection ? 'selection' : 'word', text: targetText, rect: targetRect, sentence };
+        
+        const longPressEnabled = currentSettings?.enableLongPressTranslate ?? true;
+        if (longPressEnabled) {
+          // 延迟 200ms 显示圆环，避免短按时闪烁
+          longPressRingTimer = setTimeout(() => {
+            showLongPressRing(e.clientX, e.clientY);
+          }, 200);
+          
+          longPressTimer = setTimeout(() => {
+            isLongPressFired = true;
+            hideLongPressRing(true);
+            
+            if (longPressTarget) {
+              const { text, rect, sentence } = longPressTarget;
+              speakText(text);
+              
+              showTranslationBadge('AI 翻译中...', 'AI', rect, false);
+              safeSendMessage({ type: 'CONTEXTUAL_TRANSLATE', word: text, sentence })
+                .then((res: any) => {
+                  if (res?.success && res.translation) {
+                    showTranslationBadge(res.translation, 'AI', rect, false);
+                  } else {
+                    showTranslationBadge('翻译失败', 'AI', rect, false);
+                  }
+                }).catch(() => {
+                  showTranslationBadge('翻译失败', 'AI', rect, false);
+                });
+            }
+          }, 600);
+        }
+      }
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      // 只有移动超过 5px 才会取消长按（容差）
+      if (longPressTimer && (Math.abs(e.clientX - startX) > 5 || Math.abs(e.clientY - startY) > 5)) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+        hideLongPressRing(false);
+      }
+    });
+
+    document.addEventListener('mouseup', (e) => {
+      if (currentSettings && !currentSettings.enabled) return;
+      if (e.button !== 0) return;
+
+      // 如果还没触发，清除长按定时器
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+        hideLongPressRing(false);
+      }
+
+      if (isLongPressFired) {
+        // 恢复长按前的选区状态（稍微延迟以覆盖浏览器的默认清除动作）
+        if (originalSelectionRange && longPressTarget?.type === 'selection') {
+          setTimeout(() => {
+            const sel = window.getSelection();
+            if (sel) {
+              sel.removeAllRanges();
+              sel.addRange(originalSelectionRange!);
+            }
+          }, 50);
+        }
+        // 已经长按过了，什么都不做
+        return;
+      }
+
+      // 如果是一次选区上的短点击
+      if (lastSelectionRect &&
+          startX >= lastSelectionRect.left && startX <= lastSelectionRect.right &&
+          startY >= lastSelectionRect.top && startY <= lastSelectionRect.bottom &&
+          longPressTarget?.type === 'selection') {
+        
         if (clickModeWaiting) {
           e.preventDefault();
           speakText(lastSelectionText);
           showPronounceBadgeForSelection(lastSelectionText, lastSelectionRect);
         }
-        // 点击翻译
         if (clickTranslateWaiting) {
           e.preventDefault();
           doFetchTranslationAndShowBadge(lastSelectionText, lastSelectionRect, false);
         }
-        if (clickModeWaiting || clickTranslateWaiting) return;
+        clickModeWaiting = false;
+        clickTranslateWaiting = false;
+        return;
       }
+
       clickModeWaiting = false;
       clickTranslateWaiting = false;
-    });
 
-    document.addEventListener('mouseup', (e) => {
-      if (e.button !== 0) return;
+      // 正常的生成新选区逻辑
       setTimeout(() => {
         const autoEnabled = currentSettings?.enableAutoPronounce ?? true;
         const clickEnabled = currentSettings?.enableClickPronounce ?? false;
@@ -284,11 +476,20 @@ export default defineContentScript({
         } else {
           clickModeWaiting = false;
           clickTranslateWaiting = false;
+          lastSelectionRect = null;
+          lastSelectionText = '';
         }
       }, 10);
     });
 
     document.addEventListener('click', async (e) => {
+      if (currentSettings && !currentSettings.enabled) return;
+      if (isLongPressFired) {
+        isLongPressFired = false;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       const singleClickEnabled = currentSettings?.enableSingleClickPronounce ?? true;
       if (!singleClickEnabled) return;
 
@@ -311,7 +512,7 @@ export default defineContentScript({
       if (currentSettings?.showSingleClickIPA !== false) {
         const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
         try {
-          const resp = await browser.runtime.sendMessage({ type: 'LOOKUP_IPA', word }) as { ipa: string | null };
+          const resp = await safeSendMessage({ type: 'LOOKUP_IPA', word }) as { ipa: string | null };
           if (resp?.ipa) {
             showPronounceBadge(resp.ipa, rect);
           } else {
@@ -352,7 +553,7 @@ export default defineContentScript({
 
       try {
         // 发送翻译请求到 Background
-        const response = await browser.runtime.sendMessage({
+        const response = await safeSendMessage({
           type: 'TRANSLATE',
           text,
         }) as TranslateResponse;
@@ -469,7 +670,7 @@ export default defineContentScript({
     async function undoDismiss(action: UndoAction) {
       const { wrapper, textNode, word } = action;
       try {
-        const response = await browser.runtime.sendMessage({
+        const response = await safeSendMessage({
           type: 'UNDISMISS_WORD',
           word,
         }) as any;
@@ -616,7 +817,7 @@ export default defineContentScript({
       speakText(word);
 
       try {
-        const resp = await browser.runtime.sendMessage({
+        const resp = await safeSendMessage({
           type: 'EXPLAIN_WORD',
           word,
           sentence,
@@ -686,7 +887,7 @@ export default defineContentScript({
             const sentence = sentenceProvider();
             showExplainPanelLoading(targetText, rect);
             speakText(targetText);
-            browser.runtime.sendMessage({ type: 'EXPLAIN_WORD', word: targetText, sentence })
+            safeSendMessage({ type: 'EXPLAIN_WORD', word: targetText, sentence })
               .then((resp: any) => {
                 if (resp?.success && resp.explanation) {
                   showExplainPanel(targetText, resp.ipa || null, resp.explanation, rect);
@@ -776,7 +977,7 @@ export default defineContentScript({
           { type: 'divider', label: 'DIVIDER' },
           { icon: SVG_ICONS.speak, label: '朗读备用描述', onClick: () => speakText(altText) },
           { type: 'divider', label: 'DIVIDER' },
-          { icon: SVG_ICONS.settings, label: '设置', onClick: () => browser.runtime.sendMessage({ type: 'OPEN_OPTIONS' }) }
+          { icon: SVG_ICONS.settings, label: '设置', onClick: () => safeSendMessage({ type: 'OPEN_OPTIONS' }) }
         ], clientX, clientY);
 
         let safeImg = img;
@@ -789,7 +990,7 @@ export default defineContentScript({
           testCanvas.toDataURL(); 
         } catch (e) {
           // Tainted, fetch cross-origin base64 from background
-          const res = await browser.runtime.sendMessage({ type: 'FETCH_IMAGE_BASE64', url: img.src });
+          const res = await safeSendMessage({ type: 'FETCH_IMAGE_BASE64', url: img.src });
           if (res && res.base64) {
             safeImg = new Image();
             safeImg.src = res.base64;
@@ -892,7 +1093,7 @@ export default defineContentScript({
         showContextMenu([
           { type: 'header', label: '⏳ Recognizing...' },
           { type: 'divider', label: 'DIVIDER' },
-          { icon: SVG_ICONS.settings, label: '设置', onClick: () => browser.runtime.sendMessage({ type: 'OPEN_OPTIONS' }) }
+          { icon: SVG_ICONS.settings, label: '设置', onClick: () => safeSendMessage({ type: 'OPEN_OPTIONS' }) }
         ], clientX, clientY);
 
         const worker = await createWorker('eng');
@@ -957,7 +1158,7 @@ export default defineContentScript({
           showContextMenu([
             { type: 'header', label: targetWord, onSpeakClick: () => speakText(targetWord) },
             { type: 'divider', label: 'DIVIDER' },
-            { icon: SVG_ICONS.settings, label: '设置', onClick: () => browser.runtime.sendMessage({ type: 'OPEN_OPTIONS' }) }
+            { icon: SVG_ICONS.settings, label: '设置', onClick: () => safeSendMessage({ type: 'OPEN_OPTIONS' }) }
           ], clientX, clientY);
         } else {
           // Fallback: warning header + ALT text as readable item
@@ -969,7 +1170,7 @@ export default defineContentScript({
             items.push({ icon: SVG_ICONS.speak, label: altText, onClick: () => speakText(altText) });
             items.push({ type: 'divider', label: 'DIVIDER' });
           }
-          items.push({ icon: SVG_ICONS.settings, label: '设置', onClick: () => browser.runtime.sendMessage({ type: 'OPEN_OPTIONS' }) });
+          items.push({ icon: SVG_ICONS.settings, label: '设置', onClick: () => safeSendMessage({ type: 'OPEN_OPTIONS' }) });
           showContextMenu(items, clientX, clientY);
         }
       } catch (err) {
@@ -981,7 +1182,7 @@ export default defineContentScript({
           items.push({ type: 'header', label: 'OCR failed' });
         }
         items.push({ type: 'divider', label: 'DIVIDER' });
-        items.push({ icon: SVG_ICONS.settings, label: '设置', onClick: () => browser.runtime.sendMessage({ type: 'OPEN_OPTIONS' }) });
+        items.push({ icon: SVG_ICONS.settings, label: '设置', onClick: () => safeSendMessage({ type: 'OPEN_OPTIONS' }) });
         showContextMenu(items, clientX, clientY);
       }
     }
@@ -1007,7 +1208,7 @@ export default defineContentScript({
             }
           },
           { type: 'divider', label: 'DIVIDER' },
-          { icon: SVG_ICONS.settings, label: '设置', onClick: () => browser.runtime.sendMessage({ type: 'OPEN_OPTIONS' }) }
+          { icon: SVG_ICONS.settings, label: '设置', onClick: () => safeSendMessage({ type: 'OPEN_OPTIONS' }) }
         ], e.clientX, e.clientY);
         return;
       }
@@ -1028,7 +1229,7 @@ export default defineContentScript({
           { type: 'divider', label: 'DIVIDER' },
           { icon: SVG_ICONS.speak, label: '朗读全图备用描述', onClick: () => speakText(imageText) },
           { type: 'divider', label: 'DIVIDER' },
-          { icon: SVG_ICONS.settings, label: '设置', onClick: () => browser.runtime.sendMessage({ type: 'OPEN_OPTIONS' }) }
+          { icon: SVG_ICONS.settings, label: '设置', onClick: () => safeSendMessage({ type: 'OPEN_OPTIONS' }) }
         ], e.clientX, e.clientY);
 
         recognizeImageWord(imageTarget, e.clientX, e.clientY, imageText).catch(console.error);
@@ -1074,7 +1275,7 @@ export default defineContentScript({
           });
           
           items.push({ type: 'divider', label: 'DIVIDER' });
-          items.push({ icon: SVG_ICONS.settings, label: '设置', onClick: () => browser.runtime.sendMessage({ type: 'OPEN_OPTIONS' }) });
+          items.push({ icon: SVG_ICONS.settings, label: '设置', onClick: () => safeSendMessage({ type: 'OPEN_OPTIONS' }) });
 
           showContextMenu(items, e.clientX, e.clientY);
           return;
@@ -1198,7 +1399,7 @@ export default defineContentScript({
       if (engine === 'none') return; // 如果选择了不启用，则直接返回，不发起翻译请求
 
       try {
-        const resp = await browser.runtime.sendMessage({
+        const resp = await safeSendMessage({
           type: 'FETCH_TRANSLATION',
           text,
           sourceLang: 'auto',
@@ -1221,10 +1422,7 @@ export default defineContentScript({
         console.error('[RTTR TTS] 当前浏览器不支持 speechSynthesis');
         return;
       }
-      window.speechSynthesis.cancel();
-      
-      // 解决 Chrome 等浏览器中 cancel() 后立刻 speak() 会被忽略导致不发音的 Bug
-      setTimeout(() => {
+      const playVoice = () => {
         const utterance = new SpeechSynthesisUtterance(text);
         
         if (currentSettings) {
@@ -1278,7 +1476,16 @@ export default defineContentScript({
 
         currentUtterance = utterance;
         window.speechSynthesis.speak(utterance);
-      }, 50);
+      };
+
+      // 仅当当前有正在播放或等待播放的语音时，才执行 cancel 和延迟
+      if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+        window.speechSynthesis.cancel();
+        setTimeout(playVoice, 10);
+      } else {
+        // 引擎空闲时，零延迟立刻发音
+        playVoice();
+      }
     }
 
     // ─── 标注单个文本节点 ──────────────────────────────
@@ -1399,7 +1606,7 @@ export default defineContentScript({
               const singleWord = textToSpeak.trim();
               if (!singleWord.includes(' ') && /^[a-zA-Z'-]+$/.test(singleWord)) {
                 try {
-                  const resp = await browser.runtime.sendMessage({ type: 'LOOKUP_IPA', word: singleWord }) as { ipa: string | null };
+                  const resp = await safeSendMessage({ type: 'LOOKUP_IPA', word: singleWord }) as { ipa: string | null };
                   if (resp?.ipa) {
                     showPronounceBadge(resp.ipa, target.getBoundingClientRect());
                     // 缓存回 entry 供后续点击复用（只针对整个短语点击时缓存）
@@ -1524,7 +1731,7 @@ export default defineContentScript({
       ruby.classList.add('rttr-dismissing');
 
       try {
-        const response = await browser.runtime.sendMessage({
+        const response = await safeSendMessage({
           type: 'DISMISS_WORD',
           word,
         }) as DismissWordResponse;
@@ -1629,6 +1836,47 @@ export default defineContentScript({
           transition: all 0.3s ease;
         }
 
+        /* 长按加载动画环 */
+        .rttr-long-press-ring {
+          position: fixed;
+          pointer-events: none;
+          z-index: 2147483647;
+          width: 32px;
+          height: 32px;
+          margin-left: -16px;
+          margin-top: -16px;
+          opacity: 0;
+          transition: opacity 0.15s ease;
+        }
+        .rttr-long-press-ring.active {
+          opacity: 1;
+        }
+        .rttr-long-press-ring svg {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          transform: rotate(-90deg);
+        }
+        .rttr-long-press-ring .ring-progress {
+          fill: transparent;
+          stroke: var(--rttr-color, #4a90d9);
+          stroke-width: 4;
+          stroke-linecap: round;
+          stroke-dasharray: 87.96; /* 2 * pi * 14 */
+          stroke-dashoffset: 87.96;
+          opacity: 0.6;
+          transition: stroke-dashoffset 400ms linear;
+        }
+        .rttr-long-press-ring.active .ring-progress {
+          stroke-dashoffset: 0;
+        }
+        .rttr-long-press-ring.pop {
+          transform: scale(1.15);
+          opacity: 0;
+          transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.2s ease-out;
+        }
+
         /* 拖拽中留在原地的词：变成一个具有物理感的凹陷“空槽” (Empty Dropzone Slot) */
         .rttr-word.rttr-is-dragging {
           color: transparent !important; /* 彻底隐藏原本的文字，仿佛被拿走了 */
@@ -1717,9 +1965,15 @@ export default defineContentScript({
           border-radius: 0px; /* 直角矩形 */
           pointer-events: none;
           white-space: pre-wrap;
+          width: max-content;
           max-width: 300px;
-          text-align: center;
           font-family: system-ui, -apple-system, sans-serif;
+          
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          text-align: left;
+          gap: 8px;
           
           /* 初始动画状态 */
           opacity: 0;
@@ -1748,13 +2002,13 @@ export default defineContentScript({
 
         /* 翻译引擎标识标签 */
         .rttr-translation-tooltip .engine-tag {
-          display: inline-block;
           font-size: 10px;
           color: #888;
-          margin-left: 8px;
           border-left: 1px solid #ccc;
-          padding-left: 6px;
+          padding-left: 8px;
           line-height: 1;
+          white-space: nowrap;
+          flex-shrink: 0;
         }
 
         /* 加载指示器 — 行末旋转圆环 */

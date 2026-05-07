@@ -33,6 +33,7 @@ export interface RTTRSettings {
   showSingleClickIPA: boolean;                    // 单击发音时是否显示音标悬浮窗
   enableAutoTranslate: boolean;                   // 划词松手自动翻译
   enableClickTranslate: boolean;                  // 划词后点击选区翻译
+  enableLongPressTranslate: boolean;              // 长按/选中长按进行 AI 语境翻译
 }
 
 // ─── 默认值 ──────────────────────────────────────────────
@@ -57,6 +58,7 @@ const DEFAULT_SETTINGS: RTTRSettings = {
   showSingleClickIPA: true,
   enableAutoTranslate: true,
   enableClickTranslate: false,
+  enableLongPressTranslate: true,
 };
 
 // ─── Storage Items (WXT 类型安全存储) ────────────────────

@@ -9,7 +9,7 @@
  * 5. 转发 Chrome Commands 快捷键事件
  */
 
-import { translateParagraph, explainWord } from '@/utils/ai';
+import { translateParagraph, explainWord, contextualTranslate } from '@/utils/ai';
 import { batchLookupIPA, getIpa } from '@/utils/phonetics';
 import { handleFetchTranslation } from '@/utils/translator';
 import type { RTTRMessage, TranslateResponse, DismissWordResponse, UndismissWordResponse, LookupIpaResponse } from '@/utils/messaging';
@@ -19,6 +19,79 @@ import { shouldSkip } from '@/utils/skip-words';
 export default defineBackground(() => {
   console.log('[RTTR] Background service worker started', {
     id: browser.runtime.id,
+  });
+
+  // ─── 图标开关逻辑 ──────────────────────────────────────
+  // 没有 popup → 点击图标直接触发 action.onClicked
+
+  /** 更新扩展图标的视觉状态（badge + 灰度图标） */
+  async function updateIconState(enabled: boolean) {
+    if (enabled) {
+      // 启用状态：清除 badge，恢复正常图标
+      await browser.action.setBadgeText({ text: '' });
+      await browser.action.setIcon({
+        path: {
+          16: '/icon/16.png',
+          32: '/icon/32.png',
+          48: '/icon/48.png',
+          96: '/icon/96.png',
+          128: '/icon/128.png',
+        },
+      });
+      await browser.action.setTitle({ title: 'RTTR — 点击关闭' });
+    } else {
+      // 禁用状态：显示灰色 OFF badge + 灰度图标
+      await browser.action.setBadgeText({ text: 'OFF' });
+      await browser.action.setBadgeBackgroundColor({ color: '#6b7280' });
+      await browser.action.setBadgeTextColor({ color: '#ffffff' });
+
+      // 生成灰度图标
+      try {
+        const sizes = [16, 32, 48] as const;
+        const imageDataMap: Record<number, ImageData> = {};
+        for (const size of sizes) {
+          const response = await fetch(browser.runtime.getURL(`/icon/${size}.png`));
+          const blob = await response.blob();
+          const bitmap = await createImageBitmap(blob);
+          const canvas = new OffscreenCanvas(size, size);
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(bitmap, 0, 0, size, size);
+          const imageData = ctx.getImageData(0, 0, size, size);
+          // 转灰度 + 降低对比度
+          for (let i = 0; i < imageData.data.length; i += 4) {
+            const gray = imageData.data[i] * 0.299 + imageData.data[i + 1] * 0.587 + imageData.data[i + 2] * 0.114;
+            const muted = gray * 0.7 + 80; // 偏亮灰色
+            imageData.data[i] = muted;
+            imageData.data[i + 1] = muted;
+            imageData.data[i + 2] = muted;
+            imageData.data[i + 3] = imageData.data[i + 3] * 0.6; // 降低不透明度
+          }
+          imageDataMap[size] = imageData;
+        }
+        await browser.action.setIcon({ imageData: imageDataMap as any });
+      } catch (err) {
+        console.warn('[RTTR] 灰度图标生成失败，仅使用 badge:', err);
+      }
+
+      await browser.action.setTitle({ title: 'RTTR — 点击开启' });
+    }
+  }
+
+  // 初始化图标状态
+  settingsStorage.getValue().then((s) => updateIconState(s.enabled));
+
+  // 监听设置变化（如从 Options 页面切换）
+  settingsStorage.watch((newVal) => {
+    if (newVal) updateIconState(newVal.enabled);
+  });
+
+  // 点击图标 → 切换开关
+  browser.action.onClicked.addListener(async () => {
+    const settings = await settingsStorage.getValue();
+    settings.enabled = !settings.enabled;
+    await settingsStorage.setValue(settings);
+    // updateIconState 会由 watch 回调自动触发
+    console.log(`[RTTR] 扩展已${settings.enabled ? '启用' : '禁用'}`);
   });
 
   // ─── 监听消息 ──────────────────────────────────────────
@@ -64,6 +137,12 @@ export default defineBackground(() => {
 
         case 'EXPLAIN_WORD':
           handleExplainWord(message.word, message.sentence)
+            .then(sendResponse)
+            .catch((err) => sendResponse({ success: false, error: err.message }));
+          return true;
+
+        case 'CONTEXTUAL_TRANSLATE':
+          handleContextualTranslate(message.word, message.sentence)
             .then(sendResponse)
             .catch((err) => sendResponse({ success: false, error: err.message }));
           return true;
@@ -231,6 +310,25 @@ export default defineBackground(() => {
     } catch (err: any) {
       console.error('[RTTR] 语境解释请求失败:', err);
       return { success: false, error: err.message };
+    }
+  }
+
+  // ─── AI 极简语境翻译 ─────────────────────────────────────
+  async function handleContextualTranslate(word: string, sentence: string): Promise<any> {
+    try {
+      const settings = await settingsStorage.getValue();
+      if (!settings.apiKey) {
+        throw new Error('未配置 API Key');
+      }
+      if (!settings.enabled) {
+        throw new Error('RTTR 已禁用');
+      }
+
+      const translation = await contextualTranslate(settings, word, sentence);
+      return { success: true, translation };
+    } catch (error: any) {
+      console.error('[RTTR] Contextual Translate failed:', error);
+      return { success: false, error: error.message };
     }
   }
 });

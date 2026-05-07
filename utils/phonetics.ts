@@ -51,7 +51,7 @@ async function ensureLoaded(): Promise<void> {
 
   loadingPromise = (async () => {
     try {
-      const url = browser.runtime.getURL('data/ipa-dict-en-us.json');
+      const url = browser.runtime.getURL('/data/ipa-dict-en-us.json');
       const response = await fetch(url);
       if (!response.ok) {
         console.warn('[RTTR IPA] 本地词典加载失败:', response.status);
@@ -159,7 +159,7 @@ async function queryAiIpa(word: string): Promise<string | null> {
 async function persistAiIpa(word: string, ipa: string): Promise<void> {
   try {
     const stored = await browser.storage.local.get(AI_IPA_STORAGE_KEY);
-    const memory: Record<string, string> = stored[AI_IPA_STORAGE_KEY] || {};
+    const memory: Record<string, string> = (stored[AI_IPA_STORAGE_KEY] || {}) as Record<string, string>;
     memory[word.toLowerCase()] = ipa;
     await browser.storage.local.set({ [AI_IPA_STORAGE_KEY]: memory });
     console.log(`[RTTR IPA] AI 音标已存入记忆库: ${word} → ${ipa}`);
@@ -172,7 +172,7 @@ async function persistAiIpa(word: string, ipa: string): Promise<void> {
 async function loadAiMemory(): Promise<Record<string, string>> {
   try {
     const stored = await browser.storage.local.get(AI_IPA_STORAGE_KEY);
-    return stored[AI_IPA_STORAGE_KEY] || {};
+    return (stored[AI_IPA_STORAGE_KEY] || {}) as Record<string, string>;
   } catch {
     return {};
   }
