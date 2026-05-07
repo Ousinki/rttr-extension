@@ -161,6 +161,13 @@ function startRecordingShortcut(e?: MouseEvent) {
     // Ignore if only modifier is pressed
     if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
     
+    // Require at least one valid modifier (Ctrl, Alt, Meta) to prevent breaking standard typing
+    const hasValidModifier = e.ctrlKey || e.altKey || e.metaKey;
+    if (!hasValidModifier && !e.code.startsWith('F')) {
+      // Must have a valid modifier, OR be a function key (F1-F12)
+      return; 
+    }
+    
     const key = e.code;
     const newShortcut = [...modifiers, key].join('+');
     
