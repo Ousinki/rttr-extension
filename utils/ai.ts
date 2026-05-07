@@ -4,8 +4,6 @@
  */
 
 import type { RTTRSettings } from './storage';
-import nlp from 'compromise';
-import { shouldSkip } from './skip-words';
 
 // ─── 类型定义 ────────────────────────────────────────────
 
@@ -19,24 +17,24 @@ export interface AnnotationResult {
 
 // ─── AI Prompt ──────────────────────────────────────────
 
-const SYSTEM_PROMPT = `你是一个精准的英语词典翻译引擎。
+const SYSTEM_PROMPT = `你是一个高级的英文阅读辅助引擎。
 
-你的任务：
-用户会提供一段英文的【上下文】，以及一个用 JSON 数组格式提供的【需要翻译的短语/单词列表】。
-请**仅仅针对列表中的词汇**，结合给定的上下文，提供最精准的中文翻译。
+【核心任务】：
+用户会提供一段英文段落。你需要自主阅读这段文字，从中提取出**值得翻译的词汇和词组**，并给出精准的中文语境翻译。
 
-【核心要求】：
-1. 必须严格按照列表的顺序逐一翻译，绝对不能自作主张去翻译列表中不存在的单词，也不能张冠李戴（比如把晚宴的解释安在总统头上）！
-2. **高质量百科解释（悬浮窗内容）**：对于专有名词（人名、机构名、地名、专有事件），请提供**有价值的百科式背景介绍（10-30字以内）**。例如对于 "Washington Hilton hotel"，不要只写废话（如"酒店名称"），应当写"华盛顿特区著名的地标性豪华酒店，常举办政治集会"。
-3. **极其重要：对于普通的动词、名词、形容词等（如 shoot, rushed, attempt），绝对不要提供任何解释！该列必须留空！** 只有专有名词需要填此列。
-4. **对于纯数字、年份**（如 2025），不要翻译，直接在其"解释"列提供英文拼写读法（如 twenty twenty-five）。
-5. **绝对不要输出音标！** 音标由前端引擎独立处理，你只需要输出翻译和解释。
+【提取规则（最高优先级）】：
+1. 你必须自主判断哪些词值得翻译。跳过所有基础虚词（冠词、介词、连词、代词、be 动词、助动词等）。
+2. **复合名词、固定搭配和动词短语必须作为一个整体提取！** 绝对不能将它们拆开成独立的单词分别翻译。
+3. 提取的原文必须与段落中的文本**精确匹配**（大小写、单复数、时态一致），以便前端能精准定位和注入标注。
+4. 对于专有名词（人名、机构名、地名、专有事件），请在第三列提供有价值的百科式背景介绍（10-30字以内）。对于普通词汇，第三列必须留空。
+5. 对于纯数字、年份，不要翻译，直接在第三列提供英文拼写读法。
+6. 绝对不要输出音标！音标由前端引擎独立处理。
 
-**输出格式要求（为了极限速度）**：
-绝对不要使用 JSON 对象。严格按照以下格式输出，每行一个结果，用竖线 | 分隔。一共 3 列。
-字段顺序：列表原文|语境翻译|中文解释(可选)
+**输出格式要求**：
+严格按照以下格式输出，每行一个结果，用竖线 | 分隔。一共 3 列。
+字段顺序：英文原文|语境翻译|中文解释(可选)
 
-直接输出纯文本结果，不要任何Markdown语法或多余解释。`;
+直接输出纯文本结果，不要任何 Markdown 语法或多余解释。`;
 
 // ─── API 调用 ────────────────────────────────────────────
 
@@ -48,51 +46,8 @@ export async function translateParagraph(
     throw new Error('请先在插件设置中配置 API Key');
   }
 
-  // 1. 本地 NLP 引擎智能分词
-  const doc = nlp(text);
-  const chunksSet = new Set<string>();
-
-  // 优先提取实体和名词短语
-  doc.people().out('array').forEach((c: string) => chunksSet.add(c.trim()));
-  doc.places().out('array').forEach((c: string) => chunksSet.add(c.trim()));
-  doc.organizations().out('array').forEach((c: string) => chunksSet.add(c.trim()));
-  doc.nouns().out('array').forEach((c: string) => chunksSet.add(c.trim()));
-  doc.verbs().out('array').forEach((c: string) => chunksSet.add(c.trim()));
-  doc.adjectives().out('array').forEach((c: string) => chunksSet.add(c.trim()));
-  doc.adverbs().out('array').forEach((c: string) => chunksSet.add(c.trim()));
-
-  // 2. 本地过滤：去除被标点符号污染的词，以及基础虚词
-  let validChunks = Array.from(chunksSet)
-    .map(chunk => {
-      // 核心修复：去除首尾的非字母/数字符号（如逗号、句号）
-      // 这极其重要，因为如果带着逗号，前端的 \b 正则表达式将无法匹配单词边界！
-      let clean = chunk.replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, '').trim();
-      // 移除开头的冠词 (the, a, an)
-      clean = clean.replace(/^(the|a|an)\s+/i, '').trim();
-      return clean;
-    })
-    .filter(chunk => {
-      // 移除只包含标点或数字的无效块
-      if (!/[a-zA-Z]/.test(chunk)) return false;
-      // 移除基础虚词
-      if (shouldSkip(chunk)) return false;
-      return true;
-    });
-
-  // 对数组进行去重
-  validChunks = Array.from(new Set(validChunks));
-
-  // 如果本地引擎没有提炼出任何需要翻译的词，直接返回
-  if (validChunks.length === 0) {
-    return [];
-  }
-
-  // 构建专门的用户请求
-  const userPrompt = `【上下文】：
-${text}
-
-【需要你翻译的短语/单词列表】：
-${JSON.stringify(validChunks)}`;
+  const userPrompt = `【英文段落】：
+${text}`;
 
   const response = await fetch(settings.apiEndpoint, {
     method: 'POST',
