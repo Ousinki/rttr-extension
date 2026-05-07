@@ -223,7 +223,7 @@ export async function contextualTranslate(settings: RTTRSettings, word: string, 
   let systemPrompt = CONTEXTUAL_TRANSLATE_PROMPT;
   
   if (settings.enableContextualCollocation) {
-    systemPrompt += `\n4. 【智能语境搭配分析】：如果目标文本是单个单词，请务必检查它在句子中是否属于某个密切相关的固定搭配或动词短语。如果是，请自动将该搭配作为一个整体进行翻译，输出格式要求为："搭配原文 (中文翻译)"。例如用户查 "locked"，语境是 "locked eyes"，请直接输出 "locked eyes (四目相对)"。如果不存在固定搭配，则退回基本规则，仅输出目标文本的最简翻译。`;
+    systemPrompt += `\n4. 【智能语境搭配分析】：如果目标文本是单个单词，请务必检查它在句子中是否属于某个密切相关的固定搭配或动词短语。如果是，请自动将该搭配作为一个整体进行翻译，输出格式要求为："搭配原文 (中文翻译)"。如果不存在固定搭配，则退回基本规则，仅输出目标文本的最简翻译。`;
   }
 
   const messages = [
