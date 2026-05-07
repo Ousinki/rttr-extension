@@ -99,6 +99,67 @@ function testTTS() {
   synth.speak(utterance);
 }
 
+// ─── Shortcut Recorder Logic ───
+const isRecordingShortcut = ref(false);
+
+function formatShortcutDisplay(shortcutStr: string | undefined): string {
+  if (!shortcutStr) return '无快捷键';
+  return shortcutStr.split('+').map(part => {
+    if (part === 'Alt') return 'Option (⌥)';
+    if (part === 'Meta') return 'Command (⌘)';
+    if (part === 'Control') return 'Ctrl (⌃)';
+    if (part === 'Shift') return 'Shift (⇧)';
+    if (part.startsWith('Key')) return part.replace('Key', '');
+    if (part.startsWith('Digit')) return part.replace('Digit', '');
+    return part;
+  }).join(' + ');
+}
+
+function startRecordingShortcut() {
+  if (isRecordingShortcut.value) {
+    stopRecordingShortcut();
+    return;
+  }
+  
+  isRecordingShortcut.value = true;
+  
+  const handleKeydown = (e: KeyboardEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const modifiers = [];
+    if (e.ctrlKey) modifiers.push('Control');
+    if (e.altKey) modifiers.push('Alt');
+    if (e.shiftKey) modifiers.push('Shift');
+    if (e.metaKey) modifiers.push('Meta');
+    
+    // Ignore if only modifier is pressed
+    if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
+    
+    const key = e.code;
+    const newShortcut = [...modifiers, key].join('+');
+    
+    settings.value.paragraphShortcut = newShortcut;
+    saveSettings();
+    stopRecordingShortcut();
+  };
+  
+  // Attach at capturing phase to intercept before anything else
+  document.addEventListener('keydown', handleKeydown, true);
+  
+  // Store the handler on window to remove it later
+  (window as any).__rttrShortcutHandler = handleKeydown;
+}
+
+function stopRecordingShortcut() {
+  isRecordingShortcut.value = false;
+  if ((window as any).__rttrShortcutHandler) {
+    document.removeEventListener('keydown', (window as any).__rttrShortcutHandler, true);
+    delete (window as any).__rttrShortcutHandler;
+  }
+}
+
+
 async function testTranslation() {
   testing.value = true;
   testResult.value = '';
@@ -400,6 +461,51 @@ watch(settings, () => {
                 with her.
               </div>
               <div class="anim-keyboard-key">R</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Paragraph Translation Settings -->
+      <section class="settings-card">
+        <h2>段落翻译与无缝注音</h2>
+        <p class="section-desc">配置段落翻译的触发快捷键。它能在不破坏原有英文版面的前提下，将中文翻译像拼音一样注入到生词上方。</p>
+
+        <div style="margin-bottom: 24px; padding: 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between;">
+          <div>
+            <div style="font-size: 14px; font-weight: 600; color: #111827; margin-bottom: 4px;">触发快捷键</div>
+            <div style="font-size: 12px; color: #6b7280;">划选一段英文文本，按下该组合键即可进行段落注音翻译。</div>
+          </div>
+          <button 
+            @click="startRecordingShortcut" 
+            style="background: #fff; border: 1px solid #d1d5db; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; cursor: pointer; min-width: 140px; text-align: center; font-weight: 500; transition: all 0.2s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.05);"
+            :style="isRecordingShortcut ? 'border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.2); color: #3b82f6;' : 'color: #374151;'"
+          >
+            {{ isRecordingShortcut ? '请按下组合键...' : formatShortcutDisplay(settings.paragraphShortcut) }}
+          </button>
+        </div>
+
+        <div class="animation-previews" style="grid-template-columns: 1fr;">
+          <div class="preview-box active">
+            <div class="preview-title">沉浸式 Ruby 注音效果演示</div>
+            <div class="anim-container anim-paragraph-trans" style="height: 140px; padding: 24px; display: flex; align-items: center; justify-content: center; background: #fafafa;">
+              <div class="anim-text" style="font-size: 15px; line-height: 2.2; color: #333;">
+                This feature injects
+                <span class="anim-ruby-wrapper">
+                  <span class="anim-ruby-base">seamless</span>
+                  <span class="anim-ruby-text">无缝的</span>
+                </span>
+                translations directly
+                <span class="anim-ruby-wrapper">
+                  <span class="anim-ruby-base">above</span>
+                  <span class="anim-ruby-text">上方</span>
+                </span>
+                the English words.
+              </div>
+              <!-- Floating keyboard hint animation -->
+              <div class="anim-floating-shortcut">
+                <span class="key">⌥</span> <span class="key">T</span>
+              </div>
             </div>
           </div>
         </div>
@@ -1300,8 +1406,83 @@ body {
 }
 
 @keyframes selTransLongPressTooltip {
-  0%, 76% { opacity: 0; margin-top: -5px; }
-  78%, 95% { opacity: 1; margin-top: 0px; }
-  98%, 100% { opacity: 0; margin-top: 5px; }
+  0%, 75% { opacity: 0; margin-top: -5px; }
+  79%, 92% { opacity: 1; margin-top: 0px; }
+  97%, 100% { opacity: 0; margin-top: 5px; }
+}
+
+/* ─── Paragraph Translation (Ruby) Animations ─── */
+.anim-paragraph-trans {
+  position: relative;
+  overflow: hidden;
+}
+
+.anim-ruby-wrapper {
+  display: inline-block;
+  position: relative;
+  text-align: center;
+  margin: 0 4px;
+}
+
+.anim-ruby-base {
+  display: inline-block;
+}
+
+.anim-ruby-text {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: #10b981; /* Default emerald green for translation */
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0;
+  animation: rubyTextFadeIn 4s infinite;
+}
+
+/* Second ruby wrapper gets a different color to look more dynamic */
+.anim-ruby-wrapper:nth-child(2) .anim-ruby-text {
+  color: #3b82f6; /* Blue */
+  animation-delay: 0.1s;
+}
+
+@keyframes rubyTextFadeIn {
+  0%, 35% { opacity: 0; transform: translateX(-50%) translateY(5px) scale(0.9); }
+  45%, 85% { opacity: 1; transform: translateX(-50%) translateY(-2px) scale(1); }
+  90%, 100% { opacity: 0; transform: translateX(-50%) translateY(0px) scale(0.9); }
+}
+
+.anim-floating-shortcut {
+  position: absolute;
+  bottom: 16px;
+  right: 24px;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  animation: floatingShortcutAnim 4s infinite;
+}
+
+.anim-floating-shortcut .key {
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  color: #374151;
+  box-shadow: 0 2px 0 #d1d5db;
+  transition: all 0.1s;
+}
+
+@keyframes floatingShortcutAnim {
+  0%, 15% { opacity: 0; transform: translateY(10px); }
+  20%, 30% { opacity: 1; transform: translateY(0); }
+  /* Key press effect */
+  32% { transform: translateY(2px); }
+  33% { opacity: 1; transform: translateY(0); }
+  /* Fade out */
+  85% { opacity: 1; transform: translateY(0); }
+  90%, 100% { opacity: 0; transform: translateY(10px); }
 }
 </style>

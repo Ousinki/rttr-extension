@@ -97,11 +97,26 @@ export default defineContentScript({
       hoveredElement = e.target as HTMLElement;
     });
 
-    // ─── 监听快捷键（Alt+T） ───────────────────────────
+    // ─── 监听快捷键 ───────────────────────────
     document.addEventListener('keydown', (e) => {
       if (currentSettings && !currentSettings.enabled) return;
-      // macOS 上 Option+T 会产生 '†'，所以用 e.code 而非 e.key
-      if (e.altKey && e.code === 'KeyT') {
+      
+      const shortcut = currentSettings?.paragraphShortcut || 'Alt+KeyT';
+      const parts = shortcut.split('+');
+      const requiredCode = parts[parts.length - 1]; // The actual key code is always last
+      
+      const hasControl = parts.includes('Control');
+      const hasAlt = parts.includes('Alt');
+      const hasShift = parts.includes('Shift');
+      const hasMeta = parts.includes('Meta');
+      
+      if (
+        e.code === requiredCode &&
+        e.ctrlKey === hasControl &&
+        e.altKey === hasAlt &&
+        e.shiftKey === hasShift &&
+        e.metaKey === hasMeta
+      ) {
         e.preventDefault();
         handleTranslate(hoveredElement);
       }

@@ -34,6 +34,7 @@ export interface RTTRSettings {
   enableAutoTranslate: boolean;                   // 划词松手自动翻译
   enableClickTranslate: boolean;                  // 划词后点击选区翻译
   enableLongPressTranslate: boolean;              // 长按/选中长按进行 AI 语境翻译
+  paragraphShortcut: string;                      // 段落翻译快捷键 (例如 'Alt+KeyT')
 }
 
 // ─── 默认值 ──────────────────────────────────────────────
@@ -59,6 +60,7 @@ const DEFAULT_SETTINGS: RTTRSettings = {
   enableAutoTranslate: true,
   enableClickTranslate: false,
   enableLongPressTranslate: true,
+  paragraphShortcut: 'Alt+KeyT',
 };
 
 // ─── Storage Items (WXT 类型安全存储) ────────────────────
