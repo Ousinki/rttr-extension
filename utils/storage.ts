@@ -60,7 +60,7 @@ const DEFAULT_SETTINGS: RTTRSettings = {
   enableAutoTranslate: true,
   enableClickTranslate: false,
   enableLongPressTranslate: true,
-  paragraphShortcut: 'Alt+KeyT',
+  paragraphShortcut: '',
 };
 
 // ─── Storage Items (WXT 类型安全存储) ────────────────────

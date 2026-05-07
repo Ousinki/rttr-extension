@@ -103,7 +103,7 @@ function testTTS() {
 const isRecordingShortcut = ref(false);
 
 function formatShortcutDisplay(shortcutStr: string | undefined): string {
-  if (!shortcutStr) return '无快捷键';
+  if (!shortcutStr) return '未启用';
   return shortcutStr.split('+').map(part => {
     if (part === 'Alt') return 'Option (⌥)';
     if (part === 'Meta') return 'Command (⌘)';
@@ -115,7 +115,24 @@ function formatShortcutDisplay(shortcutStr: string | undefined): string {
   }).join(' + ');
 }
 
-function startRecordingShortcut() {
+function getShortcutKeys(shortcutStr: string | undefined): string[] {
+  if (!shortcutStr) return [];
+  return shortcutStr.split('+').map(part => {
+    if (part === 'Alt') return '⌥';
+    if (part === 'Meta') return '⌘';
+    if (part === 'Control') return '⌃';
+    if (part === 'Shift') return '⇧';
+    if (part.startsWith('Key')) return part.replace('Key', '');
+    if (part.startsWith('Digit')) return part.replace('Digit', '');
+    return part;
+  });
+}
+
+function startRecordingShortcut(e?: MouseEvent) {
+  if (e) {
+    e.stopPropagation();
+  }
+  
   if (isRecordingShortcut.value) {
     stopRecordingShortcut();
     return;
@@ -126,6 +143,14 @@ function startRecordingShortcut() {
   const handleKeydown = (e: KeyboardEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    
+    // Support Escape or Backspace to clear shortcut
+    if (e.code === 'Escape' || e.code === 'Backspace') {
+      settings.value.paragraphShortcut = '';
+      saveSettings();
+      stopRecordingShortcut();
+      return;
+    }
     
     const modifiers = [];
     if (e.ctrlKey) modifiers.push('Control');
@@ -144,11 +169,17 @@ function startRecordingShortcut() {
     stopRecordingShortcut();
   };
   
+  const handleClickOutside = () => {
+    stopRecordingShortcut();
+  };
+  
   // Attach at capturing phase to intercept before anything else
   document.addEventListener('keydown', handleKeydown, true);
+  document.addEventListener('click', handleClickOutside, true);
   
   // Store the handler on window to remove it later
   (window as any).__rttrShortcutHandler = handleKeydown;
+  (window as any).__rttrClickHandler = handleClickOutside;
 }
 
 function stopRecordingShortcut() {
@@ -156,6 +187,10 @@ function stopRecordingShortcut() {
   if ((window as any).__rttrShortcutHandler) {
     document.removeEventListener('keydown', (window as any).__rttrShortcutHandler, true);
     delete (window as any).__rttrShortcutHandler;
+  }
+  if ((window as any).__rttrClickHandler) {
+    document.removeEventListener('click', (window as any).__rttrClickHandler, true);
+    delete (window as any).__rttrClickHandler;
   }
 }
 
@@ -486,7 +521,7 @@ watch(settings, () => {
         </div>
 
         <div class="animation-previews" style="grid-template-columns: 1fr;">
-          <div class="preview-box active">
+          <div class="preview-box" :class="{ active: !!settings.paragraphShortcut }">
             <div class="preview-title">沉浸式 Ruby 注音效果演示</div>
             <div class="anim-container anim-paragraph-trans" style="height: 140px; padding: 24px; display: flex; align-items: center; justify-content: center; background: #fafafa;">
               <div class="anim-text" style="font-size: 15px; line-height: 2.2; color: #333;">
@@ -503,8 +538,8 @@ watch(settings, () => {
                 the English words.
               </div>
               <!-- Floating keyboard hint animation -->
-              <div class="anim-floating-shortcut">
-                <span class="key">⌥</span> <span class="key">T</span>
+              <div class="anim-floating-shortcut" v-if="settings.paragraphShortcut">
+                <span class="key" v-for="key in getShortcutKeys(settings.paragraphShortcut)" :key="key">{{ key }}</span>
               </div>
             </div>
           </div>
