@@ -1947,7 +1947,7 @@ export default defineContentScript({
           opacity: 0;
           transform: translateY(4px) scale(0.98);
           position: absolute;
-          z-index: 2147483647; /* MAX Z-INDEX */
+          z-index: 2147483646; /* One below max so pronounce badge is on top */
           background: rgba(28, 28, 30, 0.95);
           backdrop-filter: blur(12px);
           -webkit-backdrop-filter: blur(12px);
@@ -1995,7 +1995,7 @@ export default defineContentScript({
           box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
           padding: 6px 10px;
           font-size: 14px;
-          z-index: 2147483647;
+          z-index: 2147483646; /* One below max */
           border-radius: 0px; /* 直角矩形 */
           pointer-events: none;
           white-space: pre-wrap;
@@ -2121,7 +2121,7 @@ export default defineContentScript({
         /* ─── AI 双击解释悬浮窗 ─── */
         #rttr-explain-panel {
           position: absolute;
-          z-index: 2147483647;
+          z-index: 2147483646; /* One below max */
           width: 320px;
           background: #fdfaf5; /* 欧路牛皮纸底色 */
           border: 1px solid rgba(140, 120, 80, 0.2);
