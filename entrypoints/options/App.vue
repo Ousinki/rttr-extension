@@ -1543,7 +1543,8 @@ body {
 
 @keyframes paragraphTextGray {
   0%, 31% { color: #333; }
-  33%, 85% { color: #9ca3af; } /* Turn gray right after shortcut (32%) */
+  33%, 44% { color: #9ca3af; } /* Turn gray right after shortcut (32%) for loading state */
+  45%, 85% { color: #333; } /* Restore to black when translation finishes */
   90%, 100% { color: #333; }
 }
 
