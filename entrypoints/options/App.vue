@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { settingsStorage } from '@/utils/storage';
 import type { RTTRSettings } from '@/utils/storage';
 
@@ -22,6 +22,10 @@ const testing = ref(false);
 const testResult = ref<string>('');
 const testingTTS = ref(false);
 const testResultTTS = ref<string>('');
+const paragraphCommandShortcut = ref('');
+const commandShortcutTokens = computed(() => parseCommandShortcut(paragraphCommandShortcut.value));
+const commandShortcutModifiers = computed(() => commandShortcutTokens.value.filter(token => token.kind === 'modifier'));
+const commandShortcutKeys = computed(() => commandShortcutTokens.value.filter(token => token.kind === 'key'));
 
 const loadVoices = () => {
   const synth = window.speechSynthesis;
@@ -37,11 +41,20 @@ const loadVoices = () => {
 onMounted(async () => {
   const savedSettings = await settingsStorage.getValue();
   settings.value = { ...settings.value, ...savedSettings };
+  await loadCommandShortcuts();
   
   loadVoices();
   if (window.speechSynthesis.onvoiceschanged !== undefined) {
     window.speechSynthesis.onvoiceschanged = loadVoices;
   }
+
+  window.addEventListener('focus', handleCommandShortcutRefresh);
+  document.addEventListener('visibilitychange', handleCommandShortcutRefresh);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('focus', handleCommandShortcutRefresh);
+  document.removeEventListener('visibilitychange', handleCommandShortcutRefresh);
 });
 
 watch(() => settings.value.translationEngine, (newVal, oldVal) => {
@@ -98,139 +111,52 @@ function testTTS() {
   synth.speak(utterance);
 }
 
-// ─── Shortcut Recorder Logic ───
-const isRecordingShortcut = ref(false);
-
-function formatShortcutDisplay(shortcutStr: string | undefined): string {
-  if (!shortcutStr) return '未启用';
-  return shortcutStr.split('+').map(part => {
-    if (part === 'Alt') return 'Option(⌥)';
-    if (part === 'Meta') return 'Command(⌘)';
-    if (part === 'Control') return 'Ctrl(⌃)';
-    if (part === 'Shift') return 'Shift(⇧)';
-    if (part.startsWith('Key')) return part.replace('Key', '');
-    if (part.startsWith('Digit')) return part.replace('Digit', '');
-    return part;
-  }).join(' + ');
+function openChromeShortcuts() {
+  browser.tabs.create({ url: 'chrome://extensions/shortcuts' });
 }
 
-function getShortcutKeys(shortcutStr: string | undefined): string[] {
-  if (!shortcutStr) return [];
-  return shortcutStr.split('+').map(part => {
-    if (part === 'Alt') return '⌥';
-    if (part === 'Meta') return '⌘';
-    if (part === 'Control') return '⌃';
-    if (part === 'Shift') return '⇧';
-    if (part.startsWith('Key')) return part.replace('Key', '');
-    if (part.startsWith('Digit')) return part.replace('Digit', '');
-    return part;
+async function loadCommandShortcuts() {
+  const commands = await browser.commands.getAll();
+  const paragraphCommand = commands.find(command => command.name === 'translate-paragraph');
+  paragraphCommandShortcut.value = paragraphCommand?.shortcut || '';
+}
+
+function formatCommandShortcut(shortcut: string): string {
+  if (!shortcut) return '未设置';
+  return shortcut
+    .replace(/\bAlt\b/g, 'Option(⌥)')
+    .replace(/\bCommand\b/g, 'Command(⌘)')
+    .replace(/\bCtrl\b/g, 'Ctrl(⌃)')
+    .replace(/\bMacCtrl\b/g, 'Control(⌃)')
+    .replace(/\bShift\b/g, 'Shift(⇧)');
+}
+
+type CommandShortcutToken = {
+  label: string;
+  kind: 'modifier' | 'key';
+};
+
+function parseCommandShortcut(shortcut: string): CommandShortcutToken[] {
+  if (!shortcut) return [];
+  const parts = shortcut.includes('+')
+    ? shortcut.split('+')
+    : shortcut.match(/Command|MacCtrl|Ctrl|Alt|Shift|[⌘⌃⌥⇧]|[A-Z0-9]|F(?:[1-9]|1[0-2])|Space|Enter|Tab|Arrow(?:Up|Down|Left|Right)/g) || [shortcut];
+
+  return parts.map((part) => {
+    if (part === 'Alt') return { label: '⌥', kind: 'modifier' };
+    if (part === 'Command') return { label: '⌘', kind: 'modifier' };
+    if (part === 'Ctrl' || part === 'MacCtrl') return { label: '⌃', kind: 'modifier' };
+    if (part === 'Shift') return { label: '⇧', kind: 'modifier' };
+    if (part === '⌥' || part === '⌘' || part === '⌃' || part === '⇧') return { label: part, kind: 'modifier' };
+    return { label: part, kind: 'key' };
   });
 }
 
-const shortcutWarning = computed(() => {
-  const shortcut = settings.value.paragraphShortcut;
-  if (!shortcut) return '';
-  
-  const systemConflicts = [
-    // Meta (Mac) browser conflicts
-    'Meta+KeyC', 'Meta+KeyV', 'Meta+KeyX', 'Meta+KeyZ', 'Meta+KeyA',
-    'Meta+KeyT', 'Meta+KeyW', 'Meta+KeyN', 'Meta+Shift+KeyT', 'Meta+Shift+KeyW',
-    'Meta+KeyR', 'Meta+Shift+KeyR',
-    'Meta+KeyF', 'Meta+KeyG',
-    'Meta+KeyS', 'Meta+KeyP',
-    'Meta+Space',
-    
-    // Control (Win/Linux) browser conflicts
-    'Control+KeyC', 'Control+KeyV', 'Control+KeyX', 'Control+KeyZ', 'Control+KeyA',
-    'Control+KeyT', 'Control+KeyW', 'Control+KeyN', 'Control+Shift+KeyT', 'Control+Shift+KeyW',
-    'Control+KeyR', 'Control+Shift+KeyR',
-    'Control+KeyF', 'Control+KeyG',
-    'Control+KeyS', 'Control+KeyP',
-    
-    // Global conflicts
-    'Alt+F4',
-    'Alt+ArrowLeft', 'Alt+ArrowRight'
-  ];
-  
-  if (systemConflicts.includes(shortcut)) {
-    return '此组合键是系统或浏览器的保留快捷键，可能会冲突导致无法触发。';
-  }
-  return '';
-});
-
-function startRecordingShortcut(e?: MouseEvent) {
-  if (e) {
-    e.stopPropagation();
-  }
-  
-  if (isRecordingShortcut.value) {
-    stopRecordingShortcut();
-    return;
-  }
-  
-  isRecordingShortcut.value = true;
-  
-  const handleKeydown = (e: KeyboardEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // Support Escape or Backspace to clear shortcut
-    if (e.code === 'Escape' || e.code === 'Backspace') {
-      settings.value.paragraphShortcut = '';
-      saveSettings();
-      stopRecordingShortcut();
-      return;
-    }
-    
-    const modifiers = [];
-    if (e.ctrlKey) modifiers.push('Control');
-    if (e.altKey) modifiers.push('Alt');
-    if (e.shiftKey) modifiers.push('Shift');
-    if (e.metaKey) modifiers.push('Meta');
-    
-    // Ignore if only modifier is pressed
-    if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
-    
-    // Require at least one valid modifier (Ctrl, Alt, Meta) to prevent breaking standard typing
-    const hasValidModifier = e.ctrlKey || e.altKey || e.metaKey;
-    if (!hasValidModifier && !e.code.startsWith('F')) {
-      // Must have a valid modifier, OR be a function key (F1-F12)
-      return; 
-    }
-    
-    const key = e.code;
-    const newShortcut = [...modifiers, key].join('+');
-    
-    settings.value.paragraphShortcut = newShortcut;
-    saveSettings();
-    stopRecordingShortcut();
-  };
-  
-  const handleClickOutside = () => {
-    stopRecordingShortcut();
-  };
-  
-  // Attach at capturing phase to intercept before anything else
-  document.addEventListener('keydown', handleKeydown, true);
-  document.addEventListener('click', handleClickOutside, true);
-  
-  // Store the handler on window to remove it later
-  (window as any).__rttrShortcutHandler = handleKeydown;
-  (window as any).__rttrClickHandler = handleClickOutside;
-}
-
-function stopRecordingShortcut() {
-  isRecordingShortcut.value = false;
-  if ((window as any).__rttrShortcutHandler) {
-    document.removeEventListener('keydown', (window as any).__rttrShortcutHandler, true);
-    delete (window as any).__rttrShortcutHandler;
-  }
-  if ((window as any).__rttrClickHandler) {
-    document.removeEventListener('click', (window as any).__rttrClickHandler, true);
-    delete (window as any).__rttrClickHandler;
+async function handleCommandShortcutRefresh() {
+  if (document.visibilityState === 'visible') {
+    await loadCommandShortcuts();
   }
 }
-
 
 async function testTranslation() {
   testing.value = true;
@@ -556,24 +482,20 @@ watch(settings, () => {
         <div style="margin-bottom: 24px; padding: 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between;">
           <div>
             <div style="font-size: 14px; font-weight: 600; color: #111827; margin-bottom: 4px;">触发快捷键</div>
-            <div style="font-size: 12px; color: #6b7280;">划选一段英文文本，按下该组合键即可进行段落注音翻译。</div>
+            <div style="font-size: 12px; color: #6b7280;">
+              当前：{{ formatCommandShortcut(paragraphCommandShortcut) }}。请在 Chrome 的扩展快捷键页面设置。
+            </div>
           </div>
-          <button 
-            @click="startRecordingShortcut" 
-            style="background: #fff; border: 1px solid #d1d5db; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; cursor: pointer; min-width: 140px; text-align: center; font-weight: 500; transition: all 0.2s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.05);"
-            :style="isRecordingShortcut ? 'border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.2); color: #3b82f6;' : 'color: #374151;'"
+          <button
+            @click="openChromeShortcuts"
+            style="background: #fff; border: 1px solid #d1d5db; padding: 8px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; min-width: 140px; text-align: center; font-weight: 500; transition: all 0.2s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.05); color: #374151;"
           >
-            {{ isRecordingShortcut ? '请按下组合键...' : formatShortcutDisplay(settings.paragraphShortcut) }}
+            打开快捷键页面
           </button>
-        </div>
-        
-        <div v-if="shortcutWarning" style="margin-top: -16px; margin-bottom: 24px; padding: 12px 16px; background: #fffbeb; border-radius: 8px; border: 1px solid #fde68a; display: flex; align-items: flex-start; gap: 8px;">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-top: 2px; flex-shrink: 0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-          <span style="font-size: 13px; color: #92400e; line-height: 1.5;">{{ shortcutWarning }}</span>
         </div>
 
         <div class="animation-previews" style="grid-template-columns: 1fr;">
-          <div class="preview-box" :class="{ active: !!settings.paragraphShortcut }">
+          <div class="preview-box active">
             <div class="preview-title">沉浸式 Ruby 注音效果演示</div>
             <div class="anim-container anim-paragraph-trans" style="height: 220px; padding: 24px 32px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; background: #fafafa; gap: 16px;">
               <div class="anim-text" style="font-size: 15px; line-height: 1.8; color: #333; text-align: left; width: 100%;">
@@ -597,8 +519,26 @@ watch(settings, () => {
                 It helps you read and learn efficiently without interruption.
               </div>
               <!-- Floating keyboard hint animation -->
-              <div class="anim-floating-shortcut" v-if="settings.paragraphShortcut">
-                <span class="key" v-for="key in getShortcutKeys(settings.paragraphShortcut)" :key="key">{{ key }}</span>
+              <div class="anim-floating-shortcut" v-if="paragraphCommandShortcut">
+                <span class="shortcut-group">
+                  <span
+                    class="key key-modifier"
+                    v-for="token in commandShortcutModifiers"
+                    :key="token.label"
+                  >
+                    {{ token.label }}
+                  </span>
+                </span>
+                <span class="shortcut-plus" v-if="commandShortcutModifiers.length && commandShortcutKeys.length">+</span>
+                <span class="shortcut-group" v-if="commandShortcutKeys.length">
+                  <span
+                    class="key key-main"
+                    v-for="token in commandShortcutKeys"
+                    :key="token.label"
+                  >
+                    {{ token.label }}
+                  </span>
+                </span>
               </div>
               <!-- Floating mouse cursor -->
               <svg class="anim-cursor anim-paragraph-cursor" width="24" height="24" viewBox="0 0 24 24"><path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z" fill="#000" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
@@ -1605,21 +1545,49 @@ body {
   bottom: 16px;
   right: 24px;
   display: flex;
+  align-items: center;
   gap: 6px;
   opacity: 0;
   animation: floatingShortcutAnim 6s infinite;
+}
+
+.shortcut-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shortcut-plus {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  color: #6b7280;
+  font-weight: 600;
 }
 
 .anim-floating-shortcut .key {
   background: white;
   border: 1px solid #d1d5db;
   border-radius: 6px;
-  padding: 4px 8px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 13px;
+  padding: 4px 6px;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 12px;
   color: #374151;
   box-shadow: 0 2px 0 #d1d5db;
   transition: all 0.1s;
+}
+
+.anim-floating-shortcut .key-modifier {
+  padding-left: 7px;
+  padding-right: 7px;
+  letter-spacing: 0;
+}
+
+.anim-floating-shortcut .key-main {
+  min-width: 16px;
+  text-align: center;
+  font-weight: 600;
+  padding-left: 5px;
+  padding-right: 5px;
 }
 
 @keyframes floatingShortcutAnim {

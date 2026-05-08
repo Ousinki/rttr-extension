@@ -116,18 +116,6 @@ export default defineContentScript({
       return sel;
     }
 
-    function checkShortcut(e: KeyboardEvent, shortcut: string): boolean {
-      if (!shortcut) return false;
-      const keys = shortcut.split('+');
-      const ctrl = keys.includes('Ctrl');
-      const meta = keys.includes('Meta');
-      const alt = keys.includes('Alt');
-      const shift = keys.includes('Shift');
-      const code = keys.filter(k => !['Ctrl', 'Meta', 'Alt', 'Shift'].includes(k))[0];
-      
-      return e.ctrlKey === ctrl && e.metaKey === meta && e.altKey === alt && e.shiftKey === shift && e.code === code;
-    }
-
     // -- Global Event Listeners --
 
     document.addEventListener('click', async (e) => {
@@ -220,29 +208,6 @@ export default defineContentScript({
           const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
           uiActions.showPronounceBadge(speakerSVG, rect, true);
           return;
-        }
-      }
-
-      // Translate (Paragraph)
-      if (checkShortcut(e, currentSettings?.paragraphShortcut || 'Alt+KeyT')) {
-        e.preventDefault();
-        
-        const selection = getActiveSelection();
-        let targetNode: Node | null = null;
-
-        if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
-          targetNode = selection.anchorNode;
-        } else if (lastMouseTarget) {
-          targetNode = lastMouseTarget;
-        }
-
-        if (!targetNode) {
-          return;
-        }
-        
-        const paragraph = findParagraph(targetNode as HTMLElement);
-        if (paragraph) {
-          handleTranslate(paragraph);
         }
       }
     }, { capture: true });
