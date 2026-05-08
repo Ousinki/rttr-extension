@@ -3,6 +3,12 @@
   <h1>RTTR (RubyText Translator)</h1>
   <p><strong>Immersive AI Translation & Pronunciation Extension</strong></p>
   <p>
+    <a href="README.md"><b>English</b></a> | 
+    <a href="README.zh-CN.md">简体中文</a> | 
+    <a href="README.zh-TW.md">繁體中文</a> | 
+    <a href="README.ja.md">日本語</a>
+  </p>
+  <p>
     <a href="https://github.com/Ousinki/rttr-extension/blob/main/LICENSE">
       <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT">
     </a>
