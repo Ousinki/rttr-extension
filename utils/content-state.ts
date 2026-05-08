@@ -37,6 +37,7 @@ export const uiState = reactive({
   },
   pronounceBadge: {
     visible: false,
+    word: null as string | null,
     content: '',
     isHTML: false,
     rect: null as Rect | null,
@@ -85,14 +86,34 @@ export const uiActions = {
   },
 
   // Pronounce Badge
-  showPronounceBadge(content: string, rect: DOMRect, isHTML = false) {
-    uiState.pronounceBadge.content = content;
-    uiState.pronounceBadge.isHTML = isHTML;
-    uiState.pronounceBadge.rect = toRect(rect);
-    uiState.pronounceBadge.visible = true;
+  showPronounceBadge(content: string, rect: DOMRect, isHTML = false, word: string | null = null) {
+    const b = uiState.pronounceBadge;
+    const newRect = toRect(rect);
+    // Skip redundant updates on repeated clicks of the same word so Vue
+    // doesn't re-run style/transition effects and cause a flicker.
+    if (
+      b.visible &&
+      b.word === word &&
+      b.content === content &&
+      b.isHTML === isHTML &&
+      newRect &&
+      b.rect &&
+      b.rect.top === newRect.top &&
+      b.rect.left === newRect.left &&
+      b.rect.width === newRect.width &&
+      b.rect.height === newRect.height
+    ) {
+      return;
+    }
+    b.word = word;
+    b.content = content;
+    b.isHTML = isHTML;
+    b.rect = newRect;
+    b.visible = true;
   },
   hidePronounceBadge() {
     uiState.pronounceBadge.visible = false;
+    uiState.pronounceBadge.word = null;
   },
 
   // Translation Badge

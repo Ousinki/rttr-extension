@@ -33,6 +33,28 @@ export default defineContentScript({
     // Inject required styles for inline text elements (ShadowRoot cannot style host elements)
     injectStyles();
 
+    // Cache to prevent UI jitter when repeatedly clicking the same word
+    const localIpaCache = new Map<string, string>();
+    const pendingIpaLookups = new Map<string, Promise<string | null>>();
+    const getCachedIpa = (word: string) => localIpaCache.get(word) || null;
+    const lookupIpa = (word: string) => {
+      const cached = getCachedIpa(word);
+      if (cached) return Promise.resolve(cached);
+      const pending = pendingIpaLookups.get(word);
+      if (pending) return pending;
+
+      const request = safeSendMessage({ type: 'LOOKUP_IPA', word }).then((resp: any) => {
+        const ipa = resp?.ipa || null;
+        if (ipa) localIpaCache.set(word, ipa);
+        return ipa;
+      }).finally(() => {
+        pendingIpaLookups.delete(word);
+      });
+
+      pendingIpaLookups.set(word, request);
+      return request;
+    };
+
 
 
     // Setup WXT ShadowRoot UI for Vue floating components
@@ -78,6 +100,7 @@ export default defineContentScript({
     let ringDelayTimer: ReturnType<typeof setTimeout> | null = null;
     let longPressEvent: PointerEvent | null = null;
     let selClickInfo: { text: string; rect: DOMRect } | null = null;
+    let lastSelectionClickTime = 0;
 
 
 
@@ -113,13 +136,15 @@ export default defineContentScript({
         isLongPressFired = false;
         return;
       }
+      if (Date.now() - lastSelectionClickTime < 300) {
+        return;
+      }
       const target = e.target as HTMLElement;
       const isInsideUi = !!target.closest('rttr-ui-root') || !!target.closest('.rttr-word') || !!target.closest('#rttr-ui-root') || !!target.closest('div[style*="2147483647"]');
       
       if (!isInsideUi) {
         uiActions.hideContextMenu();
         uiActions.hideExplainPanel();
-        uiActions.hidePronounceBadge();
       }
 
       // Single Click Pronounce Logic
@@ -130,18 +155,26 @@ export default defineContentScript({
           if (result && /^[a-zA-Z'-]+$/.test(result.word.trim()) && !result.word.includes(' ')) {
             const word = result.word.trim();
             speakText(word, currentSettings);
-            
-            if (currentSettings.showSingleClickIPA) {
-              const rect = result.range.getBoundingClientRect();
-              const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
-              
-              uiActions.showPronounceBadge(speakerSVG, rect, true);
-              safeSendMessage({ type: 'LOOKUP_IPA', word }).then((resp: any) => {
-                if (resp?.ipa) {
-                  uiActions.showPronounceBadge(resp.ipa, rect);
+
+            const rect = result.range.getBoundingClientRect();
+            const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+            const cachedIpa = getCachedIpa(word);
+
+            requestAnimationFrame(() => {
+              if (currentSettings.showSingleClickIPA && cachedIpa) {
+                uiActions.showPronounceBadge(cachedIpa, rect, false, word);
+              } else {
+                const shouldFetchIpa = currentSettings.showSingleClickIPA;
+                uiActions.showPronounceBadge(speakerSVG, rect, true, word);
+                if (shouldFetchIpa) {
+                  lookupIpa(word).then((ipa) => {
+                    if (ipa) {
+                      uiActions.showPronounceBadge(ipa, rect, false, word);
+                    }
+                  });
                 }
-              });
-            }
+              }
+            });
 
             const engine = currentSettings?.translationEngine || 'google';
             if (engine !== 'none') {
@@ -179,9 +212,13 @@ export default defineContentScript({
       if (currentSettings?.enableShortcutPronounce && e.code === 'KeyR' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
         const sel = getActiveSelection();
         const text = sel?.toString().trim();
-        if (text && text.length > 0) {
+        if (sel && text && text.length > 0) {
           e.preventDefault();
           speakText(text, currentSettings);
+          const range = sel.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+          uiActions.showPronounceBadge(speakerSVG, rect, true);
           return;
         }
       }
@@ -212,16 +249,16 @@ export default defineContentScript({
 
     let lastMouseTarget: HTMLElement | null = null;
 
-    // Capture selection state on mousedown (before click clears it) for click-on-selection features
-    document.addEventListener('mousedown', (e) => {
+    // Capture selection state on pointerdown (before click clears it) for click-on-selection features
+    document.addEventListener('pointerdown', (e) => {
       if (!currentSettings?.enabled) return;
       const sel = getActiveSelection();
       const text = sel?.toString().trim() || '';
       if (text && sel && sel.rangeCount > 0) {
         const range = sel.getRangeAt(0);
         const rect = range.getBoundingClientRect();
-        if (e.clientX >= rect.left && e.clientX <= rect.right &&
-            e.clientY >= rect.top && e.clientY <= rect.bottom) {
+        if (e.clientX >= rect.left - 5 && e.clientX <= rect.right + 5 &&
+            e.clientY >= rect.top - 5 && e.clientY <= rect.bottom + 5) {
           selClickInfo = { text, rect };
           return;
         }
@@ -229,9 +266,10 @@ export default defineContentScript({
       selClickInfo = null;
     });
 
-    // Selection auto features (auto-pronounce / auto-translate) on mouseup
-    document.addEventListener('mouseup', (e) => {
+    // Selection auto features (auto-pronounce / auto-translate) on pointerup
+    document.addEventListener('pointerup', (e) => {
       if (!currentSettings?.enabled) return;
+      if (e.button !== 0) return;
       if (isLongPressFired) return;
       const target = e.target as HTMLElement;
       if (target.closest('rttr-ui-root') || target.closest('.rttr-word')) return;
@@ -240,10 +278,26 @@ export default defineContentScript({
       if (selClickInfo) {
         const info = selClickInfo;
         selClickInfo = null;
+        lastSelectionClickTime = Date.now();
         if (currentSettings.enableClickPronounce) {
           speakText(info.text, currentSettings);
+          const isSingleWord = /^[a-zA-Z\s'-]+$/.test(info.text.trim()) && !info.text.trim().includes(' ');
+          const word = info.text.trim();
           const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
-          uiActions.showPronounceBadge(speakerSVG, info.rect, true);
+          const cachedIpa = isSingleWord ? getCachedIpa(word) : null;
+
+          if (isSingleWord && currentSettings.showSingleClickIPA && cachedIpa) {
+            uiActions.showPronounceBadge(cachedIpa, info.rect, false, word);
+          } else {
+            uiActions.showPronounceBadge(speakerSVG, info.rect, true, word);
+            if (isSingleWord && currentSettings.showSingleClickIPA) {
+              lookupIpa(word).then((ipa) => {
+                if (ipa) {
+                  uiActions.showPronounceBadge(ipa, info.rect, false, word);
+                }
+              });
+            }
+          }
         }
         if (currentSettings.enableClickTranslate && currentSettings.translationEngine !== 'none') {
           const engine = currentSettings.translationEngine;
@@ -270,8 +324,25 @@ export default defineContentScript({
 
         if (currentSettings.enableAutoPronounce) {
           speakText(text, currentSettings);
+          const isSingleWord = /^[a-zA-Z\s'-]+$/.test(text) && !text.includes(' ');
+          const word = text.trim();
           const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
-          uiActions.showPronounceBadge(speakerSVG, rect, true);
+
+          requestAnimationFrame(() => {
+            const cachedIpa = isSingleWord ? getCachedIpa(word) : null;
+            if (isSingleWord && currentSettings.showSingleClickIPA && cachedIpa) {
+              uiActions.showPronounceBadge(cachedIpa, rect, false, word);
+            } else {
+              uiActions.showPronounceBadge(speakerSVG, rect, true, word);
+              if (isSingleWord && currentSettings.showSingleClickIPA) {
+                lookupIpa(word).then((ipa) => {
+                  if (ipa) {
+                    uiActions.showPronounceBadge(ipa, rect, false, word);
+                  }
+                });
+              }
+            }
+          });
         }
         if (currentSettings.enableAutoTranslate && currentSettings.translationEngine !== 'none') {
           const engine = currentSettings.translationEngine;
@@ -360,6 +431,8 @@ export default defineContentScript({
       longPressTimer = setTimeout(() => {
         isLongPressFired = true;
         speakText(longPressWord, currentSettings);
+        const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+        uiActions.showPronounceBadge(speakerSVG, longPressRect(), true);
         
         safeSendMessage({
           type: 'CONTEXTUAL_TRANSLATE',
@@ -580,8 +653,13 @@ function setParagraphLoading(paragraph: HTMLElement, isLoading: boolean) {
 function getWordAtClick(e: MouseEvent): { word: string; range: Range } | null {
   const x = e.clientX;
   const y = e.clientY;
-  let range: Range | null = null;
 
+  // The element actually under the cursor. If the caret snaps to text in a
+  // different element, we reject it as a blank-space click.
+  const elAtPoint = document.elementFromPoint(x, y) as HTMLElement | null;
+  if (!elAtPoint) return null;
+
+  let range: Range | null = null;
   if (document.caretRangeFromPoint) {
     range = document.caretRangeFromPoint(x, y);
   } else if ((document as any).caretPositionFromPoint) {
@@ -598,14 +676,31 @@ function getWordAtClick(e: MouseEvent): { word: string; range: Range } | null {
   const textNode = range.startContainer;
   if (textNode.nodeType !== Node.TEXT_NODE) return null;
 
+  // The element under the cursor must be the text's parent or a descendant of it.
+  // If it's an ancestor (body, a wrapper div, etc.), the caret snapped across
+  // element boundaries — meaning the click actually landed outside the text.
+  const textParent = textNode.parentElement;
+  if (!textParent) return null;
+  if (elAtPoint !== textParent && !textParent.contains(elAtPoint)) {
+    return null;
+  }
+
   const text = textNode.nodeValue || '';
   const offset = range.startOffset;
 
+  // The caret must sit next to a word character on at least one side.
+  // Clicks that land purely in whitespace (between words, trailing spaces)
+  // snap to a position where neither neighbor is a letter — reject those.
+  const prevCh = offset > 0 ? text[offset - 1] : '';
+  const nextCh = offset < text.length ? text[offset] : '';
+  const wordRe = /[a-zA-Z'-]/;
+  if (!wordRe.test(prevCh) && !wordRe.test(nextCh)) return null;
+
   let start = offset;
-  while (start > 0 && /[a-zA-Z'-]/.test(text[start - 1])) start--;
+  while (start > 0 && wordRe.test(text[start - 1])) start--;
 
   let end = offset;
-  while (end < text.length && /[a-zA-Z'-]/.test(text[end])) end++;
+  while (end < text.length && wordRe.test(text[end])) end++;
 
   if (start === end) return null;
 
@@ -613,6 +708,18 @@ function getWordAtClick(e: MouseEvent): { word: string; range: Range } | null {
   const wordRange = document.createRange();
   wordRange.setStart(textNode, start);
   wordRange.setEnd(textNode, end);
+
+  // Final gate: click must fall inside the word's rendered rects.
+  const rects = wordRange.getClientRects();
+  let isInside = false;
+  for (let i = 0; i < rects.length; i++) {
+    const r = rects[i];
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+      isInside = true;
+      break;
+    }
+  }
+  if (!isInside) return null;
 
   return { word, range: wordRange };
 }
