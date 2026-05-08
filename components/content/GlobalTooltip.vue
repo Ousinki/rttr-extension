@@ -10,11 +10,11 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { uiState } from '@/utils/content-state';
+import { uiState, nearestLineRect } from '@/utils/content-state';
 
 const tooltipStyle = computed(() => {
   if (!uiState.tooltip.rect) return {};
-  const rect = uiState.tooltip.rect;
+  const rect = nearestLineRect(uiState.tooltip.rect);
   const top = window.scrollY + rect.top - 8;
   const centerX = rect.left + rect.width / 2;
   const left = window.scrollX + centerX;

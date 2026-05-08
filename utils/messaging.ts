@@ -58,6 +58,12 @@ export interface ContextualTranslateRequest {
   sentence: string;
 }
 
+export interface ReadNumberRequest {
+  type: 'READ_NUMBER';
+  numberText: string;
+  sentence: string;
+}
+
 export interface OpenOptionsRequest {
   type: 'OPEN_OPTIONS';
 }
@@ -95,6 +101,7 @@ export type RTTRMessage =
   | LookupIpaRequest
   | ExplainWordRequest
   | ContextualTranslateRequest
+  | ReadNumberRequest
   | OpenOptionsRequest
   | FetchImageBase64Request
   | FetchTranslationRequest;

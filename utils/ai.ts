@@ -8,8 +8,13 @@ import type { RTTRSettings } from './storage';
 // ─── 类型定义 ────────────────────────────────────────────
 
 export interface AnnotationResult {
+  text: string;
   word: string;
-  translation: string;
+  start: number;
+  end: number;
+  importance: 'highlight';
+  translation?: string;
+  kind?: 'word' | 'phrase' | 'name' | 'number' | 'other';
   explanation?: string;
   pronunciation?: string;
   ipa?: string;
@@ -19,24 +24,46 @@ export interface AnnotationResult {
 
 const SYSTEM_PROMPT = `你是一个高级的英文阅读辅助引擎。
 
-【核心任务】：
-用户会提供一段英文段落。你需要自主阅读这段文字，从中**尽可能全面地**提取所有有实际意义的词汇和词组，并给出精准的中文语境翻译。
+任务：只把英文段落中值得学习的重点 token 标注出来，不要翻译整个段落。
 
-【提取规则（最高优先级）】：
-1. **提取范围必须全面（哪怕是最简单的词）**：所有实义词（名词、动词、形容词、副词）以及它们构成的词组都必须提取。绝对不能因为词汇“太简单”或“太常见”就跳过它！只允许跳过纯粹的语法虚词（冠词、介词、连词、代词、be 动词、助动词、情态动词）。
-2. **复合名词、固定搭配和动词短语必须作为一个整体提取！** 绝对不能将它们拆开成独立的单词分别翻译。同时，如果某个词既作为词组的一部分被提取了，就不要再单独提取它。
-3. 对于「头衔 + 人名」的组合，必须作为一个整体提取。
-4. **每个提取项最多不超过 4 个英文单词！** 绝对不能提取半句话或整句话。如果一个概念超过 4 个词，请拆分成多个独立的词组分别提取。
-5. 提取的原文必须与段落中的文本**精确匹配**（大小写、单复数、时态一致），以便前端能精准定位和注入标注。
-6. 对于专有名词（人名、机构名、地名、专有事件），请在第三列提供有价值的百科式背景介绍（10-30字以内）。对于普通词汇，第三列必须留空。
-7. 对于纯数字、年份，不要翻译，直接在第三列提供英文拼写读法。
-8. 绝对不要输出音标！音标由前端引擎独立处理。
+【最高优先级：专有名词识别】
+所有品牌名、软件名、产品名、人名、地名、机构名、组织名必须标注为 n。
+- 单个词的专有名词也要标注
+- 多词专有名词必须作为整体返回，不要拆开
 
-**输出格式要求**：
-严格按照以下格式输出，每行一个结果，用竖线 | 分隔。一共 3 列。
-字段顺序：英文原文|语境翻译|中文解释(可选)
+【标注粒度：短语优先】
+1. 固定搭配和短语是最小标注单位，不要拆开。
+2. 只有不属于任何搭配的独立难词才以单词为单位标注。
+3. 常见基础词不要标注（如 free, the, system, idea, name, use, run 等）。
 
-直接输出纯文本结果，不要任何 Markdown 语法或多余解释。`;
+【类型】
+w=独立难词, p=固定搭配/短语, n=专有名词（品牌/软件/人名/地名/机构名）, e=事件/典故。
+
+【说明字段】
+n/e token 第 4 项必须给一句很短的中文事实说明（它是什么），不要写"保留原文""通常不翻译"这类规则说明。
+第 5 项（中文名）规则：
+- 人名：必须给中文译名（音译即可）
+- 地名/机构名：如果有通行中文名则给，没有就省略
+- 软件名/品牌名：如果有通行中文名则给，没有就省略
+
+【数字规则】
+独立数字不要返回；但数字属于专有名词整体时必须一起返回。
+
+【格式规则】
+不返回标点和空格。token 必须按原文顺序，start/end 精确匹配原文子串，不能重叠。
+
+严格输出紧凑 JSON，不要 Markdown：
+{"t":[[字段1,字段2,字段3,字段4,字段5,字段6]]}
+字段1=原文文本, 字段2=start, 字段3=end, 字段4=类型(w/p/n/e)
+字段5=中文说明（n/e 必填，w/p 省略）
+字段6=中文译名（人名必填音译，其他有通行中文名才填，否则省略）
+
+w/p 类型只需 4 个字段：["text",start,end,"w"]
+n/e 类型至少 5 个字段，人名必须 6 个字段：["text",start,end,"n","说明","中文译名"]
+
+输入示例："The app was created by John Smith at Nexora Labs, featuring a built-in spell checker and real-time collaboration."
+输出示例：
+{"t":[["John Smith",27,37,"n","该应用的创建者","约翰·史密斯"],["Nexora Labs",41,52,"n","一家软件开发公司","奈索拉实验室"],["built-in",66,74,"w"],["spell checker",75,88,"p"],["real-time collaboration",93,116,"p"]]}`;
 
 // ─── API 调用 ────────────────────────────────────────────
 
@@ -79,41 +106,223 @@ ${text}`;
     throw new Error('AI 返回内容为空');
   }
 
-  return parseAIResponse(content);
+  return parseAIResponse(content, text);
 }
 
 // ─── 解析 AI 响应 ────────────────────────────────────────
 
-function parseAIResponse(content: string): AnnotationResult[] {
+function parseAIResponse(content: string, originalText: string): AnnotationResult[] {
   try {
-    const lines = content.split('\n').filter(line => line.trim() !== '' && !line.trim().startsWith('\`'));
-    const results: AnnotationResult[] = [];
-    
-    for (let line of lines) {
-      // Strip leading and trailing pipes for markdown tables
-      line = line.replace(/^\||\|$/g, '').trim();
-      if (!line || line.startsWith('---')) continue;
-      
-      const parts = line.split('|');
-      // If header row, skip
-      if (parts.length >= 2 && parts[0].trim().toLowerCase() !== '英文原文' && parts[0].trim().toLowerCase() !== 'word') {
-        const res: AnnotationResult = {
-          word: parts[0].trim(),
-          translation: parts[1].trim(),
-        };
-        if (parts.length >= 3 && parts[2].trim()) {
-          res.explanation = parts[2].trim();
-        }
-        if (res.word && res.translation) {
-           results.push(res);
-        }
-      }
-    }
-    return results;
+    const json = JSON.parse(extractJson(content));
+    const rawTokens = Array.isArray(json) ? json : (json?.t ?? json?.tokens ?? json?.results ?? []);
+    return normalizeTokens(rawTokens, originalText);
   } catch (e) {
+    const fallback = parseLegacyResponse(content, originalText);
+    if (fallback.length > 0) {
+      return fallback;
+    }
     console.error('[RTTR] AI 响应解析失败:', content);
     throw new Error('AI 响应解析失败，请检查模型输出格式');
   }
+}
+
+function extractJson(content: string): string {
+  const trimmed = content.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (fenced?.[1]) return fenced[1].trim();
+
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    return trimmed.slice(firstBrace, lastBrace + 1);
+  }
+
+  return trimmed;
+}
+
+function normalizeTokens(rawTokens: unknown[], originalText: string): AnnotationResult[] {
+  const results: AnnotationResult[] = [];
+  let cursor = 0;
+
+  for (const raw of rawTokens) {
+    const item = normalizeRawToken(raw);
+    if (!item) continue;
+    const { text, importance, kind, translation, explanation } = item;
+    if (!text) continue;
+
+    let start = item.start;
+    let end = item.end;
+
+    if (start < 0 || end < 0 || end < start || originalText.slice(start, end) !== text) {
+      const nextIndex = originalText.indexOf(text, cursor);
+      if (nextIndex === -1) continue;
+      start = nextIndex;
+      end = nextIndex + text.length;
+    }
+
+    if (start < cursor) continue;
+    cursor = end;
+
+    results.push({
+      text,
+      word: text,
+      start,
+      end,
+      importance,
+      kind,
+      translation,
+      explanation,
+    });
+  }
+
+  return results.sort((a, b) => a.start - b.start || a.end - b.end);
+}
+
+function normalizeRawToken(raw: unknown): (Pick<AnnotationResult, 'text' | 'start' | 'end' | 'importance'> & {
+  kind?: AnnotationResult['kind'];
+  translation?: string;
+  explanation?: string;
+}) | null {
+  if (Array.isArray(raw)) {
+    const text = typeof raw[0] === 'string' ? raw[0].trim() : '';
+    // Detect legacy format: old format has importance ('h'/'l'/'m') at [3]
+    const isLegacy = typeof raw[3] === 'string' && /^(h|l|m|highlight|latent|muted)$/.test(raw[3]);
+    const kindIdx = isLegacy ? 4 : 3;
+    const explanationIdx = isLegacy ? 5 : 4;
+    const translationIdx = isLegacy ? 6 : 5;
+    const kind = normalizeKind(typeof raw[kindIdx] === 'string' ? raw[kindIdx] : undefined);
+    return {
+      text,
+      start: readInt(raw[1]),
+      end: readInt(raw[2]),
+      importance: 'highlight',
+      kind,
+      translation: shouldKeepCompactExplanation(kind) && typeof raw[translationIdx] === 'string' && raw[translationIdx].trim() ? raw[translationIdx].trim() : undefined,
+      explanation: shouldKeepCompactExplanation(kind) ? normalizeExplanation(raw[explanationIdx]) : undefined,
+    };
+  }
+
+  if (!raw || typeof raw !== 'object') return null;
+  const item = raw as Record<string, unknown>;
+  const importance: AnnotationResult['importance'] = 'highlight';
+  const kind = normalizeKind(typeof item.kind === 'string' ? item.kind : undefined);
+  const text = typeof item.text === 'string'
+    ? item.text.trim()
+    : typeof item.word === 'string'
+      ? item.word.trim()
+      : '';
+
+  return {
+    text,
+    start: readInt(item.start),
+    end: readInt(item.end),
+    importance,
+    kind,
+    translation: undefined,
+    explanation: shouldKeepExplanation(item) ? normalizeExplanation(item.explanation) : undefined,
+  };
+}
+
+function normalizeKind(kind?: string): AnnotationResult['kind'] | undefined {
+  switch (kind) {
+    case 'w':
+    case 'word':
+      return 'word';
+    case 'p':
+    case 'phrase':
+      return 'phrase';
+    case 'n':
+    case 'name':
+    case 'person':
+    case 'place':
+    case 'location':
+    case 'organization':
+    case 'proper_noun':
+      return 'name';
+    case 'e':
+    case 'event':
+    case 'allusion':
+      return 'other';
+    case 'num':
+    case 'number':
+      return 'number';
+    default:
+      return undefined;
+  }
+}
+
+function shouldKeepCompactExplanation(kind?: AnnotationResult['kind']): boolean {
+  return kind === 'name' || kind === 'other';
+}
+
+function normalizeExplanation(value: unknown): string | undefined {
+  const explanation = readOptionalString(value);
+  if (!explanation) return undefined;
+  return isRuleLikeExplanation(explanation) ? undefined : explanation;
+}
+
+function isRuleLikeExplanation(text: string): boolean {
+  return /(?:保留原文|不要翻译|无需翻译|不需要翻译|通常(?:不翻译|保留)|硬译|品牌名、软件名|专有名词)/.test(text);
+}
+
+function parseLegacyResponse(content: string, originalText: string): AnnotationResult[] {
+  const lines = content
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('```'));
+  const results: AnnotationResult[] = [];
+  let cursor = 0;
+
+  for (let line of lines) {
+    line = line.replace(/^\||\|$/g, '').trim();
+    if (!line || line.startsWith('---')) continue;
+
+    const parts = line.split('|');
+    if (parts.length < 2) continue;
+    const text = parts[0].trim();
+    const translation = parts[1].trim();
+    if (!text || !translation) continue;
+
+    const start = originalText.indexOf(text, cursor);
+    if (start === -1) continue;
+    const end = start + text.length;
+    cursor = end;
+
+    results.push({
+      text,
+      word: text,
+      start,
+      end,
+      importance: 'highlight',
+      translation,
+      explanation: undefined,
+    });
+  }
+
+  return results;
+}
+
+function readInt(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : -1;
+  }
+  return -1;
+}
+
+function readOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function shouldKeepExplanation(item: Record<string, unknown>): boolean {
+  const kind = typeof item.kind === 'string' ? item.kind.toLowerCase() : '';
+  if (['name', 'person', 'place', 'location', 'organization', 'event', 'allusion', 'proper_noun'].includes(kind)) {
+    return true;
+  }
+
+  const category = typeof item.category === 'string' ? item.category.toLowerCase() : '';
+  return ['name', 'person', 'place', 'location', 'organization', 'event', 'allusion', 'proper_noun'].includes(category);
 }
 
 // ─── 单词详细语境解释 ──────────────────────────────────────
@@ -228,4 +437,51 @@ export async function contextualTranslate(settings: RTTRSettings, word: string, 
   }
 
   return content.trim();
+}
+
+const NUMBER_READING_PROMPT = `你是英文数字读法引擎。
+
+任务：根据上下文判断用户选中的数字应该如何用英文朗读。
+规则：
+1. 只输出英文读法本身，不要解释，不要中文，不要 Markdown。
+2. 如果数字后面带 days、years、months、percent、dollars 等单位，它是数量，必须按完整基数词读，不要读成编号或版本号。例如 365 days 应读作 three hundred sixty-five days，不能读作 three sixty five。
+3. 如果是年份、日期、版本号、编号、引用标号、百分比、数量或产品名中的数字，要按当前语境选择自然读法。
+4. 如果数字属于产品名或版本名，也只输出数字部分的英文读法。`;
+
+export async function readNumberInContext(settings: RTTRSettings, numberText: string, sentence: string): Promise<string> {
+  const messages = [
+    { role: 'system', content: NUMBER_READING_PROMPT },
+    { role: 'user', content: `【数字】：${numberText}\n【所在句子】：${sentence}` },
+  ];
+
+  const payload = {
+    model: settings.model || 'gemini-2.5-pro',
+    messages,
+    temperature: 0,
+  };
+
+  const response = await fetch(settings.apiEndpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${settings.apiKey}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`API 请求失败 (${response.status}): ${errorBody}`);
+  }
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error('AI 返回内容为空');
+  }
+
+  return content
+    .trim()
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .replace(/\.$/, '');
 }

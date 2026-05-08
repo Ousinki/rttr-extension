@@ -13,6 +13,19 @@ const settings = ref<RTTRSettings>({
   ttsRate: 0.85,
   ttsVolume: 1.0,
   ttsVoiceURI: '',
+  enableAutoPronounce: true,
+  enableClickPronounce: false,
+  enableShortcutPronounce: true,
+  enableSingleClickPronounce: true,
+  translationEngine: 'google',
+  translationPosition: 'bottom',
+  showTranslationEngine: true,
+  showSingleClickIPA: true,
+  enableAutoTranslate: true,
+  enableClickTranslate: false,
+  enableLongPressTranslate: true,
+  enableContextualCollocation: true,
+  paragraphShortcut: '',
 });
 
 const voices = ref<SpeechSynthesisVoice[]>([]);

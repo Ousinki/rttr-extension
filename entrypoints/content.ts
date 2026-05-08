@@ -1,7 +1,7 @@
 
 import { createApp } from 'vue';
 import ContentApp from '@/components/content/ContentApp.vue';
-import { uiActions, uiState } from '@/utils/content-state';
+import { uiActions, uiState, setLastInteractionY } from '@/utils/content-state';
 import { settingsStorage } from '@/utils/storage';
 import {
   applyAnnotations,
@@ -15,6 +15,7 @@ import {
 import { safeSendMessage } from '@/utils/content-messaging';
 import { recognizeImageWord } from '@/utils/content-ocr';
 import { speakText } from '@/utils/tts';
+import { getNumberReading, isNumberLikeText } from '@/utils/number-reading';
 
 
 
@@ -92,8 +93,7 @@ export default defineContentScript({
     document.addEventListener('pointerover', () => {
       if (window.speechSynthesis.getVoices().length === 0) window.speechSynthesis.getVoices();
     }, { once: true });
-    let activeParagraph: HTMLElement | null = null;
-    let translateAbortController: AbortController | null = null;
+    const paragraphAbortControllers = new WeakMap<HTMLElement, AbortController>();
     
     let isLongPressFired = false;
     let longPressTimer: ReturnType<typeof setTimeout> | null = null;
@@ -140,11 +140,27 @@ export default defineContentScript({
         const sel = getActiveSelection();
         if (!sel || sel.toString().trim().length === 0) {
           const result = getWordAtClick(e as MouseEvent);
-          if (result && /^[a-zA-Z'-]+$/.test(result.word.trim()) && !result.word.includes(' ')) {
+          if (result && /^[a-zA-Z0-9'.\-\[\]]+$/.test(result.word.trim()) && !result.word.includes(' ')) {
             const word = result.word.trim();
+            const rect = result.range.getBoundingClientRect();
+            const sentence = getSentenceAroundNode(result.range.startContainer);
+            if (isNumberLikeText(word)) {
+              const numberPhrase = expandNumberWithUnit(result.range);
+              const fallbackReading = getNumberReading(numberPhrase);
+              uiActions.showPronounceBadge(fallbackReading, rect, false, word);
+              safeSendMessage({ type: 'READ_NUMBER', numberText: numberPhrase, sentence }).then((resp: any) => {
+                if (resp?.success && resp.reading) {
+                  uiActions.showPronounceBadge(resp.reading, rect, false, word);
+                  speakText(resp.reading, currentSettings);
+                } else {
+                  speakText(fallbackReading, currentSettings);
+                }
+              });
+              return;
+            }
+
             speakText(word, currentSettings);
 
-            const rect = result.range.getBoundingClientRect();
             const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
             const cachedIpa = getCachedIpa(word);
 
@@ -216,6 +232,7 @@ export default defineContentScript({
 
     // Capture selection state on pointerdown (before click clears it) for click-on-selection features
     document.addEventListener('pointerdown', (e) => {
+      setLastInteractionY(e.clientY);
       if (!currentSettings?.enabled) return;
       const sel = getActiveSelection();
       const text = sel?.toString().trim() || '';
@@ -357,7 +374,6 @@ export default defineContentScript({
       isLongPressFired = false;
 
       const target = e.target as HTMLElement;
-      if (target.closest('.rttr-word') || target.closest('ruby')) return;
       
       const sel = getActiveSelection();
       const selText = sel?.toString().trim() || '';
@@ -378,12 +394,19 @@ export default defineContentScript({
         longPressSentence = getSentenceAroundNode(range.startContainer);
         longPressRect = () => range.getBoundingClientRect();
       } else {
+        const annotatedTarget = getAnnotatedLongPressTarget(target);
+        if (annotatedTarget) {
+          longPressWord = annotatedTarget.text;
+          longPressSentence = getSentenceAroundNode(annotatedTarget.node);
+          longPressRect = () => annotatedTarget.rect();
+        } else {
         // Long press on bare text → translate word under cursor
         const result = getWordAtClick(e);
-        if (!result || !/^[a-zA-Z\s'-]+$/.test(result.word)) return;
+        if (!result || !/^[a-zA-Z0-9\s'.\-\[\]]+$/.test(result.word)) return;
         longPressWord = result.word;
         longPressSentence = getSentenceAroundNode(result.range.startContainer);
         longPressRect = () => result.range.getBoundingClientRect();
+        }
       }
 
       longPressEvent = e;
@@ -397,7 +420,7 @@ export default defineContentScript({
         isLongPressFired = true;
         speakText(longPressWord, currentSettings);
         const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
-        uiActions.showPronounceBadge(speakerSVG, longPressRect(), true);
+        uiActions.showPronounceBadge(speakerSVG, longPressRect(), true, longPressWord);
         
         safeSendMessage({
           type: 'CONTEXTUAL_TRANSLATE',
@@ -511,25 +534,46 @@ export default defineContentScript({
           e.preventDefault();
           
           const isWord = /^[a-zA-Z\s'-]+$/.test(targetText) && !targetText.includes(' ');
+          const isNumber = isNumberLikeText(targetText);
 
           const menuItems: any[] = [];
           
           if (isWord) {
             menuItems.push({ type: 'header', label: targetText, onSpeakClick: () => speakText(targetText, currentSettings) });
             menuItems.push({ type: 'divider', label: 'DIVIDER' });
+          } else if (isNumber) {
+            const numberPhrase = expandNumberWithUnit(targetRange);
+            const fallbackReading = getNumberReading(numberPhrase);
+            const sentence = getSentenceAroundNode(targetRange.startContainer);
+            menuItems.push({ type: 'header', label: '读取中...', onSpeakClick: () => speakText(fallbackReading, currentSettings) });
+            menuItems.push({ type: 'divider', label: 'DIVIDER' });
+            safeSendMessage({ type: 'READ_NUMBER', numberText: numberPhrase, sentence }).then((resp: any) => {
+              const reading = resp?.success && resp.reading ? resp.reading : fallbackReading;
+              uiActions.updateContextMenuItem(0, {
+                label: reading,
+                onSpeakClick: () => speakText(reading, currentSettings),
+              });
+            });
           }
 
           menuItems.push({ icon: iconExplain, label: '分析语境', onClick: () => {
             const rect = targetRange!.getBoundingClientRect();
             const sentence = getSentenceAroundNode(targetRange!.startContainer);
-            uiActions.showExplainPanelLoading(targetText, rect);
             speakText(targetText, currentSettings);
-            safeSendMessage({ type: 'EXPLAIN_WORD', word: targetText, sentence }).then((resp: any) => {
-              if (resp?.success && resp.explanation) {
-                uiActions.showExplainPanel(targetText, resp.ipa || null, resp.explanation, rect);
+            const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+            uiActions.showPronounceBadge(speakerSVG, rect, true, targetText);
+            safeSendMessage({
+              type: 'CONTEXTUAL_TRANSLATE',
+              word: targetText,
+              sentence
+            }).then((resp: any) => {
+              if (resp?.success && resp.translation) {
+                uiActions.showTranslationBadge(resp.translation, 'AI', rect, false,
+                  currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
               }
             });
           }});
+
 
           menuItems.push({ icon: iconTranslate, label: '翻译段落', onClick: () => handleTranslate(findParagraph(targetRange!.startContainer as HTMLElement)) });
           menuItems.push({ type: 'divider', label: 'DIVIDER' });
@@ -543,19 +587,20 @@ export default defineContentScript({
     // Main Translate Handler
     async function handleTranslate(paragraph: HTMLElement | null) {
       if (!paragraph) return;
-      if (activeParagraph === paragraph) return;
-      if (activeParagraph) clearAnnotations(activeParagraph);
-      
-      activeParagraph = paragraph;
+      if (paragraph.getAttribute('data-rttr-annotated') === 'true') {
+        clearAnnotations(paragraph);
+      }
+
       uiActions.hideContextMenu();
       uiActions.hideExplainPanel();
 
       const text = paragraph.textContent || '';
       if (!text.trim()) return;
 
-      if (translateAbortController) translateAbortController.abort();
-      translateAbortController = new AbortController();
-      const signal = translateAbortController.signal;
+      paragraphAbortControllers.get(paragraph)?.abort();
+      const abortController = new AbortController();
+      paragraphAbortControllers.set(paragraph, abortController);
+      const signal = abortController.signal;
 
       const engine = currentSettings?.translationEngine || 'google';
 
@@ -570,10 +615,12 @@ export default defineContentScript({
         if (response?.success && response.results) {
           applyAnnotations(paragraph, response.results, currentSettings, () => isLongPressFired);
         }
+        paragraphAbortControllers.delete(paragraph);
       } catch (err) {
         if (!signal.aborted) {
           setParagraphLoading(paragraph, false);
           console.error(err);
+          paragraphAbortControllers.delete(paragraph);
         }
       }
     }
@@ -619,8 +666,6 @@ function getWordAtClick(e: MouseEvent): { word: string; range: Range } | null {
   const x = e.clientX;
   const y = e.clientY;
 
-  // The element actually under the cursor. If the caret snaps to text in a
-  // different element, we reject it as a blank-space click.
   const elAtPoint = document.elementFromPoint(x, y) as HTMLElement | null;
   if (!elAtPoint) return null;
 
@@ -641,45 +686,67 @@ function getWordAtClick(e: MouseEvent): { word: string; range: Range } | null {
   const textNode = range.startContainer;
   if (textNode.nodeType !== Node.TEXT_NODE) return null;
 
-  // The element under the cursor must be the text's parent or a descendant of it.
-  // If it's an ancestor (body, a wrapper div, etc.), the caret snapped across
-  // element boundaries — meaning the click actually landed outside the text.
   const textParent = textNode.parentElement;
   if (!textParent) return null;
   if (elAtPoint !== textParent && !textParent.contains(elAtPoint)) {
     return null;
   }
 
-  const text = textNode.nodeValue || '';
-  const offset = range.startOffset;
+  // Use TreeWalker to gather all text nodes in the nearest paragraph/block
+  const p = findParagraph(textNode as HTMLElement) || document.body;
+  const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT, null);
+  const nodes: Text[] = [];
+  let n;
+  while (n = walker.nextNode()) nodes.push(n as Text);
 
-  // The caret must sit next to a word character on at least one side.
-  // Clicks that land purely in whitespace (between words, trailing spaces)
-  // snap to a position where neither neighbor is a letter — reject those.
-  const prevCh = offset > 0 ? text[offset - 1] : '';
-  const nextCh = offset < text.length ? text[offset] : '';
-  const wordRe = /[a-zA-Z'-]/;
+  let fullText = '';
+  let targetGlobalOffset = 0;
+  const nodeMap: { node: Text; start: number; end: number }[] = [];
+  
+  for (const node of nodes) {
+    const start = fullText.length;
+    fullText += node.nodeValue || '';
+    nodeMap.push({ node, start, end: fullText.length });
+    if (node === textNode) {
+      targetGlobalOffset = start + range.startOffset;
+    }
+  }
+
+  const prevCh = targetGlobalOffset > 0 ? fullText[targetGlobalOffset - 1] : '';
+  const nextCh = targetGlobalOffset < fullText.length ? fullText[targetGlobalOffset] : '';
+  const wordRe = /[a-zA-Z0-9'.\-\[\]]/;
   if (!wordRe.test(prevCh) && !wordRe.test(nextCh)) return null;
 
-  let start = offset;
-  while (start > 0 && wordRe.test(text[start - 1])) start--;
+  let startGlobal = targetGlobalOffset;
+  while (startGlobal > 0 && wordRe.test(fullText[startGlobal - 1])) startGlobal--;
 
-  let end = offset;
-  while (end < text.length && wordRe.test(text[end])) end++;
+  let endGlobal = targetGlobalOffset;
+  while (endGlobal < fullText.length && wordRe.test(fullText[endGlobal])) endGlobal++;
 
-  if (start === end) return null;
+  if (startGlobal === endGlobal) return null;
 
-  const word = text.substring(start, end);
+  const word = fullText.substring(startGlobal, endGlobal);
+  
+  // Find start and end nodes for the Range
+  const startNodeInfo = nodeMap.find(m => startGlobal >= m.start && startGlobal < m.end) || nodeMap[0];
+  // Note: endGlobal can be equal to m.end, which means it ends exactly at the end of a node
+  const endNodeInfo = nodeMap.find(m => endGlobal > m.start && endGlobal <= m.end) || nodeMap[nodeMap.length - 1];
+  
   const wordRange = document.createRange();
-  wordRange.setStart(textNode, start);
-  wordRange.setEnd(textNode, end);
+  try {
+    wordRange.setStart(startNodeInfo.node, startGlobal - startNodeInfo.start);
+    wordRange.setEnd(endNodeInfo.node, endGlobal - endNodeInfo.start);
+  } catch (e) {
+    return null;
+  }
 
   // Final gate: click must fall inside the word's rendered rects.
+  // Because the word might span multiple elements, it might have multiple rects.
   const rects = wordRange.getClientRects();
   let isInside = false;
   for (let i = 0; i < rects.length; i++) {
     const r = rects[i];
-    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+    if (x >= r.left - 2 && x <= r.right + 2 && y >= r.top - 2 && y <= r.bottom + 2) {
       isInside = true;
       break;
     }
@@ -689,12 +756,53 @@ function getWordAtClick(e: MouseEvent): { word: string; range: Range } | null {
   return { word, range: wordRange };
 }
 
+function expandNumberWithUnit(range: Range): string {
+  const numberText = range.toString().trim();
+  const textNode = range.startContainer;
+  if (textNode.nodeType !== Node.TEXT_NODE) return numberText;
+
+  const text = textNode.nodeValue || '';
+  const after = text.slice(range.endOffset);
+  const unitMatch = after.match(/^\s+(days?|years?|months?|weeks?|hours?|minutes?|seconds?|percent|%|dollars?|euros?|pounds?|meters?|kilometers?|miles?|bytes?|kb|mb|gb|tb)\b/i);
+  if (!unitMatch) return numberText;
+
+  return `${numberText}${unitMatch[0]}`;
+}
+
+function getAnnotatedLongPressTarget(target: HTMLElement): { text: string; node: Node; rect: () => DOMRect } | null {
+  const wrapper = target.closest('.rttr-word') as HTMLElement | null;
+  if (!wrapper) return null;
+
+  const targetText = (target.tagName === 'SPAN' ? target.textContent : '')?.trim() || '';
+  if (isNumberLikeText(targetText)) {
+    return {
+      text: targetText,
+      node: target,
+      rect: () => target.getBoundingClientRect(),
+    };
+  }
+
+  const text = Array.from(wrapper.childNodes)
+    .filter((node) => !(node instanceof HTMLElement && node.tagName === 'RT'))
+    .map((node) => node.textContent || '')
+    .join('')
+    .trim();
+
+  if (!text || !/^[a-zA-Z0-9\s'.\-\[\]]+$/.test(text)) return null;
+
+  return {
+    text,
+    node: wrapper,
+    rect: () => wrapper.getBoundingClientRect(),
+  };
+}
+
 function injectStyles() {
   const style = document.createElement('style');
   style.id = 'rttr-injected-styles';
   style.textContent = `
     .rttr-word {
-      color: var(--rttr-color, #4a90d9);
+      color: var(--rttr-token-color, #4a90d9);
       cursor: text;
       position: relative;
       transition: opacity 0.3s ease, color 0.2s ease;
@@ -706,16 +814,19 @@ function injectStyles() {
       color: #000 !important;
     }
     .rttr-word:hover {
-      color: var(--rttr-color-hover, #2a70b9);
+      color: var(--rttr-token-color, #2a70b9) !important;
     }
     span.rttr-tooltip-only, ruby.rttr-has-tooltip {
       border-bottom: 1px dashed currentColor;
     }
+    .rttr-word-highlight rt.rttr-translation {
+      opacity: 0.85;
+    }
+
     ruby.rttr-word rt.rttr-translation {
       cursor: pointer;
       font-size: 0.55em;
       color: inherit;
-      opacity: 0.85;
       font-weight: 400;
       letter-spacing: 0;
       line-height: 1;

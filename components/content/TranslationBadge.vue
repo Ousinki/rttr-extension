@@ -21,7 +21,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { uiState } from '@/utils/content-state';
+import { uiState, nearestLineRect } from '@/utils/content-state';
 
 const safeEngine = computed(() => {
   const engine = uiState.translationBadge.engine;
@@ -38,12 +38,11 @@ const parsedText = computed(() => {
 
 const badgeStyle = computed(() => {
   if (!uiState.translationBadge.rect) return {};
-  const targetRect = uiState.translationBadge.rect;
+  const targetRect = nearestLineRect(uiState.translationBadge.rect);
   const x = window.scrollX + targetRect.left + targetRect.width / 2;
   let y = window.scrollY;
 
   if (uiState.translationBadge.position === 'top') {
-    // We assume showSingleClickIPA is true for safe offset
     y += targetRect.top - 46;
   } else {
     y += targetRect.bottom + 12;

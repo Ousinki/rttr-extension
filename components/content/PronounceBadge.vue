@@ -11,11 +11,11 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { uiState } from '@/utils/content-state';
+import { uiState, nearestLineRect } from '@/utils/content-state';
 
 const badgeStyle = computed(() => {
   if (!uiState.pronounceBadge.rect) return {};
-  const rect = uiState.pronounceBadge.rect;
+  const rect = nearestLineRect(uiState.pronounceBadge.rect);
   const x = rect.left + rect.width / 2;
   const y = rect.top + window.scrollY - 6;
   return {

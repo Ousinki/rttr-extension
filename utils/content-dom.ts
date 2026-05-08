@@ -1,6 +1,7 @@
 import { safeSendMessage } from '@/utils/content-messaging';
-import { uiActions } from '@/utils/content-state';
+import { uiActions, setLastInteractionY, getLineRect } from '@/utils/content-state';
 import { speakText } from '@/utils/tts';
+import type { AnnotationResult } from '@/utils/ai';
 
 const RTTR_ATTR = 'data-rttr-annotated';
 
@@ -17,6 +18,16 @@ export interface UndoAction {
   wrapper: HTMLElement;
   textNode: Text;
   word: string;
+}
+
+interface AnnotationEntry extends AnnotationResult {
+  color: string;
+}
+
+interface LocalAnnotation {
+  entry: AnnotationEntry;
+  start: number;
+  end: number;
 }
 
 export const undoStack: UndoAction[] = [];
@@ -39,35 +50,51 @@ export function getSentenceAroundNode(node: Node): string {
 
 export function applyAnnotations(
   paragraph: HTMLElement,
-  results: any[],
+  results: AnnotationResult[],
   currentSettings: any,
   isLongPressFired: () => boolean
 ) {
   paragraph.setAttribute('data-rttr-original', paragraph.innerHTML);
   paragraph.setAttribute(RTTR_ATTR, 'true');
 
-  const wordMap = new Map<string, any>();
-  results.forEach(({ word, translation, explanation, pronunciation, ipa }, i) => {
-    wordMap.set(word.toLowerCase(), {
-      translation,
-      explanation,
-      pronunciation,
-      ipa,
-      color: ANNOTATION_COLORS[i % ANNOTATION_COLORS.length],
-    });
-  });
+  const annotations = results
+    .filter((item) => item.start >= 0 && item.end > item.start)
+    .sort((a, b) => a.start - b.start || b.end - a.end)
+    .reduce<AnnotationEntry[]>((acc, item, i) => {
+      const prev = acc[acc.length - 1];
+      if (prev && item.start < prev.end) return acc;
+      acc.push({
+        ...item,
+        color: ANNOTATION_COLORS[i % ANNOTATION_COLORS.length],
+      });
+      return acc;
+    }, []);
+
+  if (annotations.length === 0) return;
 
   const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT, null);
-  const textNodes: Text[] = [];
+  const textNodes: Array<{ node: Text; start: number; end: number }> = [];
+  let textOffset = 0;
   let node: Text | null;
   while ((node = walker.nextNode() as Text | null)) {
-    textNodes.push(node);
+    const length = node.textContent?.length ?? 0;
+    textNodes.push({ node, start: textOffset, end: textOffset + length });
+    textOffset += length;
   }
 
   for (const textNode of textNodes) {
-    const fragment = annotateTextNode(textNode, wordMap, currentSettings, isLongPressFired);
+    const localAnnotations = annotations
+      .filter((entry) => entry.start >= textNode.start && entry.end <= textNode.end)
+      .map((entry) => ({
+        entry,
+        start: Math.max(0, entry.start - textNode.start),
+        end: Math.min(textNode.end, entry.end) - textNode.start,
+      }))
+      .filter((item) => item.end > item.start);
+
+    const fragment = annotateTextNode(textNode.node, localAnnotations, currentSettings, isLongPressFired);
     if (fragment) {
-      textNode.replaceWith(fragment);
+      textNode.node.replaceWith(fragment);
     }
   }
 }
@@ -77,76 +104,69 @@ export function getIsDraggingRttrWord() { return isDraggingRttrWord; }
 
 function annotateTextNode(
   textNode: Node,
-  wordMap: Map<string, any>,
+  annotations: LocalAnnotation[],
   currentSettings: any,
   isLongPressFired: () => boolean
 ): DocumentFragment | null {
   const text = textNode.textContent || '';
-  if (!text.trim()) return null;
-
-  const escapedWords = Array.from(wordMap.keys())
-    .sort((a, b) => b.length - a.length)
-    .map((w) => {
-      const escaped = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const prefix = /^\w/.test(w) ? '\\b' : '';
-      const suffix = /\w$/.test(w) ? '\\b' : '';
-      return `${prefix}${escaped}${suffix}`;
-    });
-
-  if (escapedWords.length === 0) return null;
-
-  const pattern = new RegExp(`(${escapedWords.join('|')})`, 'gi');
-  const parts = text.split(pattern);
-
-  if (parts.length <= 1) return null;
+  if (!text.trim() || annotations.length === 0) return null;
 
   let hasAnnotation = false;
   const fragment = document.createDocumentFragment();
+  let cursor = 0;
 
-  for (const part of parts) {
+  for (const annotation of annotations) {
+    if (annotation.start > cursor) {
+      fragment.appendChild(document.createTextNode(text.slice(cursor, annotation.start)));
+    }
+
+    const part = text.slice(annotation.start, annotation.end);
+    const entry = annotation.entry;
+    const translation = entry.translation || '';
     const lower = part.toLowerCase();
-    const entry = wordMap.get(lower);
+    const isSameTranslation = part.toLowerCase() === translation.toLowerCase();
 
-    if (entry) {
-      const isSameTranslation = part.toLowerCase() === entry.translation.toLowerCase();
-
-      let wrapper = document.createElement('ruby');
-      wrapper.className = 'rttr-word';
-      wrapper.style.color = entry.color;
+    let wrapper = document.createElement('ruby');
+    wrapper.className = getAnnotationClassName(entry);
+    wrapper.style.setProperty('--rttr-token-color', entry.color);
+    wrapper.style.color = entry.importance === 'highlight' ? entry.color : 'inherit';
       
-      const subWords = part.split(/(\s+)/);
-      subWords.forEach((subWord, idx) => {
-        if (subWord.trim()) {
-          const span = document.createElement('span');
-          span.textContent = subWord;
-          span.dataset.idx = String(Math.floor(idx / 2));
-          wrapper.appendChild(span);
-        } else {
-          wrapper.appendChild(document.createTextNode(subWord));
-        }
-      });
-
-      if (entry.explanation) {
-        wrapper.dataset.explanation = entry.explanation;
-        wrapper.classList.add('rttr-has-tooltip');
+    const subWords = part.split(/(\s+)/);
+    subWords.forEach((subWord, idx) => {
+      if (subWord.trim()) {
+        const span = document.createElement('span');
+        span.textContent = subWord;
+        span.dataset.idx = String(Math.floor(idx / 2));
+        wrapper.appendChild(span);
+      } else {
+        wrapper.appendChild(document.createTextNode(subWord));
       }
+    });
 
+    if (isBackgroundKnowledgeToken(entry)) {
+      wrapper.dataset.explanation = entry.explanation;
+      wrapper.classList.add('rttr-has-tooltip');
+    }
+
+    if (shouldRenderRt(entry, translation)) {
       const rt = document.createElement('rt');
       rt.className = 'rttr-translation';
-      rt.style.color = entry.color;
-      rt.textContent = isSameTranslation ? '' : entry.translation;
+      rt.style.color = entry.importance === 'highlight' ? entry.color : 'inherit';
+      rt.textContent = isSameTranslation ? '' : translation;
 
       wrapper.appendChild(rt);
+    }
 
-      if (entry.explanation) {
-        wrapper.addEventListener('mouseenter', (e) => {
-          const target = e.currentTarget as HTMLElement;
-          uiActions.showTooltip(target.dataset.explanation || '', target.getBoundingClientRect());
-        });
-        wrapper.addEventListener('mouseleave', () => {
-          uiActions.hideTooltip();
-        });
-      }
+    if (isBackgroundKnowledgeToken(entry)) {
+      wrapper.addEventListener('mouseenter', (e) => {
+        const target = e.currentTarget as HTMLElement;
+        setLastInteractionY(e.clientY);
+        uiActions.showTooltip(target.dataset.explanation || '', getLineRect(target, e.clientY));
+      });
+      wrapper.addEventListener('mouseleave', () => {
+        uiActions.hideTooltip();
+      });
+    }
 
       wrapper.addEventListener('click', async (e) => {
         e.preventDefault();
@@ -157,6 +177,8 @@ function annotateTextNode(
         }
         
         const target = e.target as HTMLElement;
+        const clickY = e.clientY;
+        const clickRect = () => getLineRect(target, clickY);
         let textToSpeak = entry.pronunciation || part;
         let ipaToShow = entry.ipa || '';
 
@@ -190,7 +212,7 @@ function annotateTextNode(
             engine
           }).then((resp: any) => {
             if (resp && resp.targetText) {
-              uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, target.getBoundingClientRect(), true,
+              uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, clickRect(), true,
                 currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
             }
           });
@@ -199,14 +221,14 @@ function annotateTextNode(
         const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
 
         if (ipaToShow) {
-          uiActions.showPronounceBadge(ipaToShow, target.getBoundingClientRect());
+          uiActions.showPronounceBadge(ipaToShow, clickRect());
         } else {
           const singleWord = textToSpeak.trim();
           if (!singleWord.includes(' ') && /^[a-zA-Z'-]+$/.test(singleWord)) {
             try {
               const resp = await safeSendMessage({ type: 'LOOKUP_IPA', word: singleWord }) as { ipa: string | null };
               if (resp?.ipa) {
-                uiActions.showPronounceBadge(resp.ipa, target.getBoundingClientRect());
+                uiActions.showPronounceBadge(resp.ipa, clickRect());
                 if (textToSpeak === (entry.pronunciation || part)) {
                   entry.ipa = resp.ipa;
                 }
@@ -214,9 +236,10 @@ function annotateTextNode(
               }
             } catch {}
           }
-          uiActions.showPronounceBadge(speakerSVG, target.getBoundingClientRect(), true);
+          uiActions.showPronounceBadge(speakerSVG, clickRect(), true);
         }
       });
+
 
       wrapper.addEventListener('mousedown', () => { wrapper.draggable = true; });
       wrapper.addEventListener('mouseup', () => { wrapper.draggable = false; });
@@ -230,7 +253,7 @@ function annotateTextNode(
         dragStartY = e.clientY;
         isDraggingRttrWord = true;
 
-        if (entry.explanation) uiActions.hideTooltip();
+        if (isBackgroundKnowledgeToken(entry)) uiActions.hideTooltip();
         if (e.dataTransfer) {
           e.dataTransfer.effectAllowed = 'move';
           e.dataTransfer.setData('text/plain', part);
@@ -283,14 +306,30 @@ function annotateTextNode(
         }
       });
 
-      fragment.appendChild(wrapper);
-      hasAnnotation = true;
-    } else {
-      fragment.appendChild(document.createTextNode(part));
-    }
+    fragment.appendChild(wrapper);
+    hasAnnotation = true;
+    cursor = annotation.end;
+  }
+
+  if (cursor < text.length) {
+    fragment.appendChild(document.createTextNode(text.slice(cursor)));
   }
 
   return hasAnnotation ? fragment : null;
+}
+
+function isBackgroundKnowledgeToken(entry: AnnotationEntry): boolean {
+  return !!entry.explanation && ['name', 'place', 'organization', 'event', 'other'].includes(entry.kind || '');
+}
+
+function getAnnotationClassName(entry: AnnotationEntry): string {
+  return 'rttr-word rttr-word-highlight';
+}
+
+function shouldRenderRt(entry: AnnotationEntry, translation: string): boolean {
+  if (entry.kind === 'name' && !translation) return false;
+  if (entry.kind === 'number') return false;
+  return !!translation;
 }
 
 export async function dismissWord(ruby: HTMLElement, word: string, originalText: string) {

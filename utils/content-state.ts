@@ -29,6 +29,71 @@ function toRect(rect: DOMRect | null): Rect | null {
   };
 }
 
+/**
+ * Track the cursor Y at the moment of user interaction (mousedown/mouseenter).
+ * Used by nearestLineRect as fallback.
+ */
+let _lastInteractionY = 0;
+export function setLastInteractionY(y: number) { _lastInteractionY = y; }
+
+/**
+ * Get the correct per-line DOMRect for an inline element at the given cursor Y.
+ * Uses getClientRects() which returns separate rects for each visual line.
+ * This is the proper fix for cross-line elements like "Open Source\nCollective".
+ */
+export function getLineRect(el: HTMLElement, clientY: number): DOMRect {
+  const rects = el.getClientRects();
+  for (const r of rects) {
+    if (clientY >= r.top && clientY <= r.bottom) {
+      return r;
+    }
+  }
+  // Fallback: pick the rect closest to cursorY
+  let closest = el.getBoundingClientRect();
+  let minDist = Infinity;
+  for (const r of rects) {
+    const centerY = r.top + r.height / 2;
+    const dist = Math.abs(clientY - centerY);
+    if (dist < minDist) {
+      minDist = dist;
+      closest = r;
+    }
+  }
+  return closest;
+}
+
+/**
+ * Rect-only fallback for Vue components that don't have access to the
+ * original DOM element. Uses stored cursorY + heuristic line splitting.
+ */
+export function nearestLineRect(rect: Rect): Rect {
+  // Use a generous threshold — ruby elements are taller than plain text
+  const threshold = 50;
+  if (rect.height <= threshold) return rect;
+
+  const cursorY = _lastInteractionY;
+  // Estimate line count from height
+  const estimatedLineHeight = rect.height / Math.round(rect.height / 30);
+  const lineCount = Math.round(rect.height / estimatedLineHeight);
+  const lineHeight = rect.height / lineCount;
+
+  let lineIndex = Math.floor((cursorY - rect.top) / lineHeight);
+  lineIndex = Math.max(0, Math.min(lineIndex, lineCount - 1));
+
+  const lineTop = rect.top + lineIndex * lineHeight;
+  return {
+    top: lineTop,
+    left: rect.left,
+    right: rect.right,
+    bottom: lineTop + lineHeight,
+    width: rect.width,
+    height: lineHeight,
+  };
+}
+
+
+
+
 export const uiState = reactive({
   tooltip: {
     visible: false,
@@ -156,6 +221,11 @@ export const uiActions = {
     uiState.contextMenu.x = x;
     uiState.contextMenu.y = y;
     uiState.contextMenu.visible = true;
+  },
+  updateContextMenuItem(index: number, item: Partial<MenuItem>) {
+    const current = uiState.contextMenu.items[index];
+    if (!current) return;
+    uiState.contextMenu.items[index] = { ...current, ...item };
   },
   hideContextMenu() {
     uiState.contextMenu.visible = false;
