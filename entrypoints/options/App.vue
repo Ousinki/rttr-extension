@@ -3,6 +3,335 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { settingsStorage } from '@/utils/storage';
 import type { RTTRSettings } from '@/utils/storage';
 
+const uiDict: Record<string, Record<string, string>> = {
+  "翻译 API 设置": {
+    "zh-TW": "翻譯 API 設定",
+    "ja": "翻訳 API 設定",
+    "en": "Translation API Settings"
+  },
+  "配置 OpenAI 兼容的接口信息用于长句/段落的 AI 划词翻译。": {
+    "zh-TW": "設定相容 OpenAI 的介面資訊，用於長句/段落的 AI 劃詞翻譯。",
+    "ja": "OpenAI互換APIを設定し、長文/段落のAI選択翻訳を行います。",
+    "en": "Configure OpenAI-compatible API for AI sentence/paragraph translation."
+  },
+  "AI 长句翻译 API Key (OpenAI 格式)": {
+    "zh-TW": "AI 長句翻譯 API Key (OpenAI 格式)",
+    "ja": "AI長文翻訳 API Key (OpenAI 形式)",
+    "en": "AI Translation API Key (OpenAI Format)"
+  },
+  "API 端点": {
+    "zh-TW": "API 端點",
+    "ja": "API エンドポイント",
+    "en": "API Endpoint"
+  },
+  "模型": {
+    "zh-TW": "模型",
+    "ja": "モデル",
+    "en": "Model"
+  },
+  "测试 API": {
+    "zh-TW": "測試 API",
+    "ja": "API をテスト",
+    "en": "Test API"
+  },
+  "测试中...": {
+    "zh-TW": "測試中...",
+    "ja": "テスト中...",
+    "en": "Testing..."
+  },
+  "翻译悬浮窗与引擎": {
+    "zh-TW": "翻譯懸浮窗與引擎",
+    "ja": "翻訳ポップアップとエンジン",
+    "en": "Translation Tooltip & Engine"
+  },
+  "显示引擎尾标": {
+    "zh-TW": "顯示引擎尾標",
+    "ja": "エンジンのアイコンを表示",
+    "en": "Show Engine Tag"
+  },
+  "不启用": {
+    "zh-TW": "不啟用",
+    "ja": "無効",
+    "en": "Disabled"
+  },
+  "直角灰底设计。点击下方卡片选择翻译框的默认弹出位置。": {
+    "zh-TW": "直角灰底設計。點擊下方卡片選擇翻譯框的預設彈出位置。",
+    "ja": "直角のグレー背景デザイン。下のカードをクリックして翻訳枠のデフォルト表示位置を選択します。",
+    "en": "Square gray-background design. Click the card below to select the default popup position."
+  },
+  "显示于文字下方": {
+    "zh-TW": "顯示於文字下方",
+    "ja": "テキストの下に表示",
+    "en": "Show below text"
+  },
+  "显示于文字上方": {
+    "zh-TW": "顯示於文字上方",
+    "ja": "テキストの上に表示",
+    "en": "Show above text"
+  },
+  "划词翻译模式": {
+    "zh-TW": "劃詞翻譯模式",
+    "ja": "選択翻訳モード",
+    "en": "Selection Translation Mode"
+  },
+  "配置拖动选中文本时的翻译行为。翻译悬浮窗与发音相互独立，可同时启用。": {
+    "zh-TW": "設定拖曳選取文字時的翻譯行為。翻譯懸浮窗與發音互不影響，可同時啟用。",
+    "ja": "テキストを選択した時の翻訳動作を設定します。翻訳ポップアップと発音は独立しており、同時有効化が可能です。",
+    "en": "Configure translation behavior when selecting text. Translation tooltip and pronunciation are independent and can be enabled together."
+  },
+  "选中自动翻译": {
+    "zh-TW": "選中自動翻譯",
+    "ja": "選択時自動翻訳",
+    "en": "Auto-translate on select"
+  },
+  "锁定目光": {
+    "zh-TW": "鎖定目光",
+    "ja": "視線を固定",
+    "en": "Eye-tracking lock"
+  },
+  "选中点击翻译": {
+    "zh-TW": "選中點擊翻譯",
+    "ja": "選択後クリック翻訳",
+    "en": "Click to translate on select"
+  },
+  "长按 AI 翻译": {
+    "zh-TW": "長按 AI 翻译",
+    "ja": "長押し AI 翻訳",
+    "en": "Long-press AI translate"
+  },
+  "语境搭配分析": {
+    "zh-TW": "語境搭配分析",
+    "ja": "文脈コロケーション分析",
+    "en": "Contextual Collocation Analysis"
+  },
+  "(锁定目光)": {
+    "zh-TW": "(鎖定目光)",
+    "ja": "(視線を固定)",
+    "en": "(Eye-tracking lock)"
+  },
+  "划词发音模式": {
+    "zh-TW": "劃詞發音模式",
+    "ja": "選択発音モード",
+    "en": "Selection Pronunciation Mode"
+  },
+  "配置拖动选中文本时的发音行为。直接点击下方卡片即可切换模式。": {
+    "zh-TW": "設定拖曳選取文字時的發音行為。直接點擊下方卡片即可切換模式。",
+    "ja": "テキスト選択時の発音動作を設定します。下のカードをクリックしてモードを切り替えます。",
+    "en": "Configure pronunciation behavior when selecting text. Click the cards below to switch modes."
+  },
+  "单击发音": {
+    "zh-TW": "單擊發音",
+    "ja": "クリック発音",
+    "en": "Click to pronounce"
+  },
+  "显示音标悬浮窗": {
+    "zh-TW": "顯示音標懸浮窗",
+    "ja": "発音記号ポップアップを表示",
+    "en": "Show phonetic tooltip"
+  },
+  "选中自动发音": {
+    "zh-TW": "選中自動發音",
+    "ja": "選択時自動発音",
+    "en": "Auto-pronounce on select"
+  },
+  "选中点击发音": {
+    "zh-TW": "選中點擊發音",
+    "ja": "選択後クリック発音",
+    "en": "Click to pronounce on select"
+  },
+  "快捷键发音": {
+    "zh-TW": "快捷鍵發音",
+    "ja": "ショートカットキー発音",
+    "en": "Shortcut pronunciation"
+  },
+  "段落翻译与无缝注音": {
+    "zh-TW": "段落翻譯與無縫注音",
+    "ja": "段落翻訳とシームレスルビ",
+    "en": "Paragraph Translation & Seamless Ruby"
+  },
+  "配置段落翻译的触发快捷键。它能在不破坏原有英文版面的前提下，将中文翻译像拼音一样注入到生词上方。": {
+    "zh-TW": "設定段落翻譯的觸發快捷鍵。它能在不破壞原有英文版面的前提下，將翻譯像拼音一樣注入到生詞上方。",
+    "ja": "段落翻訳のトリガーショートカットを設定します。元の英語レイアウトを崩さずに、翻訳をルビのように単語の上に挿入します。",
+    "en": "Configure paragraph translation trigger. It injects translation above unfamiliar words like ruby text without breaking English layout."
+  },
+  "触发快捷键": {
+    "zh-TW": "觸發快捷鍵",
+    "ja": "トリガーショートカット",
+    "en": "Trigger Shortcut"
+  },
+  "打开快捷键页面": {
+    "zh-TW": "打開快捷鍵頁面",
+    "ja": "ショートカットページを開く",
+    "en": "Open Shortcuts Page"
+  },
+  "沉浸式 Ruby 注音效果演示": {
+    "zh-TW": "沉浸式 Ruby 注音效果展示",
+    "ja": "没入型ルビ効果のデモ",
+    "en": "Immersive Ruby Effect Demo"
+  },
+  "语音合成 (TTS) 设置": {
+    "zh-TW": "語音合成 (TTS) 設定",
+    "ja": "音声合成 (TTS) 設定",
+    "en": "Text-to-Speech (TTS) Settings"
+  },
+  "配置发音人的语言、语速及音量。": {
+    "zh-TW": "設定發音人的語言、語速及音量。",
+    "ja": "話者の言語、速度、音量を設定します。",
+    "en": "Configure voice language, rate, and volume."
+  },
+  "发音人 (Voice)": {
+    "zh-TW": "發音人 (Voice)",
+    "ja": "話者 (Voice)",
+    "en": "Voice"
+  },
+  "(系统默认)": {
+    "zh-TW": "(系統預設)",
+    "ja": "(システムデフォルト)",
+    "en": "(System Default)"
+  },
+  "语言 (Language)": {
+    "zh-TW": "語言 (Language)",
+    "ja": "言語 (Language)",
+    "en": "Language"
+  },
+  "语速 (Rate):": {
+    "zh-TW": "語速 (Rate):",
+    "ja": "速度 (Rate):",
+    "en": "Rate:"
+  },
+  "音量 (Volume):": {
+    "zh-TW": "音量 (Volume):",
+    "ja": "音量 (Volume):",
+    "en": "Volume:"
+  },
+  "测试发音": {
+    "zh-TW": "測試發音",
+    "ja": "発音テスト",
+    "en": "Test Voice"
+  },
+  "播放中...": {
+    "zh-TW": "播放中...",
+    "ja": "再生中...",
+    "en": "Playing..."
+  },
+  "✓ 已自动保存": {
+    "zh-TW": "✓ 已自動儲存",
+    "ja": "✓ 自動保存されました",
+    "en": "✓ Auto-saved"
+  },
+  "当前：": {
+    "zh-TW": "當前：",
+    "ja": "現在：",
+    "en": "Current:"
+  },
+  "界面与目标语言": {
+    "zh-TW": "介面與目標語言",
+    "ja": "UI・翻訳言語",
+    "en": "UI & Target Language"
+  },
+  "RTTR 高级设置": {
+    "zh-TW": "RTTR 高級設定",
+    "ja": "RTTR 詳細設定",
+    "en": "RTTR Advanced Settings"
+  },
+  "简体中文 (Simplified)": {
+    "zh-TW": "簡體中文 (Simplified)",
+    "ja": "簡体字中国語 (Simplified)",
+    "en": "Simplified Chinese"
+  },
+  "繁体中文 (Traditional)": {
+    "zh-TW": "繁體中文 (Traditional)",
+    "ja": "繁体字中国語 (Traditional)",
+    "en": "Traditional Chinese"
+  },
+  "日本語 (Japanese)": {
+    "zh-TW": "日本語 (Japanese)",
+    "ja": "日本語 (Japanese)",
+    "en": "Japanese"
+  },
+  "English (English)": {
+    "zh-TW": "English (English)",
+    "ja": "English (English)",
+    "en": "English"
+  },
+  "API 连接成功！": {
+    "zh-TW": "API 連接成功！",
+    "ja": "API 接続成功！",
+    "en": "API Connected!"
+  },
+  "未知错误": {
+    "zh-TW": "未知錯誤",
+    "ja": "不明なエラー",
+    "en": "Unknown error"
+  },
+  "测试成功": {
+    "zh-TW": "測試成功",
+    "ja": "テスト成功",
+    "en": "Test successful"
+  },
+  "测试失败": {
+    "zh-TW": "測試失敗",
+    "ja": "テスト失敗",
+    "en": "Test failed"
+  },
+  "假设": {
+    "zh-TW": "假設",
+    "ja": "仮説",
+    "en": "hypothesis"
+  },
+  "无缝的": {
+    "zh-TW": "無縫的",
+    "ja": "シームレスな",
+    "en": "seamless"
+  },
+  "上方": {
+    "zh-TW": "上方",
+    "ja": "上部",
+    "en": "above"
+  },
+  "语音合成 (TTS) 设置": {
+    "zh-TW": "語音合成 (TTS) 設定",
+    "ja": "音声合成 (TTS) 設定",
+    "en": "Text-to-Speech (TTS) Settings"
+  },
+  "发音人 (Voice)": {
+    "zh-TW": "發音人 (Voice)",
+    "ja": "話者 (Voice)",
+    "en": "Voice"
+  },
+  "(系统默认)": {
+    "zh-TW": "(系統預設)",
+    "ja": "(システムデフォルト)",
+    "en": "(System Default)"
+  },
+  "语言 (Language)": {
+    "zh-TW": "語言 (Language)",
+    "ja": "言語 (Language)",
+    "en": "Language"
+  },
+  "测试中...": {
+    "zh-TW": "測試中...",
+    "ja": "テスト中...",
+    "en": "Testing..."
+  },
+  "播放中...": {
+    "zh-TW": "播放中...",
+    "ja": "再生中...",
+    "en": "Playing..."
+  },
+  "请在 Chrome 的扩展快捷键页面设置。": {
+    "zh-TW": "請在 Chrome 的擴充功能快捷鍵頁面設定。",
+    "ja": "Chromeの拡張機能ショートカットページで設定してください。",
+    "en": "Please configure in Chrome's extension shortcuts page."
+  }
+};
+
+function t(key: string) {
+  const lang = settings.value?.targetLanguage || 'zh-CN';
+  if (lang === 'zh-CN') return key;
+  return uiDict[key]?.[lang] || key;
+}
+
 const settings = ref<RTTRSettings>({
   apiKey: '',
   apiEndpoint: 'https://api.openai.com/v1/chat/completions',
@@ -94,13 +423,13 @@ function testTTS() {
   
   utterance.onend = () => {
     testingTTS.value = false;
-    testResultTTS.value = '✅ 测试成功';
+    testResultTTS.value = '✅ ' + t('测试成功');
     setTimeout(() => { testResultTTS.value = ''; }, 3000);
   };
   
   utterance.onerror = (e) => {
     testingTTS.value = false;
-    testResultTTS.value = `❌ 测试失败: ${e.error}`;
+    testResultTTS.value = `❌ ${t('测试失败')}: ${e.error}`;
   };
 
   if (settings.value.ttsLanguage) {
@@ -183,9 +512,9 @@ async function testTranslation() {
     });
 
     if (response.success && response.results) {
-      testResult.value = `✅ API 连接成功！`;
+      testResult.value = `✅ ${t('API 连接成功！')}`;
     } else {
-      testResult.value = `❌ ${response.error || '未知错误'}`;
+      testResult.value = `❌ ${response.error || t('未知错误')}`;
     }
   } catch (err: unknown) {
     testResult.value = `❌ ${err instanceof Error ? err.message : String(err)}`;
@@ -201,21 +530,30 @@ watch(settings, () => {
 
 <template>
   <div class="options-container">
-    <header class="header">
+    <header class="header" style="display: flex; justify-content: space-between; align-items: center;">
       <div class="logo">
         <img class="logo-icon" src="/icon.svg" alt="RTTR Logo" />
-        <span class="logo-text">RTTR 高级设置</span>
+        <span class="logo-text">{{ t('RTTR 高级设置') }}</span>
+      </div>
+      <div class="header-actions" style="display: flex; align-items: center; gap: 12px;">
+        <label class="label" style="margin: 0; white-space: nowrap;">{{ t('界面与目标语言') }}</label>
+        <select v-model="settings.targetLanguage" class="select" style="margin: 0; min-width: 150px; padding: 6px 12px; font-size: 13px; border-radius: 6px; width: auto;">
+          <option value="zh-CN">{{ t("简体中文 (Simplified)") }}</option>
+          <option value="zh-TW">{{ t("繁体中文 (Traditional)") }}</option>
+          <option value="ja">{{ t("日本語 (Japanese)") }}</option>
+          <option value="en">{{ t("English (English)") }}</option>
+        </select>
       </div>
     </header>
 
     <main class="content">
       <!-- API Settings -->
       <section class="settings-card">
-        <h2>翻译 API 设置</h2>
-        <p class="section-desc">配置 OpenAI 兼容的接口信息用于长句/段落的 AI 划词翻译。</p>
+        <h2>{{ t("翻译 API 设置") }}</h2>
+        <p class="section-desc">{{ t("配置 OpenAI 兼容的接口信息用于长句/段落的 AI 划词翻译。") }}</p>
 
         <div class="form-group">
-          <label class="label">AI 长句翻译 API Key (OpenAI 格式)</label>
+          <label class="label">{{ t("AI 长句翻译 API Key (OpenAI 格式)") }}</label>
           <div class="input-with-toggle">
             <input :type="showApiKey ? 'text' : 'password'" v-model="settings.apiKey" placeholder="sk-..." class="input" />
             <button class="eye-btn" @click="showApiKey = !showApiKey" aria-label="Toggle visibility">
@@ -226,12 +564,12 @@ watch(settings, () => {
         </div>
 
         <div class="form-row">
-          <div class="form-group half">
-            <label class="label">API 端点</label>
+          <div class="form-group half" style="flex: 2;">
+            <label class="label">{{ t("API 端点") }}</label>
             <input type="text" v-model="settings.apiEndpoint" class="input" placeholder="https://api.openai.com/v1/chat/completions" />
           </div>
-          <div class="form-group half">
-            <label class="label">模型</label>
+          <div class="form-group half" style="flex: 1;">
+            <label class="label">{{ t("模型") }}</label>
             <input type="text" v-model="settings.model" class="input" placeholder="gpt-4o-mini" />
           </div>
         </div>
@@ -240,7 +578,7 @@ watch(settings, () => {
           <button class="test-btn" @click="testTranslation" :disabled="testing" :class="{ 'is-loading': testing }">
             <svg v-if="testing" class="spinner" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="4.93" x2="19.07" y2="7.76"></line></svg>
             <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-            {{ testing ? '测试中...' : '测试 API' }}
+            {{ testing ? t('测试中...') : t('测试 API') }}
           </button>
           <span v-if="testResult" class="test-result-inline" :class="{ error: testResult.includes('失败') || testResult.includes('错误') }">
             <svg v-if="testResult.includes('成功')" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
@@ -253,26 +591,26 @@ watch(settings, () => {
       <!-- Translation Tooltip Preview -->
       <section class="settings-card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-          <h2 style="margin: 0;">翻译悬浮窗与引擎</h2>
+          <h2 style="margin: 0;">{{ t("翻译悬浮窗与引擎") }}</h2>
           <div style="display: flex; align-items: center; gap: 12px;">
             <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #555; cursor: pointer;" :style="{ opacity: settings.translationEngine === 'none' ? 0.5 : 1, pointerEvents: settings.translationEngine === 'none' ? 'none' : 'auto' }">
               <input type="checkbox" v-model="settings.showTranslationEngine" :disabled="settings.translationEngine === 'none'" />
-              显示引擎尾标
+              {{ t("显示引擎尾标") }}
             </label>
             <select v-model="settings.translationEngine" class="select" style="width: auto; padding: 6px 12px; font-size: 13px;">
-              <option value="none">不启用</option>
+              <option value="none">{{ t("不启用") }}</option>
               <option value="google">Google Translate</option>
               <option value="deepl">DeepL</option>
               <option value="bing">Bing Microsoft</option>
             </select>
           </div>
         </div>
-        <p class="section-desc">直角灰底设计。点击下方卡片选择翻译框的默认弹出位置。</p>
+        <p class="section-desc">{{ t("直角灰底设计。点击下方卡片选择翻译框的默认弹出位置。") }}</p>
         
         <div class="animation-previews" style="grid-template-columns: 1fr 1fr;">
           <!-- 位置 1：下方 -->
           <div class="preview-box" :class="{ active: settings.translationEngine !== 'none' && settings.translationPosition === 'bottom' }" @click="settings.translationEngine !== 'none' && (settings.translationPosition = 'bottom')">
-            <div class="preview-title">显示于文字下方</div>
+            <div class="preview-title">{{ t("显示于文字下方") }}</div>
             <div class="anim-container anim-translation" style="height: 140px;">
               <div class="anim-text" style="padding-top: 40px;">
                 <span class="trans-target-word">
@@ -282,7 +620,7 @@ watch(settings, () => {
                     / haɪˈpɒθəsɪs /
                   </div>
                   <div class="anim-translation-tooltip-bottom">
-                    <strong>假设</strong><span class="engine-tag" v-if="settings.showTranslationEngine && settings.translationEngine !== 'none'">{{ settings.translationEngine === 'google' ? 'Google' : settings.translationEngine === 'deepl' ? 'DeepL' : 'Bing' }}</span>
+                    <strong>{{ t("假设") }}</strong><span class="engine-tag" v-if="settings.showTranslationEngine && settings.translationEngine !== 'none'">{{ settings.translationEngine === 'google' ? 'Google' : settings.translationEngine === 'deepl' ? 'DeepL' : 'Bing' }}</span>
                   </div>
                   <div class="anim-click-ripple-trans"></div>
                   <svg class="anim-cursor-trans" width="24" height="24" viewBox="0 0 24 24"><path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z" fill="#000" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
@@ -293,7 +631,7 @@ watch(settings, () => {
 
           <!-- 位置 2：上方 -->
           <div class="preview-box" :class="{ active: settings.translationEngine !== 'none' && settings.translationPosition === 'top' }" @click="settings.translationEngine !== 'none' && (settings.translationPosition = 'top')">
-            <div class="preview-title">显示于文字上方</div>
+            <div class="preview-title">{{ t("显示于文字上方") }}</div>
             <div class="anim-container anim-translation" style="height: 140px;">
               <div class="anim-text" style="padding-top: 40px;">
                 <span class="trans-target-word">
@@ -304,7 +642,7 @@ watch(settings, () => {
                   </div>
                   <!-- 直角灰色翻译悬浮窗避让到上方 -->
                   <div class="anim-translation-tooltip-top" :style="{ top: settings.showSingleClickIPA ? '-68px' : '-34px', transition: 'top 0.2s ease' }">
-                    <strong>假设</strong><span class="engine-tag" v-if="settings.showTranslationEngine && settings.translationEngine !== 'none'">{{ settings.translationEngine === 'google' ? 'Google' : settings.translationEngine === 'deepl' ? 'DeepL' : 'Bing' }}</span>
+                    <strong>{{ t("假设") }}</strong><span class="engine-tag" v-if="settings.showTranslationEngine && settings.translationEngine !== 'none'">{{ settings.translationEngine === 'google' ? 'Google' : settings.translationEngine === 'deepl' ? 'DeepL' : 'Bing' }}</span>
                   </div>
                   <div class="anim-click-ripple-trans"></div>
                   <svg class="anim-cursor-trans" width="24" height="24" viewBox="0 0 24 24"><path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z" fill="#000" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
@@ -317,20 +655,20 @@ watch(settings, () => {
 
       <!-- Selection Translation Mode -->
       <section class="settings-card">
-        <h2>划词翻译模式</h2>
-        <p class="section-desc">配置拖动选中文本时的翻译行为。翻译悬浮窗与发音相互独立，可同时启用。</p>
+        <h2>{{ t("划词翻译模式") }}</h2>
+        <p class="section-desc">{{ t("配置拖动选中文本时的翻译行为。翻译悬浮窗与发音相互独立，可同时启用。") }}</p>
 
         <div class="animation-previews" style="grid-template-columns: 1fr 1fr;">
-          <!-- 选中自动翻译 -->
+          <!-- {{ t("选中自动翻译") }} -->
           <div class="preview-box" :class="{ active: settings.enableAutoTranslate && settings.translationEngine !== 'none' }" @click="settings.translationEngine !== 'none' && (settings.enableAutoTranslate = !settings.enableAutoTranslate)">
-            <div class="preview-title">选中自动翻译</div>
+            <div class="preview-title">{{ t("选中自动翻译") }}</div>
             <div class="anim-container anim-sel-trans-auto" style="height: 120px;">
               <div class="anim-text">
                 He was
                 <span class="anim-selection sel-trans-sel">
                   locking eyes
                   <div class="anim-translation-tooltip-bottom sel-trans-tooltip-auto">
-                    <strong>锁定目光</strong><span class="engine-tag" v-if="settings.showTranslationEngine && settings.translationEngine !== 'none'">{{ settings.translationEngine === 'google' ? 'Google' : settings.translationEngine === 'deepl' ? 'DeepL' : 'Bing' }}</span>
+                    <strong>{{ t("锁定目光") }}</strong><span class="engine-tag" v-if="settings.showTranslationEngine && settings.translationEngine !== 'none'">{{ settings.translationEngine === 'google' ? 'Google' : settings.translationEngine === 'deepl' ? 'DeepL' : 'Bing' }}</span>
                   </div>
                   <svg class="anim-cursor" width="24" height="24" viewBox="0 0 24 24"><path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z" fill="#000" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
                 </span>
@@ -339,16 +677,16 @@ watch(settings, () => {
             </div>
           </div>
 
-          <!-- 选中点击翻译 -->
+          <!-- {{ t("选中点击翻译") }} -->
           <div class="preview-box" :class="{ active: settings.enableClickTranslate && settings.translationEngine !== 'none' }" @click="settings.translationEngine !== 'none' && (settings.enableClickTranslate = !settings.enableClickTranslate)">
-            <div class="preview-title">选中点击翻译</div>
+            <div class="preview-title">{{ t("选中点击翻译") }}</div>
             <div class="anim-container anim-sel-trans-click" style="height: 120px;">
               <div class="anim-text">
                 He was
                 <span class="anim-selection sel-trans-sel-click">
                   locking eyes
                   <div class="anim-translation-tooltip-bottom sel-trans-tooltip-click">
-                    <strong>锁定目光</strong><span class="engine-tag" v-if="settings.showTranslationEngine && settings.translationEngine !== 'none'">{{ settings.translationEngine === 'google' ? 'Google' : settings.translationEngine === 'deepl' ? 'DeepL' : 'Bing' }}</span>
+                    <strong>{{ t("锁定目光") }}</strong><span class="engine-tag" v-if="settings.showTranslationEngine && settings.translationEngine !== 'none'">{{ settings.translationEngine === 'google' ? 'Google' : settings.translationEngine === 'deepl' ? 'DeepL' : 'Bing' }}</span>
                   </div>
                   <div class="anim-click-ripple sel-trans-ripple"></div>
                   <svg class="anim-cursor" width="24" height="24" viewBox="0 0 24 24"><path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z" fill="#000" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
@@ -363,10 +701,10 @@ watch(settings, () => {
           <!-- 选中长按翻译 -->
           <div class="preview-box" :class="{ active: settings.enableLongPressTranslate && settings.translationEngine !== 'none' }" @click="settings.translationEngine !== 'none' && (settings.enableLongPressTranslate = !settings.enableLongPressTranslate)">
             <div class="preview-title" style="display: flex; justify-content: space-between; align-items: center;">
-              <span>长按 AI 翻译</span>
+              <span>{{ t("长按 AI 翻译") }}</span>
               <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: #666; cursor: pointer; z-index: 10;" @click.stop>
                 <input type="checkbox" v-model="settings.enableContextualCollocation" style="margin: 0; width: 12px; height: 12px;" />
-                语境搭配分析
+                {{ t("语境搭配分析") }}
               </label>
             </div>
             <div class="anim-container anim-sel-trans-longpress" style="height: 120px;">
@@ -377,7 +715,7 @@ watch(settings, () => {
                   <div class="anim-translation-tooltip-bottom sel-trans-tooltip-longpress" style="display: flex; align-items: center; gap: 8px;">
                     <div style="display: flex; flex-direction: column; gap: 2px;">
                       <span class="trans-en" style="font-size: 11px; line-height: 1.4;">locked eyes</span>
-                      <span class="trans-zh" style="font-size: 12px; line-height: 1.4;">(锁定目光)</span>
+                      <span class="trans-zh" style="font-size: 12px; line-height: 1.4;">{{ t("(锁定目光)") }}</span>
                     </div>
                     <span class="engine-tag" v-if="settings.showTranslationEngine && settings.translationEngine !== 'none'">AI</span>
                   </div>
@@ -397,17 +735,17 @@ watch(settings, () => {
 
       <!-- Selection Pronunciation Settings -->
       <section class="settings-card">
-        <h2>划词发音模式</h2>
-        <p class="section-desc">配置拖动选中文本时的发音行为。直接点击下方卡片即可切换模式。</p>
+        <h2>{{ t("划词发音模式") }}</h2>
+        <p class="section-desc">{{ t("配置拖动选中文本时的发音行为。直接点击下方卡片即可切换模式。") }}</p>
 
         <div class="animation-previews">
           <!-- Single Click Mode Preview -->
           <div class="preview-box" :class="{ active: settings.enableSingleClickPronounce }" @click="settings.enableSingleClickPronounce = !settings.enableSingleClickPronounce">
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 12px; margin-bottom: 8px;">
-              <div class="preview-title" style="margin-bottom: 0;">单击发音</div>
+              <div class="preview-title" style="margin-bottom: 0;">{{ t("单击发音") }}</div>
               <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: #666; cursor: pointer; z-index: 10;" @click.stop>
                 <input type="checkbox" v-model="settings.showSingleClickIPA" style="margin: 0; width: 12px; height: 12px;" />
-                显示音标悬浮窗
+                {{ t("显示音标悬浮窗") }}
               </label>
             </div>
             <div class="anim-container anim-single-click">
@@ -431,7 +769,7 @@ watch(settings, () => {
 
           <!-- Auto Mode Preview -->
           <div class="preview-box" :class="{ active: settings.enableAutoPronounce }" @click="settings.enableAutoPronounce = !settings.enableAutoPronounce">
-            <div class="preview-title">选中自动发音</div>
+            <div class="preview-title">{{ t("选中自动发音") }}</div>
             <div class="anim-container anim-auto">
               <div class="anim-text">
                 He was 
@@ -449,7 +787,7 @@ watch(settings, () => {
 
           <!-- Click Mode Preview -->
           <div class="preview-box" :class="{ active: settings.enableClickPronounce }" @click="settings.enableClickPronounce = !settings.enableClickPronounce">
-            <div class="preview-title">选中点击发音</div>
+            <div class="preview-title">{{ t("选中点击发音") }}</div>
             <div class="anim-container anim-click">
               <div class="anim-text">
                 He was 
@@ -468,7 +806,7 @@ watch(settings, () => {
 
           <!-- Shortcut Mode Preview -->
           <div class="preview-box" :class="{ active: settings.enableShortcutPronounce }" @click="settings.enableShortcutPronounce = !settings.enableShortcutPronounce">
-            <div class="preview-title">快捷键发音</div>
+            <div class="preview-title">{{ t("快捷键发音") }}</div>
             <div class="anim-container anim-shortcut">
               <div class="anim-text">
                 He was 
@@ -489,27 +827,27 @@ watch(settings, () => {
 
       <!-- Paragraph Translation Settings -->
       <section class="settings-card">
-        <h2>段落翻译与无缝注音</h2>
-        <p class="section-desc">配置段落翻译的触发快捷键。它能在不破坏原有英文版面的前提下，将中文翻译像拼音一样注入到生词上方。</p>
+        <h2>{{ t("段落翻译与无缝注音") }}</h2>
+        <p class="section-desc">{{ t("配置段落翻译的触发快捷键。它能在不破坏原有英文版面的前提下，将中文翻译像拼音一样注入到生词上方。") }}</p>
 
         <div style="margin-bottom: 24px; padding: 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between;">
           <div>
-            <div style="font-size: 14px; font-weight: 600; color: #111827; margin-bottom: 4px;">触发快捷键</div>
+            <div style="font-size: 14px; font-weight: 600; color: #111827; margin-bottom: 4px;">{{ t("触发快捷键") }}</div>
             <div style="font-size: 12px; color: #6b7280;">
-              当前：{{ formatCommandShortcut(paragraphCommandShortcut) }}。请在 Chrome 的扩展快捷键页面设置。
+              当前：{{ formatCommandShortcut(paragraphCommandShortcut) }}。{{ t('请在 Chrome 的扩展快捷键页面设置。') }}
             </div>
           </div>
           <button
             @click="openChromeShortcuts"
             style="background: #fff; border: 1px solid #d1d5db; padding: 8px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; min-width: 140px; text-align: center; font-weight: 500; transition: all 0.2s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.05); color: #374151;"
           >
-            打开快捷键页面
+            {{ t("打开快捷键页面") }}
           </button>
         </div>
 
         <div class="animation-previews" style="grid-template-columns: 1fr;">
           <div class="preview-box active">
-            <div class="preview-title">沉浸式 Ruby 注音效果演示</div>
+            <div class="preview-title">{{ t("沉浸式 Ruby 注音效果演示") }}</div>
             <div class="anim-container anim-paragraph-trans" style="height: 220px; padding: 24px 32px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; background: #fafafa; gap: 16px;">
               <div class="anim-text" style="font-size: 15px; line-height: 1.8; color: #333; text-align: left; width: 100%;">
                 Before reading the text, make sure to check the context.
@@ -518,12 +856,12 @@ watch(settings, () => {
                 This feature injects
                 <span class="anim-ruby-wrapper ruby-color-1">
                   <span class="anim-ruby-base">seamless</span>
-                  <span class="anim-ruby-text">无缝的</span>
+                  <span class="anim-ruby-text">{{ t("无缝的") }}</span>
                 </span>
                 translations directly
                 <span class="anim-ruby-wrapper ruby-color-2">
                   <span class="anim-ruby-base">above</span>
-                  <span class="anim-ruby-text">上方</span>
+                  <span class="anim-ruby-text">{{ t("上方") }}</span>
                 </span>
                 the English words.
                 <svg class="anim-paragraph-spinner" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
@@ -562,32 +900,32 @@ watch(settings, () => {
 
       <!-- TTS Settings -->
       <section class="settings-card">
-        <h2>语音合成 (TTS) 设置</h2>
-        <p class="section-desc">配置发音人的语言、语速及音量。</p>
+        <h2>{{ t("语音合成 (TTS) 设置") }}</h2>
+        <p class="section-desc">{{ t("配置发音人的语言、语速及音量。") }}</p>
         
         <div class="form-row">
           <div class="form-group half">
-            <label class="label">发音人 (Voice)</label>
+            <label class="label">{{ t("发音人 (Voice)") }}</label>
             <select v-model="settings.ttsVoiceURI" class="select">
-              <option value="">(系统默认)</option>
+              <option value="">{{ t("(系统默认)") }}</option>
               <option v-for="voice in voices" :key="voice.voiceURI" :value="voice.voiceURI">
                 {{ voice.name }} ({{ voice.lang }})
               </option>
             </select>
           </div>
           <div class="form-group half">
-            <label class="label">语言 (Language)</label>
+            <label class="label">{{ t("语言 (Language)") }}</label>
             <input type="text" v-model="settings.ttsLanguage" class="input" placeholder="en-US" />
           </div>
         </div>
 
         <div class="form-group">
-          <label class="label">语速 (Rate): {{ (settings.ttsRate ?? 0.85).toFixed(2) }}x</label>
+          <label class="label">{{ t("语速 (Rate):") }} {{ (settings.ttsRate ?? 0.85).toFixed(2) }}x</label>
           <input type="range" v-model.number="settings.ttsRate" min="0.1" max="2.0" step="0.05" class="slider" />
         </div>
 
         <div class="form-group">
-          <label class="label">音量 (Volume): {{ Math.round((settings.ttsVolume ?? 1.0) * 100) }}%</label>
+          <label class="label">{{ t("音量 (Volume):") }} {{ Math.round((settings.ttsVolume ?? 1.0) * 100) }}%</label>
           <input type="range" v-model.number="settings.ttsVolume" min="0" max="1" step="0.05" class="slider" />
         </div>
 
@@ -599,14 +937,14 @@ watch(settings, () => {
               <path class="wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
             </svg>
             <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-            {{ testingTTS ? '播放中...' : '测试发音' }}
+            {{ testingTTS ? t('播放中...') : t('测试发音') }}
           </button>
           <span v-if="testResultTTS" class="test-result-inline" :class="{ error: testResultTTS.includes('失败') }">
             <svg v-if="testResultTTS.includes('成功')" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
             <svg v-else-if="testResultTTS.includes('失败')" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
             {{ testResultTTS.replace(/❌|✅/g, '').trim() }}
           </span>
-          <span class="save-status" :class="{ visible: saved }">✓ 已自动保存</span>
+          <span class="save-status" :class="{ visible: saved }">{{ t("✓ 已自动保存") }}</span>
         </div>
       </section>
       

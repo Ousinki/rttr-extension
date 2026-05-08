@@ -36,6 +36,7 @@ export interface RTTRSettings {
   enableLongPressTranslate: boolean;              // 长按/选中长按进行 AI 语境翻译
   enableContextualCollocation: boolean;           // 智能语境搭配分析
   paragraphShortcut: string;                      // 段落翻译快捷键 (例如 'Alt+KeyT')
+  targetLanguage: 'zh-CN' | 'zh-TW' | 'ja' | 'en'; // 目标翻译语言
 }
 
 // ─── 默认值 ──────────────────────────────────────────────
@@ -49,7 +50,7 @@ const DEFAULT_SETTINGS: RTTRSettings = {
   ttsLanguage: 'en-US',
   ttsRate: 0.85,
   ttsVolume: 1.0,
-  ttsVoiceURI: '',
+  ttsVoiceURI: 'Google US English',
   enableAutoPronounce: true,
   enableClickPronounce: false,
   enableShortcutPronounce: true,
@@ -63,6 +64,7 @@ const DEFAULT_SETTINGS: RTTRSettings = {
   enableLongPressTranslate: true,
   enableContextualCollocation: true,
   paragraphShortcut: '',
+  targetLanguage: 'zh-CN',
 };
 
 // ─── Storage Items (WXT 类型安全存储) ────────────────────
