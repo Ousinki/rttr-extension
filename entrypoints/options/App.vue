@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { settingsStorage } from '@/utils/storage';
 import type { RTTRSettings } from '@/utils/storage';
 
@@ -13,7 +13,6 @@ const settings = ref<RTTRSettings>({
   ttsRate: 0.85,
   ttsVolume: 1.0,
   ttsVoiceURI: '',
-  selectionPronounceMode: 'auto',
 });
 
 const voices = ref<SpeechSynthesisVoice[]>([]);

@@ -65,6 +65,11 @@ export default defineContentScript({
     }
 
     // -- Event State --
+
+    // TTS voice preheat: ensure voices are loaded before first speak
+    document.addEventListener('pointerover', () => {
+      if (window.speechSynthesis.getVoices().length === 0) window.speechSynthesis.getVoices();
+    }, { once: true });
     let activeParagraph: HTMLElement | null = null;
     let translateAbortController: AbortController | null = null;
     
@@ -397,6 +402,13 @@ export default defineContentScript({
       }
     });
 
+    // Prevent browser's default drop-forbidden cursor during rttr-word drag
+    document.addEventListener('dragover', (e) => {
+      if (getIsDraggingRttrWord()) {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      }
+    });
 
     // Context Menu Logic
     document.addEventListener('contextmenu', async (e) => {
