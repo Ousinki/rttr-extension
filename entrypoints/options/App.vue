@@ -436,8 +436,12 @@ watch(settings, () => {
                 He was
                 <span class="anim-selection sel-trans-sel-longpress">
                   locking eyes
-                  <div class="anim-translation-tooltip-bottom sel-trans-tooltip-longpress">
-                    <span class="trans-en">locked eyes</span><span class="trans-zh">(锁定目光)</span><span class="engine-tag" v-if="settings.showTranslationEngine && settings.translationEngine !== 'none'">AI</span>
+                  <div class="anim-translation-tooltip-bottom sel-trans-tooltip-longpress" style="display: flex; align-items: center; gap: 8px;">
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                      <span class="trans-en" style="font-size: 11px; line-height: 1.4;">locked eyes</span>
+                      <span class="trans-zh" style="font-size: 12px; line-height: 1.4;">(锁定目光)</span>
+                    </div>
+                    <span class="engine-tag" v-if="settings.showTranslationEngine && settings.translationEngine !== 'none'">AI</span>
                   </div>
                   <div class="anim-longpress-ring-container">
                     <svg class="anim-longpress-ring" viewBox="0 0 32 32">

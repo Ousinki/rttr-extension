@@ -23,7 +23,7 @@ const SYSTEM_PROMPT = `你是一个高级的英文阅读辅助引擎。
 用户会提供一段英文段落。你需要自主阅读这段文字，从中**尽可能全面地**提取所有有实际意义的词汇和词组，并给出精准的中文语境翻译。
 
 【提取规则（最高优先级）】：
-1. **提取范围必须全面**：所有实义词（名词、动词、形容词、副词）以及它们构成的词组都必须提取。只跳过纯粹的语法虚词（冠词、介词、连词、代词、be 动词、助动词、情态动词）。
+1. **提取范围必须全面（哪怕是最简单的词）**：所有实义词（名词、动词、形容词、副词）以及它们构成的词组都必须提取。绝对不能因为词汇“太简单”或“太常见”就跳过它！只允许跳过纯粹的语法虚词（冠词、介词、连词、代词、be 动词、助动词、情态动词）。
 2. **复合名词、固定搭配和动词短语必须作为一个整体提取！** 绝对不能将它们拆开成独立的单词分别翻译。同时，如果某个词既作为词组的一部分被提取了，就不要再单独提取它。
 3. 对于「头衔 + 人名」的组合，必须作为一个整体提取。
 4. **每个提取项最多不超过 4 个英文单词！** 绝对不能提取半句话或整句话。如果一个概念超过 4 个词，请拆分成多个独立的词组分别提取。
@@ -86,13 +86,17 @@ ${text}`;
 
 function parseAIResponse(content: string): AnnotationResult[] {
   try {
-    // 过滤掉空行和可能包含 markdown 代码块语法的行
     const lines = content.split('\n').filter(line => line.trim() !== '' && !line.trim().startsWith('\`'));
     const results: AnnotationResult[] = [];
     
-    for (const line of lines) {
+    for (let line of lines) {
+      // Strip leading and trailing pipes for markdown tables
+      line = line.replace(/^\||\|$/g, '').trim();
+      if (!line || line.startsWith('---')) continue;
+      
       const parts = line.split('|');
-      if (parts.length >= 2) {
+      // If header row, skip
+      if (parts.length >= 2 && parts[0].trim().toLowerCase() !== '英文原文' && parts[0].trim().toLowerCase() !== 'word') {
         const res: AnnotationResult = {
           word: parts[0].trim(),
           translation: parts[1].trim(),
@@ -100,7 +104,6 @@ function parseAIResponse(content: string): AnnotationResult[] {
         if (parts.length >= 3 && parts[2].trim()) {
           res.explanation = parts[2].trim();
         }
-        // 注意：IPA 音标不再由 AI 生成，而是由 utils/phonetics.ts 本地引擎独立查询
         if (res.word && res.translation) {
            results.push(res);
         }
