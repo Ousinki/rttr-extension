@@ -580,8 +580,8 @@ watch(settings, () => {
             <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
             {{ testing ? t('测试中...') : t('测试 API') }}
           </button>
-          <span v-if="testResult" class="test-result-inline" :class="{ error: testResult.includes('失败') || testResult.includes('错误') }">
-            <svg v-if="testResult.includes('成功')" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          <span v-if="testResult" class="test-result-inline" :class="{ error: testResult.includes('❌') }">
+            <svg v-if="testResult.includes('✅')" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
             <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
             {{ testResult.replace(/❌|✅|⏳|正在/g, '').trim() }}
           </span>
@@ -939,9 +939,9 @@ watch(settings, () => {
             <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
             {{ testingTTS ? t('播放中...') : t('测试发音') }}
           </button>
-          <span v-if="testResultTTS" class="test-result-inline" :class="{ error: testResultTTS.includes('失败') }">
-            <svg v-if="testResultTTS.includes('成功')" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-            <svg v-else-if="testResultTTS.includes('失败')" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+          <span v-if="testResultTTS" class="test-result-inline" :class="{ error: testResultTTS.includes('❌') }">
+            <svg v-if="testResultTTS.includes('✅')" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            <svg v-else-if="testResultTTS.includes('❌')" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
             {{ testResultTTS.replace(/❌|✅/g, '').trim() }}
           </span>
           <span class="save-status" :class="{ visible: saved }">{{ t("✓ 已自动保存") }}</span>
