@@ -16,17 +16,15 @@ import { safeSendMessage } from '@/utils/content-messaging';
 import { recognizeImageWord } from '@/utils/content-ocr';
 import { speakText } from '@/utils/tts';
 
-console.log('[RTTR] Content Script Module Loaded');
+
 
 export default defineContentScript({
   matches: ['<all_urls>'],
   cssInjectionMode: 'ui',
   async main(ctx) {
-    console.log('[RTTR] main() started');
     let currentSettings: any;
     try {
       currentSettings = await settingsStorage.getValue();
-      console.log('[RTTR] Settings loaded');
     } catch (e) {
       console.error('[RTTR] Failed to load settings:', e);
       return;
@@ -35,12 +33,11 @@ export default defineContentScript({
     // Inject required styles for inline text elements (ShadowRoot cannot style host elements)
     injectStyles();
 
-    console.log('[RTTR] injectStyles() done');
+
 
     // Setup WXT ShadowRoot UI for Vue floating components
     let ui;
     try {
-      console.log('[RTTR] createShadowRootUi() calling');
       ui = await createShadowRootUi(ctx, {
         name: 'rttr-ui-root',
         position: 'inline',
@@ -61,9 +58,7 @@ export default defineContentScript({
         app?.unmount();
       },
     });
-    console.log('[RTTR] createShadowRootUi() done, calling mount()');
     ui.mount();
-    console.log('[RTTR] ui.mount() done');
     } catch (e) {
       console.error('[RTTR] Failed to setup ShadowRoot UI:', e);
       return;
@@ -76,10 +71,10 @@ export default defineContentScript({
     let isLongPressFired = false;
     let longPressTimer: ReturnType<typeof setTimeout> | null = null;
     let ringDelayTimer: ReturnType<typeof setTimeout> | null = null;
-    let longPressTarget: Node | null = null;
     let longPressEvent: PointerEvent | null = null;
+    let selClickInfo: { text: string; rect: DOMRect } | null = null;
 
-    console.log('[RTTR] Attaching global event listeners');
+
 
     function getActiveSelection(): Selection | null {
       let sel = window.getSelection();
@@ -153,7 +148,8 @@ export default defineContentScript({
                 engine
               }).then((resp: any) => {
                 if (resp && resp.targetText) {
-                  uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, result.range.getBoundingClientRect(), true);
+                  uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, result.range.getBoundingClientRect(), true,
+                    currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
                 }
               });
             }
@@ -174,9 +170,19 @@ export default defineContentScript({
         return;
       }
 
+      // Shortcut Pronounce (R key with no modifiers)
+      if (currentSettings?.enableShortcutPronounce && e.code === 'KeyR' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+        const sel = getActiveSelection();
+        const text = sel?.toString().trim();
+        if (text && text.length > 0) {
+          e.preventDefault();
+          speakText(text, currentSettings);
+          return;
+        }
+      }
+
       // Translate (Paragraph)
       if (checkShortcut(e, currentSettings?.paragraphShortcut || 'Alt+KeyT')) {
-        console.log('[RTTR] Shortcut pressed for paragraph translation');
         e.preventDefault();
         
         const selection = getActiveSelection();
@@ -189,22 +195,93 @@ export default defineContentScript({
         }
 
         if (!targetNode) {
-          console.log('[RTTR] No text selected and no element hovered');
           return;
         }
         
         const paragraph = findParagraph(targetNode as HTMLElement);
         if (paragraph) {
-          console.log('[RTTR] Paragraph found:', paragraph);
           handleTranslate(paragraph);
-        } else {
-          console.log('[RTTR] Paragraph NOT found for node:', targetNode);
         }
       }
     }, { capture: true });
 
     let lastMouseTarget: HTMLElement | null = null;
-    
+
+    // Capture selection state on mousedown (before click clears it) for click-on-selection features
+    document.addEventListener('mousedown', (e) => {
+      if (!currentSettings?.enabled) return;
+      const sel = getActiveSelection();
+      const text = sel?.toString().trim() || '';
+      if (text && sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        if (e.clientX >= rect.left && e.clientX <= rect.right &&
+            e.clientY >= rect.top && e.clientY <= rect.bottom) {
+          selClickInfo = { text, rect };
+          return;
+        }
+      }
+      selClickInfo = null;
+    });
+
+    // Selection auto features (auto-pronounce / auto-translate) on mouseup
+    document.addEventListener('mouseup', (e) => {
+      if (!currentSettings?.enabled) return;
+      if (isLongPressFired) return;
+      const target = e.target as HTMLElement;
+      if (target.closest('rttr-ui-root') || target.closest('.rttr-word')) return;
+
+      // If clicking on existing selection → click features
+      if (selClickInfo) {
+        const info = selClickInfo;
+        selClickInfo = null;
+        if (currentSettings.enableClickPronounce) {
+          speakText(info.text, currentSettings);
+          const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+          uiActions.showPronounceBadge(speakerSVG, info.rect, true);
+        }
+        if (currentSettings.enableClickTranslate && currentSettings.translationEngine !== 'none') {
+          const engine = currentSettings.translationEngine;
+          safeSendMessage({
+            type: 'FETCH_TRANSLATION', text: info.text, sourceLang: 'auto',
+            targetLang: navigator.language.startsWith('zh') ? 'zh-CN' : 'zh-TW', engine
+          }).then((resp: any) => {
+            if (resp && resp.targetText) {
+              uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, info.rect, false,
+                currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
+            }
+          });
+        }
+        return;
+      }
+
+      // New selection created (drag) → auto features
+      setTimeout(() => {
+        const sel = getActiveSelection();
+        const text = sel?.toString().trim() || '';
+        if (!text || !sel || sel.rangeCount === 0) return;
+        const range = sel.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+
+        if (currentSettings.enableAutoPronounce) {
+          speakText(text, currentSettings);
+          const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+          uiActions.showPronounceBadge(speakerSVG, rect, true);
+        }
+        if (currentSettings.enableAutoTranslate && currentSettings.translationEngine !== 'none') {
+          const engine = currentSettings.translationEngine;
+          safeSendMessage({
+            type: 'FETCH_TRANSLATION', text, sourceLang: 'auto',
+            targetLang: navigator.language.startsWith('zh') ? 'zh-CN' : 'zh-TW', engine
+          }).then((resp: any) => {
+            if (resp && resp.targetText) {
+              uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, rect, false,
+                currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
+            }
+          });
+        }
+      }, 50);
+    });
     // Hover logic for Badges (moving away hides them)
     document.addEventListener('mousemove', (e) => {
       if (!currentSettings?.enabled) return;
@@ -242,12 +319,32 @@ export default defineContentScript({
       if (target.closest('.rttr-word') || target.closest('ruby')) return;
       
       const sel = getActiveSelection();
-      if (sel && sel.toString().trim().length > 0) return;
+      const selText = sel?.toString().trim() || '';
 
-      const result = getWordAtClick(e);
-      if (!result || !/^[a-zA-Z\s'-]+$/.test(result.word)) return;
+      // Determine what to translate: selection or word under cursor
+      let longPressWord: string;
+      let longPressSentence: string;
+      let longPressRect: () => DOMRect;
 
-      longPressTarget = target;
+      if (selText.length > 0 && sel && sel.rangeCount > 0) {
+        // Long press on selection → translate selection
+        const range = sel.getRangeAt(0);
+        const rangeRect = range.getBoundingClientRect();
+        if (e.clientX < rangeRect.left || e.clientX > rangeRect.right ||
+            e.clientY < rangeRect.top || e.clientY > rangeRect.bottom) return;
+        e.preventDefault(); // Keep the blue selection highlight visible
+        longPressWord = selText;
+        longPressSentence = getSentenceAroundNode(range.startContainer);
+        longPressRect = () => range.getBoundingClientRect();
+      } else {
+        // Long press on bare text → translate word under cursor
+        const result = getWordAtClick(e);
+        if (!result || !/^[a-zA-Z\s'-]+$/.test(result.word)) return;
+        longPressWord = result.word;
+        longPressSentence = getSentenceAroundNode(result.range.startContainer);
+        longPressRect = () => result.range.getBoundingClientRect();
+      }
+
       longPressEvent = e;
 
       // Delay showing the ring to avoid flashing on quick clicks
@@ -257,16 +354,16 @@ export default defineContentScript({
 
       longPressTimer = setTimeout(() => {
         isLongPressFired = true;
-        speakText(result.word, currentSettings);
+        speakText(longPressWord, currentSettings);
         
-        const sentence = getSentenceAroundNode(result.range.startContainer);
         safeSendMessage({
           type: 'CONTEXTUAL_TRANSLATE',
-          word: result.word,
-          sentence
+          word: longPressWord,
+          sentence: longPressSentence
         }).then((resp: any) => {
           if (resp && resp.success && resp.translation) {
-            uiActions.showTranslationBadge(resp.translation, 'AI', result.range.getBoundingClientRect(), false);
+            uiActions.showTranslationBadge(resp.translation, 'AI', longPressRect(), false,
+              currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
           }
         });
         uiActions.popLongPressRing();
@@ -300,38 +397,10 @@ export default defineContentScript({
       }
     });
 
-    // Double click logic
-    document.addEventListener('dblclick', async (e) => {
-      if (!currentSettings?.enabled) return;
-      const target = e.target as HTMLElement;
-      if (target.closest('.rttr-word') || target.closest('#rttr-explain-panel')) return;
-
-      const result = getWordAtClick(e as MouseEvent);
-      if (!result) return;
-
-      const { word, range } = result;
-      const rect = range.getBoundingClientRect();
-      const sentence = getSentenceAroundNode(range.startContainer);
-
-      uiActions.showExplainPanelLoading(word, rect);
-      speakText(word, currentSettings);
-
-      try {
-        const resp = await safeSendMessage({ type: 'EXPLAIN_WORD', word, sentence }) as any;
-        if (resp?.success && resp.explanation) {
-          uiActions.showExplainPanel(word, resp.ipa || null, resp.explanation, rect);
-        } else {
-          uiActions.showExplainPanel(word, null, resp?.error || '解释获取失败', rect);
-        }
-      } catch (err) {
-        uiActions.showExplainPanel(word, null, '网络请求失败', rect);
-      }
-    });
 
     // Context Menu Logic
     document.addEventListener('contextmenu', async (e) => {
       if (!currentSettings?.enabled) return;
-      console.log('[RTTR] Context menu requested');
       const target = e.target as HTMLElement;
 
       const iconExplain = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>';
@@ -423,7 +492,6 @@ export default defineContentScript({
 
     // Main Translate Handler
     async function handleTranslate(paragraph: HTMLElement | null) {
-      console.log('[RTTR] handleTranslate called');
       if (!paragraph) return;
       if (activeParagraph === paragraph) return;
       if (activeParagraph) clearAnnotations(activeParagraph);
@@ -462,6 +530,23 @@ export default defineContentScript({
 
     settingsStorage.watch((newSettings) => {
       currentSettings = newSettings;
+    });
+
+    // Listen for messages from background (e.g. Chrome Commands global shortcuts)
+    browser.runtime.onMessage.addListener((message: any) => {
+      if (message.type === 'TRIGGER_TRANSLATE') {
+        const selection = getActiveSelection();
+        let targetNode: Node | null = null;
+        if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
+          targetNode = selection.anchorNode;
+        } else if (lastMouseTarget) {
+          targetNode = lastMouseTarget;
+        }
+        if (targetNode) {
+          const paragraph = findParagraph(targetNode as HTMLElement);
+          if (paragraph) handleTranslate(paragraph);
+        }
+      }
     });
   }
 });

@@ -113,8 +113,9 @@ const badgeStyle = computed(() => {
 
 .rttr-translation-tooltip .trans-content-col {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
 }
 
 .rttr-translation-tooltip .trans-en {

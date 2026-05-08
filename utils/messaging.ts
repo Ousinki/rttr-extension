@@ -36,9 +36,6 @@ export interface UndismissWordResponse {
   success: boolean;
 }
 
-export interface GetSettingsRequest {
-  type: 'GET_SETTINGS';
-}
 
 export interface LookupIpaRequest {
   type: 'LOOKUP_IPA';
@@ -95,7 +92,6 @@ export type RTTRMessage =
   | TranslateRequest
   | DismissWordRequest
   | UndismissWordRequest
-  | GetSettingsRequest
   | LookupIpaRequest
   | ExplainWordRequest
   | ContextualTranslateRequest

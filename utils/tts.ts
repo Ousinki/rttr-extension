@@ -1,5 +1,4 @@
 export function speakText(text: string, currentSettings?: any, onComplete?: () => void) {
-  console.log(`[RTTR TTS] 准备朗读文本: "${text}"`);
   if (!('speechSynthesis' in window)) {
     console.error('[RTTR TTS] 当前浏览器不支持 speechSynthesis');
     return;
