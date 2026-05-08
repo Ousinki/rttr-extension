@@ -1,6 +1,6 @@
 <div align="center">
   <img src="assets/icon.svg" alt="RTTR Logo" width="80" height="80">
-  <h1>RTTR (Read Text To Ruby)</h1>
+  <h1>RTTR (RubyText Translator)</h1>
   <p><strong>Immersive AI Translation & Pronunciation Extension</strong></p>
   <p>
     <a href="https://github.com/Ousinki/rttr-extension/blob/main/LICENSE">
