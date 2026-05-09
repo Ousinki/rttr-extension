@@ -241,14 +241,15 @@ export default defineBackground(() => {
     }
 
     const aiResults = await getSegmentedTokens(text, settings);
-    const translatedResults = await translateVisibleTokens(text, aiResults, settings.translationEngine);
+    const translatedResults = await translateVisibleTokens(text, aiResults, settings.translationEngine, settings.targetLanguage);
 
-    // Filter out known words (dismissed by user)
+    // Filter out known words (dismissed by user) and basic skip words
     const knownWords = await getKnownWordsSet();
     const displayResults = translatedResults
       .filter((item) => {
         const normalized = item.word.toLowerCase();
         if (knownWords.has(normalized)) return false;
+        if (item.kind === 'w' && shouldSkip(normalized)) return false;
         return item.kind === 'name' ||
           (item.translation && item.word.toLowerCase() !== item.translation.toLowerCase());
       })
@@ -261,7 +262,7 @@ export default defineBackground(() => {
   }
 
   async function getSegmentedTokens(text: string, settings: Awaited<ReturnType<typeof settingsStorage.getValue>>): Promise<AnnotationResult[]> {
-    const cacheKey = await createSegmentCacheKey(text, settings.model);
+    const cacheKey = await createSegmentCacheKey(text, settings.model, settings.targetLanguage || 'zh-CN');
     const cached = await readSegmentCache(cacheKey);
     if (cached) return cached;
 
@@ -288,7 +289,8 @@ export default defineBackground(() => {
   async function translateVisibleTokens(
     text: string,
     aiResults: AnnotationResult[],
-    engine: 'none' | 'google' | 'deepl' | 'bing'
+    engine: 'none' | 'google' | 'deepl' | 'bing',
+    targetLang: string
   ): Promise<AnnotationResult[]> {
     const visibleTokens = aiResults.filter((item) => !isStandaloneNumberToken(item));
     // AI returned results → use directly; fallback only when AI returns nothing
@@ -311,7 +313,6 @@ export default defineBackground(() => {
       ].sort((a, b) => a.start - b.start || a.end - b.end);
     }
 
-    const targetLang = 'zh-CN';
     const uniqueTexts = Array.from(new Set(translatableTokens.map((token) => token.word.toLowerCase())));
     const translationMap = await translateTextList(uniqueTexts, engine, targetLang);
 
@@ -457,9 +458,9 @@ export default defineBackground(() => {
 
 
 
-  async function createSegmentCacheKey(text: string, model: string): Promise<string> {
+  async function createSegmentCacheKey(text: string, model: string, targetLanguage: string): Promise<string> {
     const normalized = text.replace(/\s+/g, ' ').trim();
-    const data = new TextEncoder().encode(`${model}\n${normalized}`);
+    const data = new TextEncoder().encode(`${model}\n${targetLanguage}\n${normalized}`);
     const digest = await crypto.subtle.digest('SHA-256', data);
     return Array.from(new Uint8Array(digest))
       .map((byte) => byte.toString(16).padStart(2, '0'))

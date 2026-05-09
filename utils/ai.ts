@@ -22,7 +22,19 @@ export interface AnnotationResult {
 
 // ─── AI Prompt ──────────────────────────────────────────
 
-const SYSTEM_PROMPT = `你是一个高级的英文阅读辅助引擎。
+function getLanguageName(code: string): string {
+  switch (code) {
+    case 'zh-TW': return '繁体中文';
+    case 'ja': return '日文';
+    case 'en': return '英文';
+    case 'zh-CN':
+    default: return '中文';
+  }
+}
+
+export function getSystemPrompt(targetLanguage: string): string {
+  const langName = getLanguageName(targetLanguage);
+  return `你是一个高级的英文阅读辅助引擎。
 
 任务：只把英文段落中值得学习的重点 token 标注出来，不要翻译整个段落。
 
@@ -31,20 +43,20 @@ const SYSTEM_PROMPT = `你是一个高级的英文阅读辅助引擎。
 - 单个词的专有名词也要标注
 - 多词专有名词必须作为整体返回，不要拆开
 
-【标注粒度：短语优先】
-1. 固定搭配和短语是最小标注单位，不要拆开。
-2. 只有不属于任何搭配的独立难词才以单词为单位标注。
-3. 常见基础词不要标注（如 free, the, system, idea, name, use, run 等）。
+【标注粒度：短语优先（核心规则）】
+1. 固定搭配和短语是最小标注单位，绝对不要拆散！如 open-source software 必须是一个 p，不要拆成三个单词。
+2. 只有极少数不属于任何搭配的独立难词才以单词为单位提取。
+3. 绝对禁止标注以下常见基础词：free, the, system, idea, name, use, run, software, package, management, operating, user 等。
 
 【类型】
 w=独立难词, p=固定搭配/短语, n=专有名词（品牌/软件/人名/地名/机构名）, e=事件/典故。
 
 【说明字段】
-n/e token 第 4 项必须给一句很短的中文事实说明（它是什么），不要写"保留原文""通常不翻译"这类规则说明。
-第 5 项（中文名）规则：
-- 人名：必须给中文译名（音译即可）
-- 地名/机构名：如果有通行中文名则给，没有就省略
-- 软件名/品牌名：如果有通行中文名则给，没有就省略
+n/e token 第 4 项必须给一句很短的${langName}事实说明（它是什么），不要写"保留原文""通常不翻译"这类规则说明。
+第 5 项（${langName}名）规则：
+- 人名：必须给${langName}译名（音译即可）
+- 地名/机构名：如果有通行${langName}名则给，没有就省略
+- 软件名/品牌名：如果有通行${langName}名则给，没有就省略
 
 【数字规则】
 独立数字不要返回；但数字属于专有名词整体时必须一起返回。
@@ -55,15 +67,16 @@ n/e token 第 4 项必须给一句很短的中文事实说明（它是什么）�
 严格输出紧凑 JSON，不要 Markdown：
 {"t":[[字段1,字段2,字段3,字段4,字段5,字段6]]}
 字段1=原文文本, 字段2=start, 字段3=end, 字段4=类型(w/p/n/e)
-字段5=中文说明（n/e 必填，w/p 省略）
-字段6=中文译名（人名必填音译，其他有通行中文名才填，否则省略）
+字段5=${langName}说明（n/e 必填，w/p 省略）
+字段6=${langName}译名（人名必填音译，其他有通行${langName}名才填，否则省略）
 
 w/p 类型只需 4 个字段：["text",start,end,"w"]
-n/e 类型至少 5 个字段，人名必须 6 个字段：["text",start,end,"n","说明","中文译名"]
+n/e 类型至少 5 个字段，人名必须 6 个字段：["text",start,end,"n","说明","${langName}译名"]
 
 输入示例："The app was created by John Smith at Nexora Labs, featuring a built-in spell checker and real-time collaboration."
 输出示例：
 {"t":[["John Smith",27,37,"n","该应用的创建者","约翰·史密斯"],["Nexora Labs",41,52,"n","一家软件开发公司","奈索拉实验室"],["built-in",66,74,"w"],["spell checker",75,88,"p"],["real-time collaboration",93,116,"p"]]}`;
+}
 
 // ─── API 调用 ────────────────────────────────────────────
 
@@ -87,7 +100,7 @@ ${text}`;
     body: JSON.stringify({
       model: settings.model,
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: getSystemPrompt(settings.targetLanguage || 'zh-CN') },
         { role: 'user', content: userPrompt },
       ],
       temperature: 0.1,
@@ -378,17 +391,20 @@ export async function explainWord(settings: RTTRSettings, word: string, sentence
 
 // ─── AI 极简语境翻译 (仅翻译文本) ────────────────────────────────
 
-const CONTEXTUAL_TRANSLATE_PROMPT = `你是一个高级的英文语境分析与翻译引擎。
+function getContextualTranslatePrompt(langName: string): string {
+  return `你是一个高级的英文语境分析与翻译引擎。
 
 【核心任务】：
-用户在阅读英文句子时，鼠标点击（或长按）了其中一个单词。你需要结合整个句子的语境，判断用户真正想了解的是什么，并给出最精准的中文翻译。
+用户在阅读英文句子时，鼠标点击（或长按）了其中一个单词。你需要结合整个句子的语境，判断用户真正想了解的是什么，并给出最精准的${langName}翻译。
 
 【强制规则】：
 1. 绝不要输出任何多余的开头语、解释、拼音或 Markdown 语法！
 2. 翻译必须精准贴合当前语境。`;
+}
 
 export async function contextualTranslate(settings: RTTRSettings, word: string, sentence: string): Promise<string> {
-  let systemPrompt = CONTEXTUAL_TRANSLATE_PROMPT;
+  const langName = getLanguageName(settings.targetLanguage || 'zh-CN');
+  let systemPrompt = getContextualTranslatePrompt(langName);
   
   const collocEnabled = settings.enableContextualCollocation ?? true;
   if (collocEnabled) {
@@ -396,11 +412,11 @@ export async function contextualTranslate(settings: RTTRSettings, word: string, 
 3. 【智能语境搭配（最高优先级）】：请务必检查用户点击的单词，在句子中是否与相邻的单词组成了复合名词、固定搭配或动词短语。
    - 如果是，你**必须自动向外扩展**，将整个词组作为一个整体提取出来，并输出该词组的翻译！
    - 如果没有搭配，才只翻译用户点击的独立单词。
-4. 【输出格式】：不管你提取的是词组还是独立单词，输出格式必须严格为："英文原文 (中文翻译)"。
-   - 错误示例（只输出中文）："拳击比赛"`;
+4. 【输出格式】：不管你提取的是词组还是独立单词，输出格式必须严格为："英文原文 (${langName}翻译)"。
+   - 错误示例（只输出翻译）："拳击比赛"`;
   } else {
     systemPrompt += `
-3. 【输出格式】：只翻译用户点击的单词，输出格式必须严格为："英文原文 (中文翻译)"。`;
+3. 【输出格式】：只翻译用户点击的单词，输出格式必须严格为："英文原文 (${langName}翻译)"。`;
   }
 
   const messages = [
