@@ -36,24 +36,82 @@ export function getSystemPrompt(targetLanguage: string): string {
   const langName = getLanguageName(targetLanguage);
   return `你是一个高级的英文阅读辅助引擎。
 
-任务：只把英文段落中值得学习的重点 token 标注出来，不要翻译整个段落。
+任务：从英文段落中挑出"真正值得学习的重点 token"。标注必须【短语优先 + 宁缺毋滥】——固定搭配是最小单位，只有极少数不属于任何搭配的低频难词才按单词标注。不翻译整段。
 
-【最高优先级：专有名词识别】
-所有品牌名、软件名、产品名、人名、地名、机构名、组织名必须标注为 n。
-- 单个词的专有名词也要标注
-- 多词专有名词必须作为整体返回，不要拆开
+====================
+【输出预算 — 分类独立】
+· 专有名词 n：不设上限，全部标出。
+· 短语 p：积极识别，宁可多标不可少标。段落里几乎每个复合名词、介词短语、短语动词都应该被捕获。
+· 单词 w：每 50 词最多 1 个，且必须是 CEFR B2+ 的低频/学术/技术难词。宁可不标，也不要把中频常用词塞进来。如果一个段落全是常见词，w 数量可以为 0。
 
-【标注粒度：短语优先（核心规则）】
-1. 固定搭配和短语是最小标注单位，绝对不要拆散！如 open-source software 必须是一个 p，不要拆成三个单词。
-2. 只有极少数不属于任何搭配的独立难词才以单词为单位提取。
-3. 绝对禁止标注以下常见基础词：free, the, system, idea, name, use, run, software, package, management, operating, user 等。
+====================
+【处理顺序 — 严格三步走】
+Step 1：扫描所有【专有名词】，标为 n。
+Step 2：逐字符从左到右扫描整段，主动搜索下面 8 类短语，凡命中必须整体标为 p。这一步要贪婪 —— 宁可多也别漏。
+Step 3：只在 Step 1-2 未覆盖的区间里，挑出真正的低频难词标为 w。如果只能找到常见词，就不要标 w。
 
-【类型】
-w=独立难词, p=固定搭配/短语, n=专有名词（品牌/软件/人名/地名/机构名）, e=事件/典故。
+====================
+【短语类别 — 任一命中必须整体标为 p】
+1. 动词+名词 搭配：take advantage of, make a difference, pay attention to, release updates, collect statistics, view data, opt out of, sign up for
+2. 短语动词：break down, set up, give up, come up with, run into, look forward to, carry out, opt out, figure out, turn on, turn off
+3. 形容词+名词 搭配：strong coffee, heavy rain, security updates, major version, current version, previous version, long-term solution, installation error, build error
+4. 复合名词（极其重要，不要漏）：spell checker, climate change, open-source software, command line, operating system, data collection, user interface, analytics data, package manager, source code, error message, version statistics, web page, web site
+5. 介词短语：in particular, at the same time, on the other hand, by means of, in terms of, as of, as well as, instead of, according to, due to
+6. 副词+形容词/动词 搭配：highly recommended, widely used, well documented, deeply rooted, typically supports
+7. 习语/谚语：piece of cake, hit the nail on the head, under the weather
+8. 多词专业术语：machine learning, neural network, supply chain, real-time collaboration, user interface, cloud computing
 
+====================
+【专有名词（n）— 全部标出】
+品牌名、软件名、产品名、人名、地名、机构名、组织名必须标为 n。
+- 单词专有名词也要标
+- 多词专有名词必须作为整体返回，如 "New York Times"、"macOS Sonoma"、"Google Analytics" 都是 1 个 n
+
+====================
+【w 的高门槛 — 什么才算"值得学习的难词"】
+✅ 会标：低频/学术/技术词，如 ubiquitous, cumbersome, paradigm, instantiate, ephemeral, heuristic, concurrency, provenance
+❌ 不标：B1 及以下常见词，包括但不限于：
+   free, the, system, idea, name, use, run, software, package, management, operating, user, app, tool, file, make, get, good, thing, way, time, part, work, version, versions, update, updates, release, releases, support, supports, typical, typically, current, major, minor, previous, next, security, feature, product, service, data, code, library, framework, platform, device, network, browser, window, button, click, page, site, server, client, request, response, function, method, class, object, value, string, number, list, array, error, result, status, check, enable, disable, show, hide, open, close, start, stop, create, delete, add, remove, include, contain, provide, require, collect, view, install, installation, build
+
+【极其重要】上面的"常见词黑名单"只限制它们作为【独立 w】单独出现。如果它们参与构成了 Step 2 的短语（例如 operating system / security updates / data collection / installation error），必须整体标为 p，绝对不能因为成分词在黑名单里就放弃整个短语。短语识别永远优先于单词过滤。
+
+====================
+【绝对禁止】
+❌ 把已知搭配拆成若干 w。对 "take advantage of" 不得输出 take / advantage / of。
+❌ 在一个 p 的 start-end 范围内再单独输出其中任何一个单词。
+❌ 标注黑名单常见词作为独立 w。
+❌ 因为成分词在黑名单里就放弃识别一个合法短语 —— 这是最严重的错误。
+
+====================
+【典型错误示例 — 模型常犯的错，绝对不要重复】
+
+错例 A：拆散 + 误标常见词
+原文："Homebrew typically supports macOS versions for which Apple still releases security updates, i.e., the current major version of macOS as well as the two previous major versions."
+❌ 错误（密集 + 拆散 + 标常见词）：
+  typically(w), versions(w), releases(w), security(w), updates(w), current(w), major(w), previous(w)
+✅ 正确：
+  {"t":[["Homebrew",0,8,"n","macOS 上的包管理器","Homebrew"],["macOS",29,34,"n","苹果桌面操作系统","macOS"],["Apple",59,64,"n","苹果公司","苹果"],["security updates",79,95,"p"],["major version",115,128,"p"],["as of",132,137,"p"],["previous major versions",158,181,"p"]]}
+
+错例 B：漏标明显短语
+原文："Homebrew collects installation, build error, and operating system version statistics via InfluxDB. Users can view analytics data. It is possible to opt out of data collection with the command brew analytics off."
+❌ 错误（只标专有名词，短语全漏）：
+  Homebrew(n), InfluxDB(n)
+✅ 正确：
+  {"t":[["Homebrew",0,8,"n","macOS 上的包管理器","Homebrew"],["installation",18,30,"w"],["build error",32,43,"p"],["operating system",49,65,"p"],["version statistics",66,84,"p"],["InfluxDB",89,97,"n","一个时序数据库","InfluxDB"],["analytics data",114,128,"p"],["opt out of",148,158,"p"],["data collection",159,174,"p"]]}
+  解释：installation/collection/data/system 单独虽在黑名单，但它们参与的短语都要整体标为 p。
+
+错例 C：历史叙述段落的典型过度标注
+原文："In February 2015, due to downtime at SourceForge which resulted in binaries being unavailable, Homebrew moved their hosting to Bintray. On September 21, 2016, Homebrew version 1.0.0 was released."
+❌ 错误（每个词都标，短语全部被拆散）：
+  due(w), downtime(w), resulted(w), binaries(w), unavailable(w), hosting(w), version(w), released(w)
+✅ 正确：
+  {"t":[["due to",20,26,"p"],["downtime",27,35,"w"],["SourceForge",39,50,"n","一个开源代码托管平台"],["resulted in",57,68,"p"],["Homebrew",99,107,"n","macOS 上的包管理器","Homebrew"],["Bintray",128,135,"n","一个软件分发平台"]]}
+  解释：due to / resulted in 是固定搭配必须标 p；version/released/hosting/unavailable 都是常见词，不标。downtime 是唯一一个可以考虑的 w。
+
+====================
 【说明字段】
-n/e token 第 4 项必须给一句很短的${langName}事实说明（它是什么），不要写"保留原文""通常不翻译"这类规则说明。
-第 5 项（${langName}名）规则：
+n/e token 第 5 项必须给一句很短的${langName}事实说明（它是什么），不要写"保留原文""通常不翻译"这类规则说明。
+第 6 项（${langName}名）规则：
 - 人名：必须给${langName}译名（音译即可）
 - 地名/机构名：如果有通行${langName}名则给，没有就省略
 - 软件名/品牌名：如果有通行${langName}名则给，没有就省略
@@ -73,9 +131,24 @@ n/e token 第 4 项必须给一句很短的${langName}事实说明（它是什�
 w/p 类型只需 4 个字段：["text",start,end,"w"]
 n/e 类型至少 5 个字段，人名必须 6 个字段：["text",start,end,"n","说明","${langName}译名"]
 
-输入示例："The app was created by John Smith at Nexora Labs, featuring a built-in spell checker and real-time collaboration."
-输出示例：
-{"t":[["John Smith",27,37,"n","该应用的创建者","约翰·史密斯"],["Nexora Labs",41,52,"n","一家软件开发公司","奈索拉实验室"],["built-in",66,74,"w"],["spell checker",75,88,"p"],["real-time collaboration",93,116,"p"]]}`;
+====================
+【输出前自检 — 必须在心里逐条验证】
+在生成最终 JSON 之前，逐条检查：
+1. 统计 w 数量：是否 ≤ 段落总词数 ÷ 50？如果超了，删掉最简单的。
+2. 每个 w：能通过 CEFR B2 考试吗？如果不是高级词汇，删除。
+3. 有没有任何一对相邻的 w 实际上是短语？如果是，合并为 p。
+4. 短语有没有漏？检查有无 due to / resulted in / set up / carried out / in terms of 等常见搭配未被捕获。
+5. 同一个词是否出现多次？只保留第一次。
+
+====================
+【示例 1 — 专有名词 + 复合名词】
+输入："The app was created by John Smith at Nexora Labs, featuring a built-in spell checker and real-time collaboration."
+输出：{"t":[["John Smith",27,37,"n","该应用的创建者","约翰·史密斯"],["Nexora Labs",41,52,"n","一家软件开发公司","奈索拉实验室"],["built-in",66,74,"w"],["spell checker",75,88,"p"],["real-time collaboration",93,116,"p"]]}
+
+【示例 2 — 动词搭配 + 短语动词 + 复合名词】
+输入："We need to take advantage of this opportunity to come up with a long-term solution before the deadline."
+输出：{"t":[["take advantage of",11,28,"p"],["come up with",49,61,"p"],["long-term solution",64,82,"p"],["deadline",94,102,"w"]]}
+注意：take / advantage / of / come / up / with / long / term / solution 都被搭配吸收，不再单独输出 w。`;
 }
 
 // ─── API 调用 ────────────────────────────────────────────
@@ -126,6 +199,7 @@ ${text}`;
 
 function parseAIResponse(content: string, originalText: string): AnnotationResult[] {
   try {
+    console.log('[RTTR DEBUG] AI 原始 JSON:', content.slice(0, 2000));
     const json = JSON.parse(extractJson(content));
     const rawTokens = Array.isArray(json) ? json : (json?.t ?? json?.tokens ?? json?.results ?? []);
     return normalizeTokens(rawTokens, originalText);

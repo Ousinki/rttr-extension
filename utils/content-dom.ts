@@ -2,6 +2,7 @@ import { safeSendMessage } from '@/utils/content-messaging';
 import { uiActions, setLastInteractionY, getLineRect } from '@/utils/content-state';
 import { speakText } from '@/utils/tts';
 import type { AnnotationResult } from '@/utils/ai';
+import type { TranslationEngine } from '@/utils/messaging';
 
 const RTTR_ATTR = 'data-rttr-annotated';
 
@@ -14,12 +15,6 @@ export const BLOCK_TAGS = new Set([
   'P', 'DIV', 'LI', 'TD', 'TH', 'BLOCKQUOTE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'ARTICLE', 'SECTION', 'PRE'
 ]);
 
-export interface UndoAction {
-  wrapper: HTMLElement;
-  textNode: Text;
-  word: string;
-}
-
 interface AnnotationEntry extends AnnotationResult {
   color: string;
 }
@@ -29,8 +24,6 @@ interface LocalAnnotation {
   start: number;
   end: number;
 }
-
-export const undoStack: UndoAction[] = [];
 
 export function findParagraph(el: HTMLElement | null): HTMLElement | null {
   while (el && el.tagName !== 'BODY' && el.tagName !== 'MAIN') {
@@ -99,8 +92,7 @@ export function applyAnnotations(
   }
 }
 
-let isDraggingRttrWord = false;
-export function getIsDraggingRttrWord() { return isDraggingRttrWord; }
+
 
 function annotateTextNode(
   textNode: Node,
@@ -208,7 +200,7 @@ function annotateTextNode(
             type: 'FETCH_TRANSLATION',
             text: textToSpeak,
             sourceLang: 'auto',
-            targetLang: navigator.language.startsWith('zh') ? 'zh-CN' : 'zh-TW',
+            targetLang: currentSettings.targetLanguage || 'zh-CN',
             engine
           }).then((resp: any) => {
             if (resp && resp.targetText) {
@@ -241,70 +233,7 @@ function annotateTextNode(
       });
 
 
-      wrapper.addEventListener('mousedown', () => { wrapper.draggable = true; });
-      wrapper.addEventListener('mouseup', () => { wrapper.draggable = false; });
-      wrapper.addEventListener('dragend', () => { wrapper.draggable = false; });
 
-      let dragStartX = 0;
-      let dragStartY = 0;
-
-      wrapper.addEventListener('dragstart', (e) => {
-        dragStartX = e.clientX;
-        dragStartY = e.clientY;
-        isDraggingRttrWord = true;
-
-        if (isBackgroundKnowledgeToken(entry)) uiActions.hideTooltip();
-        if (e.dataTransfer) {
-          e.dataTransfer.effectAllowed = 'move';
-          e.dataTransfer.setData('text/plain', part);
-          
-          const dragImageContainer = document.createElement('div');
-          dragImageContainer.style.position = 'absolute';
-          dragImageContainer.style.top = '-10000px';
-          dragImageContainer.style.left = '-10000px';
-          dragImageContainer.style.padding = '20px';
-          dragImageContainer.style.backgroundColor = 'transparent';
-          
-          const clone = wrapper.cloneNode(true) as HTMLElement;
-          clone.classList.remove('rttr-is-dragging');
-          dragImageContainer.appendChild(clone);
-          
-          document.body.appendChild(dragImageContainer);
-          
-          const rect = wrapper.getBoundingClientRect();
-          const offsetX = e.clientX - rect.left;
-          const offsetY = e.clientY - rect.top;
-          e.dataTransfer.setDragImage(dragImageContainer, 20 + offsetX, 20 + offsetY);
-          
-          setTimeout(() => dragImageContainer.remove(), 0);
-        }
-        setTimeout(() => {
-          wrapper.classList.add('rttr-is-dragging');
-          wrapper.classList.add('rttr-will-snap-back');
-        }, 0);
-      });
-
-      wrapper.addEventListener('drag', (e) => {
-        if (e.clientX === 0 && e.clientY === 0) return;
-        const distance = Math.sqrt(Math.pow(e.clientX - dragStartX, 2) + Math.pow(e.clientY - dragStartY, 2));
-        if (distance <= 30) {
-          wrapper.classList.add('rttr-will-snap-back');
-        } else {
-          wrapper.classList.remove('rttr-will-snap-back');
-        }
-      });
-
-      wrapper.addEventListener('dragend', (e) => {
-        e.preventDefault();
-        isDraggingRttrWord = false;
-        wrapper.classList.remove('rttr-is-dragging');
-        wrapper.classList.remove('rttr-will-snap-back');
-        
-        const distance = Math.sqrt(Math.pow(e.clientX - dragStartX, 2) + Math.pow(e.clientY - dragStartY, 2));
-        if (distance > 30) {
-          dismissWord(wrapper, lower, part);
-        }
-      });
 
     fragment.appendChild(wrapper);
     hasAnnotation = true;
@@ -332,39 +261,7 @@ function shouldRenderRt(entry: AnnotationEntry, translation: string): boolean {
   return !!translation;
 }
 
-export async function dismissWord(ruby: HTMLElement, word: string, originalText: string) {
-  ruby.classList.add('rttr-dismissing');
-  try {
-    const response = await safeSendMessage({ type: 'DISMISS_WORD', word }) as any;
-    if (response?.success) {
-      setTimeout(() => {
-        const textNode = document.createTextNode(originalText);
-        ruby.replaceWith(textNode);
-        undoStack.push({ wrapper: ruby, textNode, word });
-        if (undoStack.length > 50) undoStack.shift();
-      }, 300);
-    } else {
-      ruby.classList.remove('rttr-dismissing');
-    }
-  } catch (err) {
-    ruby.classList.remove('rttr-dismissing');
-  }
-}
 
-export async function undoDismiss(action: UndoAction) {
-  const { wrapper, textNode, word } = action;
-  try {
-    const response = await safeSendMessage({ type: 'UNDISMISS_WORD', word }) as any;
-    if (response?.success) {
-      wrapper.classList.remove('rttr-dismissing');
-      textNode.replaceWith(wrapper);
-    } else {
-      undoStack.push(action);
-    }
-  } catch (err) {
-    undoStack.push(action);
-  }
-}
 
 export function clearAnnotations(paragraph: HTMLElement) {
   const original = paragraph.getAttribute('data-rttr-original');

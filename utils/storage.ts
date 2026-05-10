@@ -7,12 +7,6 @@ import { storage } from '#imports';
 
 // ─── 类型定义 ────────────────────────────────────────────
 
-export interface KnownWord {
-  word: string;          // 单词原形（lemma）
-  dismissedAt: number;   // 标记时间戳
-  dismissCount: number;  // 累计被取消次数（越多越确认掌握）
-}
-
 export interface RTTRSettings {
   apiKey: string;
   apiEndpoint: string;     // OpenAI 兼容接口地址
@@ -74,48 +68,5 @@ export const settingsStorage = storage.defineItem<RTTRSettings>(
   { fallback: DEFAULT_SETTINGS }
 );
 
-export const knownWordsStorage = storage.defineItem<KnownWord[]>(
-  'sync:rttr-known-words',
-  { fallback: [] }
-);
 
-// ─── 辅助函数 ────────────────────────────────────────────
 
-/**
- * 获取已知词的 Set（用于快速过滤）
- */
-export async function getKnownWordsSet(): Promise<Set<string>> {
-  const words = await knownWordsStorage.getValue();
-  return new Set(words.map((w) => w.word.toLowerCase()));
-}
-
-/**
- * 添加已知词（如果已存在则增加 dismissCount）
- */
-export async function addKnownWord(word: string): Promise<void> {
-  const words = await knownWordsStorage.getValue();
-  const lowerWord = word.toLowerCase();
-  const existing = words.find((w) => w.word.toLowerCase() === lowerWord);
-
-  if (existing) {
-    existing.dismissCount += 1;
-    existing.dismissedAt = Date.now();
-  } else {
-    words.push({
-      word: lowerWord,
-      dismissedAt: Date.now(),
-      dismissCount: 1,
-    });
-  }
-
-  await knownWordsStorage.setValue(words);
-}
-
-/**
- * 移除已知词（恢复标注）
- */
-export async function removeKnownWord(word: string): Promise<void> {
-  const words = await knownWordsStorage.getValue();
-  const filtered = words.filter((w) => w.word.toLowerCase() !== word.toLowerCase());
-  await knownWordsStorage.setValue(filtered);
-}

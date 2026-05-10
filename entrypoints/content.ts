@@ -5,11 +5,8 @@ import { uiActions, uiState, setLastInteractionY } from '@/utils/content-state';
 import { settingsStorage } from '@/utils/storage';
 import {
   applyAnnotations,
-  undoStack,
-  undoDismiss,
   findParagraph,
   getSentenceAroundNode,
-  getIsDraggingRttrWord,
   clearAnnotations
 } from '@/utils/content-dom';
 import { safeSendMessage } from '@/utils/content-messaging';
@@ -186,7 +183,7 @@ export default defineContentScript({
                 type: 'FETCH_TRANSLATION',
                 text: word,
                 sourceLang: 'auto',
-                targetLang: navigator.language.startsWith('zh') ? 'zh-CN' : 'zh-TW',
+                targetLang: currentSettings.targetLanguage || 'zh-CN',
                 engine
               }).then((resp: any) => {
                 if (resp && resp.targetText) {
@@ -200,17 +197,10 @@ export default defineContentScript({
       }
     }, { capture: true });
 
+
+
     document.addEventListener('keydown', async (e) => {
       if (!currentSettings?.enabled) return;
-      // Undo
-      if (e.key === 'z' && (e.metaKey || e.ctrlKey)) {
-        if (undoStack.length > 0) {
-          e.preventDefault();
-          const lastAction = undoStack.pop();
-          if (lastAction) undoDismiss(lastAction);
-        }
-        return;
-      }
 
       // Shortcut Pronounce (R key with no modifiers)
       if (currentSettings?.enableShortcutPronounce && e.code === 'KeyR' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
@@ -285,7 +275,7 @@ export default defineContentScript({
           const engine = currentSettings.translationEngine;
           safeSendMessage({
             type: 'FETCH_TRANSLATION', text: info.text, sourceLang: 'auto',
-            targetLang: navigator.language.startsWith('zh') ? 'zh-CN' : 'zh-TW', engine
+            targetLang: currentSettings.targetLanguage || 'zh-CN', engine
           }).then((resp: any) => {
             if (resp && resp.targetText) {
               uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, info.rect, false,
@@ -330,7 +320,7 @@ export default defineContentScript({
           const engine = currentSettings.translationEngine;
           safeSendMessage({
             type: 'FETCH_TRANSLATION', text, sourceLang: 'auto',
-            targetLang: navigator.language.startsWith('zh') ? 'zh-CN' : 'zh-TW', engine
+            targetLang: currentSettings.targetLanguage || 'zh-CN', engine
           }).then((resp: any) => {
             if (resp && resp.targetText) {
               uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, rect, false,
@@ -370,7 +360,7 @@ export default defineContentScript({
     document.addEventListener('pointerdown', (e) => {
       if (!currentSettings?.enabled) return;
       if (!currentSettings?.enableLongPressTranslate) return;
-      if (e.button !== 0 || getIsDraggingRttrWord()) return;
+      if (e.button !== 0) return;
       isLongPressFired = false;
 
       const target = e.target as HTMLElement;
@@ -463,13 +453,7 @@ export default defineContentScript({
       }
     });
 
-    // Prevent browser's default drop-forbidden cursor during rttr-word drag
-    document.addEventListener('dragover', (e) => {
-      if (getIsDraggingRttrWord()) {
-        e.preventDefault();
-        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      }
-    });
+
 
     // Context Menu Logic
     document.addEventListener('contextmenu', async (e) => {
@@ -575,7 +559,10 @@ export default defineContentScript({
           }});
 
 
-          menuItems.push({ icon: iconTranslate, label: '翻译段落', onClick: () => handleTranslate(findParagraph(targetRange!.startContainer as HTMLElement)) });
+          menuItems.push({ icon: iconTranslate, label: '翻译段落', onClick: () => {
+            const paragraph = resolveTranslateParagraph(targetRange!.startContainer as HTMLElement);
+            handleTranslate(paragraph);
+          }});
           menuItems.push({ type: 'divider', label: 'DIVIDER' });
           menuItems.push({ icon: iconSettings, label: '设置', onClick: () => safeSendMessage({ type: 'OPEN_OPTIONS' }) });
 
@@ -583,6 +570,23 @@ export default defineContentScript({
         }
       }
     }, { capture: true });
+
+    // Resolve which paragraph to translate — shared by shortcut & context menu
+    // Rule: selection wins (use anchorNode), otherwise fall back to the given element.
+    function resolveTranslateParagraph(fallback: HTMLElement | null): HTMLElement | null {
+      const selection = getActiveSelection();
+      let targetNode: Node | null = null;
+      if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
+        targetNode = selection.anchorNode;
+      } else if (fallback) {
+        targetNode = fallback;
+      }
+      if (!targetNode) return null;
+      const el = targetNode.nodeType === Node.ELEMENT_NODE
+        ? (targetNode as HTMLElement)
+        : targetNode.parentElement;
+      return findParagraph(el);
+    }
 
     // Main Translate Handler
     async function handleTranslate(paragraph: HTMLElement | null) {
@@ -632,33 +636,22 @@ export default defineContentScript({
     // Listen for messages from background (e.g. Chrome Commands global shortcuts)
     browser.runtime.onMessage.addListener((message: any) => {
       if (message.type === 'TRIGGER_TRANSLATE') {
-        const selection = getActiveSelection();
-        let targetNode: Node | null = null;
-        if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
-          targetNode = selection.anchorNode;
-        } else if (lastMouseTarget) {
-          targetNode = lastMouseTarget;
-        }
-        if (targetNode) {
-          const paragraph = findParagraph(targetNode as HTMLElement);
-          if (paragraph) handleTranslate(paragraph);
-        }
+        const paragraph = resolveTranslateParagraph(lastMouseTarget);
+        if (paragraph) handleTranslate(paragraph);
       }
     });
   }
 });
 
 function setParagraphLoading(paragraph: HTMLElement, isLoading: boolean) {
+  paragraph.querySelectorAll(':scope > .rttr-inline-spinner').forEach((el) => el.remove());
   if (isLoading) {
     paragraph.classList.add('rttr-paragraph-loading');
     const spinner = document.createElement('span');
     spinner.className = 'rttr-inline-spinner';
-    spinner.id = 'rttr-current-spinner';
     paragraph.appendChild(spinner);
   } else {
     paragraph.classList.remove('rttr-paragraph-loading');
-    const spinner = paragraph.querySelector('#rttr-current-spinner');
-    if (spinner) spinner.remove();
   }
 }
 
@@ -844,32 +837,7 @@ function injectStyles() {
     [data-rttr-annotated="true"] {
       line-height: 1.8 !important;
     }
-    .rttr-word.rttr-dismissing {
-      opacity: 0;
-      transform: scale(0.95);
-      transition: all 0.3s ease;
-    }
-    .rttr-word.rttr-is-dragging {
-      color: transparent !important;
-      background-color: rgba(0, 0, 0, 0.04);
-      border-radius: 4px;
-      box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
-      outline: 1.5px dashed rgba(0, 0, 0, 0.2);
-      outline-offset: 2px;
-      transition: all 0.2s ease;
-      cursor: grabbing !important;
-    }
-    .rttr-word.rttr-is-dragging rt.rttr-translation {
-      color: transparent !important;
-    }
-    .rttr-word.rttr-will-snap-back {
-      background-color: rgba(74, 144, 217, 0.1) !important;
-      outline: 2px dashed rgba(74, 144, 217, 0.9) !important;
-      outline-offset: 3px !important;
-      box-shadow: inset 0 0 6px rgba(74, 144, 217, 0.2), 0 0 12px rgba(74, 144, 217, 0.4) !important;
-      transform: scale(1.04);
-      transition: all 0.2s cubic-bezier(0.18, 0.89, 0.32, 1.28);
-    }
+
     .rttr-paragraph-loading {
       color: #999 !important;
       transition: color 0.3s ease;

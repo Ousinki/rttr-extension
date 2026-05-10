@@ -1,0 +1,14 @@
+{
+  "extName": {
+    "message": "RTTR — RubyText Translator",
+    "description": "Name of the extension."
+  },
+  "extDescription": {
+    "message": "AI-powered contextual vocabulary translation. Intelligently annotates keywords with Ruby texts.",
+    "description": "Description of the extension."
+  },
+  "commandTranslateParagraph": {
+    "message": "Translate Hovered Paragraph",
+    "description": "Command to translate hovered paragraph."
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "extName": {
+    "message": "RTTR — RubyText Translator",
+    "description": "Name of the extension."
+  },
+  "extDescription": {
+    "message": "AI 语境单词上标翻译，智能标注实义词并以 Ruby 注音呈现",
+    "description": "Description of the extension."
+  },
+  "commandTranslateParagraph": {
+    "message": "翻译鼠标悬浮段落",
+    "description": "Command to translate hovered paragraph."
+  }
+}

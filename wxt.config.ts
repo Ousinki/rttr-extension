@@ -4,10 +4,25 @@ import { defineConfig } from 'wxt';
 export default defineConfig({
   modules: ['@wxt-dev/module-vue'],
   manifest: {
-    name: 'RTTR — RubyText Translator',
-    description: 'AI 语境单词上标翻译，智能标注实义词并以 Ruby 注音呈现',
+    name: '__MSG_extName__',
+    description: '__MSG_extDescription__',
+    default_locale: 'zh_CN',
     version: '0.1.0',
     permissions: ['storage', 'activeTab'],
+    host_permissions: [
+      '*://*.googleapis.com/*',
+      '*://api.deepl.com/*',
+      '*://api.openai.com/*',
+      '*://api.deepseek.com/*',
+      '*://open.bigmodel.cn/*',
+      '*://generativelanguage.googleapis.com/*',
+      '*://api.anthropic.com/*',
+      '*://api.x.ai/*',
+      '*://dashscope.aliyuncs.com/*',
+      '*://api.moonshot.cn/*',
+      '*://api.siliconflow.cn/*',
+      '*://api.lingyiwanwu.com/*'
+    ],
     action: {
       default_icon: {
         '16': 'icon/16.png',
@@ -31,7 +46,7 @@ export default defineConfig({
           default: 'Alt+T',
           mac: 'Alt+T',
         },
-        description: '翻译鼠标悬浮段落',
+        description: '__MSG_commandTranslateParagraph__',
       },
     },
   },

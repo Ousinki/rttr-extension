@@ -18,23 +18,7 @@ export interface TranslateResponse {
   error?: string;
 }
 
-export interface DismissWordRequest {
-  type: 'DISMISS_WORD';
-  word: string;
-}
 
-export interface DismissWordResponse {
-  success: boolean;
-}
-
-export interface UndismissWordRequest {
-  type: 'UNDISMISS_WORD';
-  word: string;
-}
-
-export interface UndismissWordResponse {
-  success: boolean;
-}
 
 
 export interface LookupIpaRequest {
@@ -96,8 +80,6 @@ export interface FetchTranslationResponse {
 
 export type RTTRMessage =
   | TranslateRequest
-  | DismissWordRequest
-  | UndismissWordRequest
   | LookupIpaRequest
   | ExplainWordRequest
   | ContextualTranslateRequest

@@ -12,13 +12,13 @@
 import { translateParagraph, explainWord, contextualTranslate, readNumberInContext } from '@/utils/ai';
 import { getIpa } from '@/utils/phonetics';
 import { handleFetchTranslation } from '@/utils/translator';
-import type { RTTRMessage, TranslateResponse, DismissWordResponse, UndismissWordResponse, LookupIpaResponse } from '@/utils/messaging';
-import { settingsStorage, getKnownWordsSet, addKnownWord, removeKnownWord } from '@/utils/storage';
+import type { RTTRMessage, TranslateResponse, LookupIpaResponse } from '@/utils/messaging';
+import { settingsStorage } from '@/utils/storage';
 import { shouldSkip } from '@/utils/skip-words';
 import type { AnnotationResult } from '@/utils/ai';
 
 const PARAGRAPH_SEGMENT_CACHE_KEY = 'rttr_paragraph_segment_cache_v4';
-const SEGMENT_TIMEOUT_MS = 5000;
+const SEGMENT_TIMEOUT_MS = 15000;
 const MAX_SEGMENT_CACHE_ENTRIES = 150;
 const PHRASE_CONNECTORS = new Set([
   'about', 'after', 'against', 'around', 'at', 'between', 'by', 'for', 'from',
@@ -128,21 +128,7 @@ export default defineBackground(() => {
             );
           return true; // 异步响应
 
-        case 'DISMISS_WORD':
-          handleDismissWord(message.word)
-            .then(sendResponse)
-            .catch(() =>
-              sendResponse({ success: false } satisfies DismissWordResponse)
-            );
-          return true;
 
-        case 'UNDISMISS_WORD':
-          handleUndismissWord(message.word)
-            .then(sendResponse)
-            .catch(() =>
-              sendResponse({ success: false } satisfies UndismissWordResponse)
-            );
-          return true;
 
 
         case 'LOOKUP_IPA':
@@ -241,19 +227,40 @@ export default defineBackground(() => {
     }
 
     const aiResults = await getSegmentedTokens(text, settings);
-    const translatedResults = await translateVisibleTokens(text, aiResults, settings.translationEngine, settings.targetLanguage);
+    // 🔍 DEBUG: AI 原始输出
+    console.log('[RTTR DEBUG] AI 原始输出:', aiResults.map(r => `${r.kind}:${r.word}`));
+    console.log('[RTTR DEBUG] phrase 数量:', aiResults.filter(r => r.kind === 'phrase').length);
+    console.log('[RTTR DEBUG] word 数量:', aiResults.filter(r => r.kind === 'word').length);
+    console.log('[RTTR DEBUG] name 数量:', aiResults.filter(r => r.kind === 'name').length);
 
-    // Filter out known words (dismissed by user) and basic skip words
-    const knownWords = await getKnownWordsSet();
+    const translatedResults = await translateVisibleTokens(text, aiResults, settings.translationEngine, settings.targetLanguage);
+    // 🔍 DEBUG: 翻译后结果
+    console.log('[RTTR DEBUG] 翻译后:', translatedResults.map(r => `${r.kind}:${r.word}→${r.translation}`));
+
+    // Filter out basic skip words + dedup (same word only annotated once per paragraph)
+    const seenTokens = new Set<string>();
     const displayResults = translatedResults
       .filter((item) => {
         const normalized = item.word.toLowerCase();
-        if (knownWords.has(normalized)) return false;
-        if (item.kind === 'w' && shouldSkip(normalized)) return false;
-        return item.kind === 'name' ||
-          (item.translation && item.word.toLowerCase() !== item.translation.toLowerCase());
+        // Skip common words (only for standalone w)
+        if (item.kind === 'word' && shouldSkip(normalized)) return false;
+        // Skip if translation is empty or identical to source
+        if (item.kind !== 'name' &&
+          (!item.translation || item.word.toLowerCase() === item.translation.toLowerCase())) {
+          return false;
+        }
+        // Dedup: for w/p tokens, only keep first occurrence
+        // Names (n) are exempt — they may appear in different contexts
+        if (item.kind === 'word' || item.kind === 'phrase') {
+          if (seenTokens.has(normalized)) return false;
+          seenTokens.add(normalized);
+        }
+        return true;
       })
       .sort((a, b) => a.start - b.start || a.end - b.end);
+
+    // 🔍 DEBUG: 最终显示
+    console.log('[RTTR DEBUG] 最终显示:', displayResults.map(r => `${r.kind}:${r.word}`));
 
     return {
       success: true,
@@ -262,9 +269,11 @@ export default defineBackground(() => {
   }
 
   async function getSegmentedTokens(text: string, settings: Awaited<ReturnType<typeof settingsStorage.getValue>>): Promise<AnnotationResult[]> {
-    const cacheKey = await createSegmentCacheKey(text, settings.model, settings.targetLanguage || 'zh-CN');
-    const cached = await readSegmentCache(cacheKey);
-    if (cached) return cached;
+    // TODO: 缓存已禁用——每次触发都重新调用 AI，方便调试 Prompt。
+    // 稳定后恢复缓存：取消下方注释，删除直接调用。
+    // const cacheKey = await createSegmentCacheKey(text, settings.model, settings.targetLanguage || 'zh-CN');
+    // const cached = await readSegmentCache(cacheKey);
+    // if (cached) return cached;
 
     const segmentPromise = translateParagraph(text, settings);
     try {
@@ -273,14 +282,14 @@ export default defineBackground(() => {
         SEGMENT_TIMEOUT_MS,
         `LLM 分词超过 ${SEGMENT_TIMEOUT_MS}ms`
       );
-      await writeSegmentCache(cacheKey, tokens);
+      // await writeSegmentCache(cacheKey, tokens);
       return tokens;
     } catch (err) {
       console.warn('[RTTR] AI 分词超时或失败，先使用本地粗分词兜底:', err);
 
       segmentPromise
-        .then((tokens) => writeSegmentCache(cacheKey, tokens))
-        .catch((lateErr) => console.warn('[RTTR] 后台分词缓存写入失败:', lateErr));
+        // .then((tokens) => writeSegmentCache(cacheKey, tokens))
+        .catch((lateErr) => console.warn('[RTTR] 后台分词最终也失败:', lateErr));
 
       return [];
     }
@@ -506,17 +515,7 @@ export default defineBackground(() => {
     });
   }
 
-  // ─── 标记已知词 ────────────────────────────────────────
-  async function handleDismissWord(word: string): Promise<DismissWordResponse> {
-    await addKnownWord(word);
-    return { success: true };
-  }
 
-  // ─── 撤销标记已知词 ──────────────────────────────────────
-  async function handleUndismissWord(word: string): Promise<UndismissWordResponse> {
-    await removeKnownWord(word);
-    return { success: true };
-  }
 
   // ─── AI 语境解释单词 ────────────────────────────────────
   async function handleExplainWord(word: string, sentence: string): Promise<{ success: boolean; explanation?: string; ipa?: string | null; error?: string }> {
