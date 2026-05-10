@@ -1,6 +1,7 @@
 import { safeSendMessage } from '@/utils/content-messaging';
 import { uiActions, setLastInteractionY, getLineRect } from '@/utils/content-state';
 import { speakText } from '@/utils/tts';
+import { findNumberConversions } from '@/utils/number-conversion';
 import type { AnnotationResult } from '@/utils/ai';
 import type { TranslationEngine } from '@/utils/messaging';
 
@@ -23,6 +24,8 @@ interface LocalAnnotation {
   entry: AnnotationEntry;
   start: number;
   end: number;
+  isFirst: boolean; // true = show <rt> translation; false = continuation segment
+  groupId?: string; // set for multi-segment annotations (used for floating translation)
 }
 
 export function findParagraph(el: HTMLElement | null): HTMLElement | null {
@@ -50,7 +53,7 @@ export function applyAnnotations(
   paragraph.setAttribute('data-rttr-original', paragraph.innerHTML);
   paragraph.setAttribute(RTTR_ATTR, 'true');
 
-  const annotations = results
+  let annotations = results
     .filter((item) => item.start >= 0 && item.end > item.start)
     .sort((a, b) => a.start - b.start || b.end - a.end)
     .reduce<AnnotationEntry[]>((acc, item, i) => {
@@ -62,6 +65,39 @@ export function applyAnnotations(
       });
       return acc;
     }, []);
+
+  // When number conversion is enabled, inject number annotations into the main pipeline
+  if (currentSettings.enableNumberConversion) {
+    const fullText = paragraph.textContent || '';
+    const numberRanges = findNumberConversions(fullText);
+    if (numberRanges.length > 0) {
+      // Remove AI annotations that overlap with number patterns
+      annotations = annotations.filter(
+        a => !numberRanges.some(nr => a.start < nr.end && a.end > nr.start)
+      );
+      // Add number conversion entries as first-class annotations
+      for (const nr of numberRanges) {
+        annotations.push({
+          text: nr.original,
+          word: nr.original,
+          start: nr.start,
+          end: nr.end,
+          importance: 'highlight' as const,
+          translation: nr.converted,
+          kind: 'number',
+          color: '#888',
+        });
+      }
+      // Re-sort and de-overlap
+      annotations.sort((a, b) => a.start - b.start);
+      annotations = annotations.reduce<AnnotationEntry[]>((acc, item) => {
+        const prev = acc[acc.length - 1];
+        if (prev && item.start < prev.end) return acc;
+        acc.push(item);
+        return acc;
+      }, []);
+    }
+  }
 
   if (annotations.length === 0) return;
 
@@ -75,13 +111,34 @@ export function applyAnnotations(
     textOffset += length;
   }
 
-  for (const textNode of textNodes) {
+  // Pre-pass: for each annotation, find which text node has the largest overlap.
+  // The <rt> translation will be shown ONLY on that segment.
+  const primaryNodeIndex = new Map<AnnotationEntry, number>();
+  for (const entry of annotations) {
+    let bestIdx = -1;
+    let bestSize = 0;
+    for (let i = 0; i < textNodes.length; i++) {
+      const tn = textNodes[i];
+      if (entry.start >= tn.end || entry.end <= tn.start) continue;
+      const size = Math.min(entry.end, tn.end) - Math.max(entry.start, tn.start);
+      if (size > bestSize) {
+        bestSize = size;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx >= 0) primaryNodeIndex.set(entry, bestIdx);
+  }
+
+  for (let i = 0; i < textNodes.length; i++) {
+    const textNode = textNodes[i];
     const localAnnotations = annotations
-      .filter((entry) => entry.start >= textNode.start && entry.end <= textNode.end)
+      .filter((entry) => entry.start < textNode.end && entry.end > textNode.start)
       .map((entry) => ({
         entry,
         start: Math.max(0, entry.start - textNode.start),
         end: Math.min(textNode.end, entry.end) - textNode.start,
+        // Show <rt> only on the primary (largest) segment
+        isFirst: primaryNodeIndex.get(entry) === i,
       }))
       .filter((item) => item.end > item.start);
 
@@ -91,8 +148,6 @@ export function applyAnnotations(
     }
   }
 }
-
-
 
 function annotateTextNode(
   textNode: Node,
@@ -122,6 +177,11 @@ function annotateTextNode(
     wrapper.className = getAnnotationClassName(entry);
     wrapper.style.setProperty('--rttr-token-color', entry.color);
     wrapper.style.color = entry.importance === 'highlight' ? entry.color : 'inherit';
+
+    // Tag multi-segment phrases for post-pass floating translation positioning
+    if (annotation.groupId) {
+      wrapper.dataset.rttrGroup = annotation.groupId;
+    }
       
     const subWords = part.split(/(\s+)/);
     subWords.forEach((subWord, idx) => {
@@ -140,12 +200,19 @@ function annotateTextNode(
       wrapper.classList.add('rttr-has-tooltip');
     }
 
-    if (shouldRenderRt(entry, translation)) {
+    // Only show <rt> translation on the first segment of a cross-node phrase
+    if (annotation.isFirst && shouldRenderRt(entry, translation)) {
       const rt = document.createElement('rt');
       rt.className = 'rttr-translation';
       rt.style.color = entry.importance === 'highlight' ? entry.color : 'inherit';
       rt.textContent = isSameTranslation ? '' : translation;
 
+      wrapper.appendChild(rt);
+    } else if (!annotation.isFirst) {
+      // Continuation segment: add an empty <rt> to keep ruby layout consistent
+      const rt = document.createElement('rt');
+      rt.className = 'rttr-translation';
+      rt.textContent = '';
       wrapper.appendChild(rt);
     }
 
@@ -257,7 +324,7 @@ function getAnnotationClassName(entry: AnnotationEntry): string {
 
 function shouldRenderRt(entry: AnnotationEntry, translation: string): boolean {
   if (entry.kind === 'name' && !translation) return false;
-  if (entry.kind === 'number') return false;
+  if (entry.kind === 'number' && !translation) return false;
   return !!translation;
 }
 

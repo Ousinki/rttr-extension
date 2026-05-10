@@ -323,6 +323,16 @@ const uiDict: Record<string, Record<string, string>> = {
     "zh-TW": "請在 Chrome 的擴充功能快捷鍵頁面設定。",
     "ja": "Chromeの拡張機能ショートカットページで設定してください。",
     "en": "Please configure in Chrome's extension shortcuts page."
+  },
+  "数字单位转换": {
+    "zh-TW": "數字單位轉換",
+    "ja": "数値単位変換",
+    "en": "Number Unit Conversion"
+  },
+  "自动识别 100 million、5 billion 等数字并转换为中文计量（1亿、50亿）": {
+    "zh-TW": "自動識別 100 million、5 billion 等數字並轉換為中文計量（1億、50億）",
+    "ja": "100 million、5 billionなどの数値を自動認識し、中国語の計量単位（1億、50億）に変換",
+    "en": "Auto-detect numbers like 100 million, 5 billion and convert to Chinese units (1亿, 50亿)"
   }
 };
 
@@ -843,6 +853,14 @@ watch(settings, () => {
           >
             {{ t("打开快捷键页面") }}
           </button>
+        </div>
+
+        <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" v-model="settings.enableNumberConversion" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
+          <div>
+            <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("数字单位转换") }}</div>
+            <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("自动识别 100 million、5 billion 等数字并转换为中文计量（1亿、50亿）") }}</div>
+          </div>
         </div>
 
         <div class="animation-previews" style="grid-template-columns: 1fr;">

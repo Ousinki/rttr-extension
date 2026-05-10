@@ -31,6 +31,7 @@ export interface RTTRSettings {
   enableContextualCollocation: boolean;           // 智能语境搭配分析
   paragraphShortcut: string;                      // 段落翻译快捷键 (例如 'Alt+KeyT')
   targetLanguage: 'zh-CN' | 'zh-TW' | 'ja' | 'en'; // 目标翻译语言
+  enableNumberConversion: boolean;                   // 数字单位转换 (100 million → 1亿)
 }
 
 // ─── 默认值 ──────────────────────────────────────────────
@@ -59,6 +60,7 @@ const DEFAULT_SETTINGS: RTTRSettings = {
   enableContextualCollocation: true,
   paragraphShortcut: '',
   targetLanguage: 'zh-CN',
+  enableNumberConversion: false,
 };
 
 // ─── Storage Items (WXT 类型安全存储) ────────────────────

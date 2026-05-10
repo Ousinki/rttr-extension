@@ -52,14 +52,15 @@ Step 3：只在 Step 1-2 未覆盖的区间里，挑出真正的低频难词标�
 
 ====================
 【短语类别 — 任一命中必须整体标为 p】
-1. 动词+名词 搭配：take advantage of, make a difference, pay attention to, release updates, collect statistics, view data, opt out of, sign up for
-2. 短语动词：break down, set up, give up, come up with, run into, look forward to, carry out, opt out, figure out, turn on, turn off
-3. 形容词+名词 搭配：strong coffee, heavy rain, security updates, major version, current version, previous version, long-term solution, installation error, build error
-4. 复合名词（极其重要，不要漏）：spell checker, climate change, open-source software, command line, operating system, data collection, user interface, analytics data, package manager, source code, error message, version statistics, web page, web site
-5. 介词短语：in particular, at the same time, on the other hand, by means of, in terms of, as of, as well as, instead of, according to, due to
-6. 副词+形容词/动词 搭配：highly recommended, widely used, well documented, deeply rooted, typically supports
-7. 习语/谚语：piece of cake, hit the nail on the head, under the weather
-8. 多词专业术语：machine learning, neural network, supply chain, real-time collaboration, user interface, cloud computing
+1. 动词+名词 搭配：如 take advantage of, pay attention to
+2. 短语动词：如 come up with, carry out
+3. 形容词+名词 搭配：如 heavy rain, long-term solution
+4. 复合名词（极其重要）：如 operating system, source code
+5. 介词短语：如 in terms of, due to
+6. 副词+形容词/动词：如 widely used, highly recommended
+7. 习语/谚语：如 piece of cake
+8. 多词专业术语：如 machine learning, version control
+9. 贪婪合并：相邻名词/形容词构成更大语义单元时合并为一个 p。如 "open source software" 是一个整体，不要拆成 "open source" + "software"。
 
 ====================
 【专有名词（n）— 全部标出】
@@ -69,9 +70,9 @@ Step 3：只在 Step 1-2 未覆盖的区间里，挑出真正的低频难词标�
 
 ====================
 【w 的高门槛 — 什么才算"值得学习的难词"】
-✅ 会标：低频/学术/技术词，如 ubiquitous, cumbersome, paradigm, instantiate, ephemeral, heuristic, concurrency, provenance
-❌ 不标：B1 及以下常见词，包括但不限于：
-   free, the, system, idea, name, use, run, software, package, management, operating, user, app, tool, file, make, get, good, thing, way, time, part, work, version, versions, update, updates, release, releases, support, supports, typical, typically, current, major, minor, previous, next, security, feature, product, service, data, code, library, framework, platform, device, network, browser, window, button, click, page, site, server, client, request, response, function, method, class, object, value, string, number, list, array, error, result, status, check, enable, disable, show, hide, open, close, start, stop, create, delete, add, remove, include, contain, provide, require, collect, view, install, installation, build
+✅ 会标：低频/学术/技术词，如 ubiquitous, cumbersome, paradigm, ephemeral, heuristic
+❌ 不标：CEFR B1 及以下的常见词。判断标准：一个通过大学英语四级（CET-4）的学生是否认识这个词？如果是，就不标。
+   代表性举例：free, system, use, run, software, version, update, feature, data, code, platform, provide, require
 
 【极其重要】上面的"常见词黑名单"只限制它们作为【独立 w】单独出现。如果它们参与构成了 Step 2 的短语（例如 operating system / security updates / data collection / installation error），必须整体标为 p，绝对不能因为成分词在黑名单里就放弃整个短语。短语识别永远优先于单词过滤。
 
