@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { settingsStorage } from '@/utils/storage';
 import type { RTTRSettings } from '@/utils/storage';
+import { speakText } from '@/utils/tts';
 
 const uiDict: Record<string, Record<string, string>> = {
   "翻译 API 设置": {
@@ -384,9 +385,12 @@ const loadVoices = () => {
   voices.value = synth.getVoices().filter(v => v.lang.toLowerCase().includes('en'));
   if (voices.value.length === 0) voices.value = synth.getVoices();
   if (!settings.value.ttsVoiceURI && voices.value.length > 0) {
-    const googleVoice = voices.value.find(v => v.name.includes('Google US English'));
-    const defaultVoice = googleVoice || voices.value.find(v => v.default) || voices.value[0];
-    settings.value.ttsVoiceURI = defaultVoice.voiceURI;
+    // 优先选择本地的高质量系统默认声音 (localService: true)，避免在线声音(如 Google US English) 因网络被墙导致卡死
+    const defaultLocalVoice = voices.value.find(v => v.default && v.localService) || 
+                              voices.value.find(v => v.localService && v.lang.startsWith('en')) || 
+                              voices.value.find(v => v.name.includes('Google US English')) ||
+                              voices.value[0];
+    settings.value.ttsVoiceURI = defaultLocalVoice?.voiceURI || '';
   }
 };
 
@@ -426,41 +430,15 @@ function testTTS() {
   testingTTS.value = true;
   testResultTTS.value = '';
   
-  const synth = window.speechSynthesis;
-  synth.cancel();
-  
-  const utterance = new SpeechSynthesisUtterance("Testing pronunciation. The quick brown fox jumps over the lazy dog.");
-  
-  utterance.onend = () => {
+  speakText("Testing pronunciation. The quick brown fox jumps over the lazy dog.", settings.value, (success, errorMsg) => {
     testingTTS.value = false;
-    testResultTTS.value = '✅ ' + t('测试成功');
-    setTimeout(() => { testResultTTS.value = ''; }, 3000);
-  };
-  
-  utterance.onerror = (e) => {
-    testingTTS.value = false;
-    testResultTTS.value = `❌ ${t('测试失败')}: ${e.error}`;
-  };
-
-  if (settings.value.ttsLanguage) {
-    utterance.lang = settings.value.ttsLanguage;
-  }
-  if (settings.value.ttsRate) {
-    utterance.rate = settings.value.ttsRate;
-  }
-  if (settings.value.ttsVolume !== undefined) {
-    utterance.volume = settings.value.ttsVolume;
-  }
-  
-  const voiceURI = settings.value.ttsVoiceURI;
-  if (voiceURI) {
-    const selectedVoice = voices.value.find(v => v.voiceURI === voiceURI);
-    if (selectedVoice) {
-      utterance.voice = selectedVoice;
+    if (success) {
+      testResultTTS.value = '✅ ' + t('测试成功');
+      setTimeout(() => { testResultTTS.value = ''; }, 3000);
+    } else {
+      testResultTTS.value = '❌ ' + (errorMsg || t('测试失败'));
     }
-  }
-  
-  synth.speak(utterance);
+  });
 }
 
 function openChromeShortcuts() {
@@ -925,9 +903,8 @@ watch(settings, () => {
           <div class="form-group half">
             <label class="label">{{ t("发音人 (Voice)") }}</label>
             <select v-model="settings.ttsVoiceURI" class="select">
-              <option value="">{{ t("(系统默认)") }}</option>
               <option v-for="voice in voices" :key="voice.voiceURI" :value="voice.voiceURI">
-                {{ voice.name }} ({{ voice.lang }})
+                {{ voice.name }} ({{ voice.lang }}) {{ voice.localService ? '' : ' - 在线' }}
               </option>
             </select>
           </div>
@@ -1166,6 +1143,8 @@ body {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .test-btn:hover {
