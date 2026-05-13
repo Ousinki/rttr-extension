@@ -20,6 +20,7 @@ export default defineContentScript({
   matches: ['<all_urls>'],
   cssInjectionMode: 'ui',
   async main(ctx) {
+    console.log('[RTTR BOOT] content script loaded v-debug-1');
     let currentSettings: any;
     try {
       currentSettings = await settingsStorage.getValue();
@@ -66,8 +67,15 @@ export default defineContentScript({
       onMount: (container) => {
         const root = container.getRootNode() as ShadowRoot;
         if (root.host) {
-          (root.host as HTMLElement).style.pointerEvents = 'none';
-          (root.host as HTMLElement).style.zIndex = '2147483647';
+          const host = root.host as HTMLElement;
+          host.style.pointerEvents = 'none';
+          host.style.position = 'fixed';
+          host.style.top = '0';
+          host.style.left = '0';
+          host.style.width = '0';
+          host.style.height = '0';
+          host.style.zIndex = '2147483647';
+          host.style.overflow = 'visible';
         }
         
         const app = createApp(ContentApp);
@@ -599,6 +607,8 @@ export default defineContentScript({
       uiActions.hideExplainPanel();
 
       const text = paragraph.textContent || '';
+      console.log('[RTTR TRANSLATE] paragraph.innerHTML:', paragraph.innerHTML);
+      console.log('[RTTR TRANSLATE] paragraph.textContent sent to AI:', JSON.stringify(text));
       if (!text.trim()) return;
 
       paragraphAbortControllers.get(paragraph)?.abort();
@@ -613,10 +623,19 @@ export default defineContentScript({
       try {
         const response = await safeSendMessage({ type: 'TRANSLATE', text });
         if (signal.aborted) return;
-        
+
         setParagraphLoading(paragraph, false);
 
         if (response?.success && response.results) {
+          console.log('[RTTR TRANSLATE] AI results:', response.results.map((r: any) => ({
+            text: r.text,
+            start: r.start,
+            end: r.end,
+            kind: r.kind,
+            ipa: r.ipa,
+            pronunciation: r.pronunciation,
+            substringAtRange: text.slice(r.start, r.end),
+          })));
           applyAnnotations(paragraph, response.results, currentSettings, () => isLongPressFired);
         }
         paragraphAbortControllers.delete(paragraph);
@@ -695,14 +714,30 @@ function getWordAtClick(e: MouseEvent): { word: string; range: Range } | null {
   let fullText = '';
   let targetGlobalOffset = 0;
   const nodeMap: { node: Text; start: number; end: number }[] = [];
-  
+  let prevLastRect: DOMRect | null = null;
+  const probe = document.createRange();
+
   for (const node of nodes) {
+    probe.selectNodeContents(node);
+    const rects = probe.getClientRects();
+    const firstRect = rects[0] || null;
+    const lastRect = rects[rects.length - 1] || null;
+
+    // Insert a boundary marker when the next text node lives on a different
+    // visual line (e.g. separated by <br> or a block boundary), so the
+    // word-expansion regex can't merge "toothache" + "pain" into one word.
+    if (prevLastRect && firstRect) {
+      const sameLine = firstRect.top < prevLastRect.bottom && firstRect.bottom > prevLastRect.top;
+      if (!sameLine) fullText += '\n';
+    }
+
     const start = fullText.length;
     fullText += node.nodeValue || '';
     nodeMap.push({ node, start, end: fullText.length });
     if (node === textNode) {
       targetGlobalOffset = start + range.startOffset;
     }
+    if (lastRect) prevLastRect = lastRect;
   }
 
   const prevCh = targetGlobalOffset > 0 ? fullText[targetGlobalOffset - 1] : '';

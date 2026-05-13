@@ -3,7 +3,7 @@
     class="rttr-translation-tooltip"
     :class="[
       { 'rttr-visible': uiState.translationBadge.visible },
-      uiState.translationBadge.position === 'top' ? 'pos-top' : 'pos-bottom'
+      actualPosition === 'top' ? 'pos-top' : 'pos-bottom'
     ]"
     :style="badgeStyle"
   >
@@ -20,8 +20,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { uiState, nearestLineRect } from '@/utils/content-state';
+
 
 const safeEngine = computed(() => {
   const engine = uiState.translationBadge.engine;
@@ -36,16 +37,40 @@ const parsedText = computed(() => {
   return null;
 });
 
+const actualPosition = computed(() => {
+  if (!uiState.translationBadge.rect) return 'bottom';
+  const targetRect = nearestLineRect(uiState.translationBadge.rect);
+  let pos = uiState.translationBadge.position || 'bottom';
+  
+  // Fallback to bottom if placed at top but there is not enough space
+  // Greatly increased threshold to prevent viewport cutoff
+  if (pos === 'top' && targetRect.top < 100) {
+    return 'bottom';
+  }
+  return pos;
+});
+
 const badgeStyle = computed(() => {
   if (!uiState.translationBadge.rect) return {};
   const targetRect = nearestLineRect(uiState.translationBadge.rect);
-  const x = window.scrollX + targetRect.left + targetRect.width / 2;
-  let y = window.scrollY;
+  // Use viewport-relative coordinates directly (position: fixed)
+  const x = targetRect.left + targetRect.width / 2;
+  let y: number;
 
-  if (uiState.translationBadge.position === 'top') {
-    y += targetRect.top - 46;
+  const pos = actualPosition.value;
+
+  if (pos === 'top') {
+    y = targetRect.top - 46;
   } else {
-    y += targetRect.bottom + 12;
+    y = targetRect.bottom + 12;
+    // If pronounce badge is also visible and flipped to bottom, add extra
+    // offset so the two badges don't overlap
+    if (uiState.pronounceBadge.visible && uiState.pronounceBadge.rect) {
+      const pRect = nearestLineRect(uiState.pronounceBadge.rect);
+      if (pRect.top < 100) {
+        y += 26;
+      }
+    }
   }
 
   return {
@@ -57,7 +82,7 @@ const badgeStyle = computed(() => {
 
 <style scoped>
 .rttr-translation-tooltip {
-  position: absolute;
+  position: fixed;
   background-color: #f0f0f0;
   color: #333333;
   border: 1px solid #dcdcdc;

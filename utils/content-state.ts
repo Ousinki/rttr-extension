@@ -154,6 +154,9 @@ export const uiActions = {
   showPronounceBadge(content: string, rect: DOMRect, isHTML = false, word: string | null = null) {
     const b = uiState.pronounceBadge;
     const newRect = toRect(rect);
+
+    console.log('[RTTR-DEBUG] showPronounceBadge called', { word, content, isHTML, currentVisible: b.visible });
+
     // Skip redundant updates on repeated clicks of the same word so Vue
     // doesn't re-run style/transition effects and cause a flicker.
     if (
@@ -168,6 +171,7 @@ export const uiActions = {
       b.rect.width === newRect.width &&
       b.rect.height === newRect.height
     ) {
+      console.log('[RTTR-DEBUG] showPronounceBadge skipped (redundant)');
       return;
     }
     b.word = word;

@@ -50,6 +50,7 @@ export function applyAnnotations(
   currentSettings: any,
   isLongPressFired: () => boolean
 ) {
+  console.log('[RTTR-DEBUG] applyAnnotations called for paragraph:', paragraph.innerText.slice(0, 30) + '...');
   paragraph.setAttribute('data-rttr-original', paragraph.innerHTML);
   paragraph.setAttribute(RTTR_ATTR, 'true');
 
@@ -228,42 +229,49 @@ function annotateTextNode(
     }
 
       wrapper.addEventListener('click', async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        if (isLongPressFired()) {
-          return;
-        }
-        
         const target = e.target as HTMLElement;
         const clickY = e.clientY;
-        const clickRect = () => getLineRect(target, clickY);
+        const spanTarget = target.closest('span[data-idx]') as HTMLElement | null;
+        
+        // 1. Determine text to speak
         let textToSpeak = entry.pronunciation || part;
-        let ipaToShow = entry.ipa || '';
+        if (spanTarget && spanTarget.dataset.idx) {
+          textToSpeak = spanTarget.textContent || textToSpeak;
+        } else {
+          textToSpeak = part.trim();
+        }
+        const word = textToSpeak.trim();
 
-        if (target.tagName === 'SPAN' && target.dataset.idx) {
-          const wordIdx = parseInt(target.dataset.idx, 10);
-          if (ipaToShow) {
-            const cleanIpa = ipaToShow.replace(/^\/|\/$/g, '').trim();
-            const ipaParts = cleanIpa.split(/\s+/);
-            const wordCount = part.trim().split(/\s+/).length;
-            if (ipaParts.length === wordCount && ipaParts[wordIdx]) {
-              ipaToShow = `/${ipaParts[wordIdx]}/`;
-              textToSpeak = target.textContent || textToSpeak;
-            } else {
-              ipaToShow = '';
-              textToSpeak = target.textContent || textToSpeak;
-            }
-          } else {
-            textToSpeak = target.textContent || textToSpeak;
-          }
+        console.log('[RTTR-DEBUG] Click triggered', {
+          word,
+          isLongPress: isLongPressFired(),
+          targetTag: target.tagName,
+          isSpan: !!spanTarget
+        });
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (isLongPressFired()) {
+          console.log('[RTTR-DEBUG] Click blocked by long press flag');
+          return;
         }
 
+        const clickRect = () => getLineRect(spanTarget || target, clickY);
+        let ipaToShow = entry.ipa || '';
+
+        // 2. Immediate feedback (Speech + Speaker Icon/Existing IPA)
         speakText(textToSpeak, currentSettings);
         
+        const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+        
+        // Show immediately to ensure responsiveness
+        uiActions.showPronounceBadge(ipaToShow || speakerSVG, clickRect(), !ipaToShow, word);
+
+        // 3. Async Translation
         const engine = currentSettings?.translationEngine || 'google';
         if (engine !== 'none') {
-           safeSendMessage({
+          safeSendMessage({
             type: 'FETCH_TRANSLATION',
             text: textToSpeak,
             sourceLang: 'auto',
@@ -277,25 +285,24 @@ function annotateTextNode(
           });
         }
 
-        const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
-
-        if (ipaToShow) {
-          uiActions.showPronounceBadge(ipaToShow, clickRect());
-        } else {
-          const singleWord = textToSpeak.trim();
-          if (!singleWord.includes(' ') && /^[a-zA-Z'-]+$/.test(singleWord)) {
-            try {
-              const resp = await safeSendMessage({ type: 'LOOKUP_IPA', word: singleWord }) as { ipa: string | null };
-              if (resp?.ipa) {
-                uiActions.showPronounceBadge(resp.ipa, clickRect());
-                if (textToSpeak === (entry.pronunciation || part)) {
-                  entry.ipa = resp.ipa;
-                }
-                return;
+        // 4. Async IPA Lookup
+        const isSingleWord = !word.includes(' ') && /^[a-zA-Z'-]+$/.test(word);
+        if (isSingleWord) {
+          try {
+            const resp = await safeSendMessage({ type: 'LOOKUP_IPA', word }) as { ipa: string | null };
+            if (resp?.ipa) {
+              console.log('[RTTR-DEBUG] IPA lookup success:', resp.ipa);
+              ipaToShow = resp.ipa; 
+              // Update badge with the new IPA
+              uiActions.showPronounceBadge(ipaToShow, clickRect(), false, word);
+              
+              if (textToSpeak === (entry.pronunciation || part)) {
+                entry.ipa = resp.ipa;
               }
-            } catch {}
+            }
+          } catch (err) {
+            console.error('[RTTR-DEBUG] IPA lookup failed:', err);
           }
-          uiActions.showPronounceBadge(speakerSVG, clickRect(), true);
         }
       });
 
