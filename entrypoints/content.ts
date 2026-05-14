@@ -192,9 +192,10 @@ export default defineContentScript({
 
             const engine = currentSettings?.translationEngine || 'google';
             if (engine !== 'none') {
+              const cleanWord = word.replace(/[.,;:!?]+$/, '');
               safeSendMessage({
                 type: 'FETCH_TRANSLATION',
-                text: word,
+                text: cleanWord,
                 sourceLang: 'auto',
                 targetLang: currentSettings.targetLanguage || 'zh-CN',
                 engine
