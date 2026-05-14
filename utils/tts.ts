@@ -34,7 +34,9 @@ export function speakText(text: string, currentSettings?: any, onComplete?: (suc
 
     const doSpeak = () => {
       debugLog('进入 doSpeak 准备播放');
-      const utterance = new SpeechSynthesisUtterance(text);
+      // 防止 TTS 引擎将全大写单词（如 RREPOST）识别为缩写并逐字母拼读
+      const utteranceText = (text === text.toUpperCase() && text.length > 1) ? text.toLowerCase() : text;
+      const utterance = new SpeechSynthesisUtterance(utteranceText);
       utteranceRef = utterance; // 挂载到全局引用，防止被 GC
       
       let isRemoteVoice = false;
