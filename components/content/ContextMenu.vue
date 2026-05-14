@@ -66,8 +66,8 @@ watch(() => [uiState.contextMenu.visible, uiState.contextMenu.x, uiState.context
     }
     
     menuStyle.value = {
-      left: `${finalX + window.scrollX}px`,
-      top: `${finalY + window.scrollY}px`,
+      left: `${finalX}px`,
+      top: `${finalY}px`,
     };
   } else {
     speakingIndex.value = -1;
@@ -92,7 +92,7 @@ const handleSpeakClick = (e: MouseEvent, onSpeakClick: () => void, index: number
 
 <style scoped>
 #rttr-context-menu {
-  position: absolute;
+  position: fixed;
   z-index: 2147483647;
   background: rgba(255, 255, 255, 0.85);
   -webkit-backdrop-filter: blur(16px) saturate(180%);

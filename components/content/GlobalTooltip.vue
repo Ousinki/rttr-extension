@@ -15,9 +15,9 @@ import { uiState, nearestLineRect } from '@/utils/content-state';
 const tooltipStyle = computed(() => {
   if (!uiState.tooltip.rect) return {};
   const rect = nearestLineRect(uiState.tooltip.rect);
-  const top = window.scrollY + rect.top - 8;
+  const top = rect.top - 8;
   const centerX = rect.left + rect.width / 2;
-  const left = window.scrollX + centerX;
+  const left = centerX;
 
   const screenWidth = window.innerWidth;
   // Assume a max half-width of 140px based on max-width: 280px
@@ -44,7 +44,7 @@ const tooltipStyle = computed(() => {
   visibility: hidden;
   opacity: 0;
   transform: translate(calc(-50% + var(--shift-x, 0px)), calc(-100% + 4px)) scale(0.98);
-  position: absolute;
+  position: fixed;
   z-index: 2147483646;
   background: rgba(28, 28, 30, 0.95);
   backdrop-filter: blur(12px);

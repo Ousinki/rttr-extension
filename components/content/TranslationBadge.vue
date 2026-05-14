@@ -43,9 +43,13 @@ const actualPosition = computed(() => {
   let pos = uiState.translationBadge.position || 'bottom';
   
   // Fallback to bottom if placed at top but there is not enough space
-  // Greatly increased threshold to prevent viewport cutoff
   if (pos === 'top' && targetRect.top < 100) {
     return 'bottom';
+  }
+  // Fallback to top if placed at bottom but too close to viewport bottom
+  // (badge height ~46px + 12px offset = ~58px needed below the word)
+  if (pos === 'bottom' && targetRect.bottom > window.innerHeight - 80) {
+    return 'top';
   }
   return pos;
 });
@@ -61,6 +65,13 @@ const badgeStyle = computed(() => {
 
   if (pos === 'top') {
     y = targetRect.top - 46;
+    // If pronounce badge is also visible and flipped to top, shift further up
+    if (uiState.pronounceBadge.visible && uiState.pronounceBadge.rect) {
+      const pRect = nearestLineRect(uiState.pronounceBadge.rect);
+      if (pRect.bottom > window.innerHeight - 80) {
+        y -= 26;
+      }
+    }
   } else {
     y = targetRect.bottom + 12;
     // If pronounce badge is also visible and flipped to bottom, add extra

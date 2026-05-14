@@ -64,11 +64,11 @@ watch(() => [uiState.explainPanel.visible, uiState.explainPanel.loading], async 
     const panelRect = panelRef.value.getBoundingClientRect();
     const padding = 12;
     
-    let top = rect.top + window.scrollY - panelRect.height - padding;
-    let left = rect.left + window.scrollX + (rect.width / 2) - (panelRect.width / 2);
+    let top = rect.top - panelRect.height - padding;
+    let left = rect.left + (rect.width / 2) - (panelRect.width / 2);
 
-    if (top < window.scrollY + padding) {
-      top = rect.bottom + window.scrollY + padding;
+    if (top < padding) {
+      top = rect.bottom + padding;
       isBottom.value = true;
     } else {
       isBottom.value = false;
@@ -89,7 +89,7 @@ watch(() => [uiState.explainPanel.visible, uiState.explainPanel.loading], async 
 
 <style scoped>
 #rttr-explain-panel {
-  position: absolute;
+  position: fixed;
   z-index: 2147483646;
   width: 320px;
   background: #fdfaf5;
