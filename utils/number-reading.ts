@@ -1,5 +1,33 @@
 export function getNumberReading(value: string): string {
   const clean = value.replace(/^\[|\]$/g, '').replace(/,/g, '').trim();
+
+  const currencyMatch = clean.match(/^([£$€¥])\s?(.*)$/);
+  if (currencyMatch) {
+    const symbol = currencyMatch[1];
+    const rest = currencyMatch[2];
+    const currencyNamePlural: Record<string, string> = {
+      '£': 'pounds',
+      '$': 'dollars',
+      '€': 'euros',
+      '¥': 'yen'
+    };
+    const currencyNameSingular: Record<string, string> = {
+      '£': 'pound',
+      '$': 'dollar',
+      '€': 'euro',
+      '¥': 'yen'
+    };
+    
+    const restUnitMatch = rest.match(/^(.+?)\s+([A-Za-z%]+)$/);
+    if (restUnitMatch) {
+      const cName = currencyNameSingular[symbol] || '';
+      return `${getNumberReading(restUnitMatch[1])} ${cName} ${restUnitMatch[2]}`.trim();
+    }
+    
+    const cName = currencyNamePlural[symbol] || '';
+    return `${getNumberReading(rest)} ${cName}`.trim();
+  }
+
   const unitMatch = clean.match(/^(.+?)\s+([A-Za-z%]+)$/);
   if (unitMatch) {
     return `${getNumberReading(unitMatch[1])} ${unitMatch[2]}`;
@@ -21,7 +49,7 @@ export function getNumberReading(value: string): string {
 }
 
 export function isNumberLikeText(value: string): boolean {
-  return /^(?:\[\d+\]|\d+(?:,\d{3})*(?:\.\d+)*(?:\s?(?:days?|years?|months?|percent|%))?)$/i.test(value.trim());
+  return /^(?:\[\d+\]|[£$€¥]?\s?\d+(?:,\d{3})*(?:\.\d+)*(?:\s?(?:days?|years?|months?|percent|%))?)$/i.test(value.trim());
 }
 
 function readYear(year: number): string {

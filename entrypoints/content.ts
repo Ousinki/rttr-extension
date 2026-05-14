@@ -150,7 +150,7 @@ export default defineContentScript({
         const isRealSelection = selText.length > 0 && !selText.includes(' ') && selText.length < 50;
         if (!isRealSelection) {
           const result = getWordAtClick(e as MouseEvent);
-          if (result && /^[a-zA-Z0-9'.\-\[\]]+$/.test(result.word.trim()) && !result.word.includes(' ')) {
+          if (result && /^[a-zA-Z0-9'.\-\[\]$£€¥]+$/.test(result.word.trim()) && !result.word.includes(' ')) {
             const word = result.word.trim();
             const rect = result.range.getBoundingClientRect();
             const sentence = getSentenceAroundNode(result.range.startContainer);
@@ -418,7 +418,7 @@ export default defineContentScript({
         } else {
         // Long press on bare text → translate word under cursor
         const result = getWordAtClick(e);
-        if (!result || !/^[a-zA-Z0-9\s'.\-\[\]]+$/.test(result.word)) return;
+        if (!result || !/^[a-zA-Z0-9\s'.\-\[\]$£€¥]+$/.test(result.word)) return;
         longPressWord = result.word;
         longPressSentence = getSentenceAroundNode(result.range.startContainer);
         longPressRect = () => result.range.getBoundingClientRect();
@@ -776,7 +776,7 @@ function getWordAtClick(e: MouseEvent): { word: string; range: Range } | null {
 
   const prevCh = targetGlobalOffset > 0 ? fullText[targetGlobalOffset - 1] : '';
   const nextCh = targetGlobalOffset < fullText.length ? fullText[targetGlobalOffset] : '';
-  const wordRe = /[a-zA-Z0-9'.\-\[\]]/;
+  const wordRe = /[a-zA-Z0-9'.\-\[\]$£€¥]/;
   if (!wordRe.test(prevCh) && !wordRe.test(nextCh)) return null;
 
   let startGlobal = targetGlobalOffset;
@@ -825,7 +825,7 @@ function expandNumberWithUnit(range: Range): string {
 
   const text = textNode.nodeValue || '';
   const after = text.slice(range.endOffset);
-  const unitMatch = after.match(/^\s+(days?|years?|months?|weeks?|hours?|minutes?|seconds?|percent|%|dollars?|euros?|pounds?|meters?|kilometers?|miles?|bytes?|kb|mb|gb|tb)\b/i);
+  const unitMatch = after.match(/^\s+(days?|years?|months?|weeks?|hours?|minutes?|seconds?|percent|%|dollars?|euros?|pounds?|meters?|kilometers?|miles?|bytes?|kb|mb|gb|tb|notes?)\b/i);
   if (!unitMatch) return numberText;
 
   return `${numberText}${unitMatch[0]}`;
@@ -850,7 +850,7 @@ function getAnnotatedLongPressTarget(target: HTMLElement): { text: string; node:
     .join('')
     .trim();
 
-  if (!text || !/^[a-zA-Z0-9\s'.\-\[\]]+$/.test(text)) return null;
+  if (!text || !/^[a-zA-Z0-9\s'.\-\[\]$£€¥]+$/.test(text)) return null;
 
   return {
     text,
