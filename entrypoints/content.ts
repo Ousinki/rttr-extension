@@ -201,7 +201,7 @@ export default defineContentScript({
                 engine
               }).then((resp: any) => {
                 if (resp && resp.targetText) {
-                  uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, result.range.getBoundingClientRect(), true,
+                  uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, rect, true,
                     currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
                 }
               });
