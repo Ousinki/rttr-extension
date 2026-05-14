@@ -273,6 +273,8 @@ export default defineContentScript({
         const isMultiWord = info.text.includes(' ') || info.text.length > 50;
         const isFakeSelection = clickDragDist < 5 && isMultiWord;
 
+        if (/[\u4e00-\u9fa5]/.test(info.text)) return;
+
         if (!isFakeSelection) {
           lastSelectionClickTime = Date.now();
           if (currentSettings.enableClickPronounce) {
@@ -323,6 +325,8 @@ export default defineContentScript({
         const sel = getActiveSelection();
         const text = sel?.toString().trim() || '';
         if (!text || !sel || sel.rangeCount === 0) return;
+        if (/[\u4e00-\u9fa5]/.test(text)) return;
+        
         const range = sel.getRangeAt(0);
         const rect = range.getBoundingClientRect();
 
@@ -431,6 +435,8 @@ export default defineContentScript({
         }
       }
 
+      if (/[\u4e00-\u9fa5]/.test(longPressWord)) return;
+
       longPressEvent = e;
 
       // Delay showing the ring to avoid flashing on quick clicks
@@ -441,13 +447,15 @@ export default defineContentScript({
       longPressTimer = setTimeout(() => {
         isLongPressFired = true;
         speakText(longPressWord, currentSettings);
+        const isMultiWord = longPressWord.trim().includes(' ');
         const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
-        const cachedIpa = getCachedIpa(longPressWord);
-        if (currentSettings.showSingleClickIPA && cachedIpa) {
+        
+        const cachedIpa = !isMultiWord ? getCachedIpa(longPressWord) : null;
+        if (!isMultiWord && currentSettings.showSingleClickIPA && cachedIpa) {
           uiActions.showPronounceBadge(cachedIpa, longPressRect(), false, longPressWord);
         } else {
           uiActions.showPronounceBadge(speakerSVG, longPressRect(), true, longPressWord);
-          if (currentSettings.showSingleClickIPA) {
+          if (!isMultiWord && currentSettings.showSingleClickIPA) {
             lookupIpa(longPressWord).then((ipa) => {
               if (ipa) {
                 uiActions.showPronounceBadge(ipa, longPressRect(), false, longPressWord);

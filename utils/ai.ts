@@ -479,24 +479,46 @@ function getContextualTranslatePrompt(langName: string): string {
 
 export async function contextualTranslate(settings: RTTRSettings, word: string, sentence: string): Promise<string> {
   const langName = getLanguageName(settings.targetLanguage || 'zh-CN');
-  let systemPrompt = getContextualTranslatePrompt(langName);
-  
-  const collocEnabled = settings.enableContextualCollocation ?? true;
-  if (collocEnabled) {
-    systemPrompt += `
+  const isMultiWord = word.includes(' ') || word.length > 30;
+
+  let systemPrompt: string;
+  let userContent: string;
+
+  if (isMultiWord) {
+    // Selection mode: user selected a phrase/sentence — translate the entire selection directly
+    systemPrompt = `你是一个高级的英文翻译引擎。
+
+【核心任务】：
+用户选中了一段英文文本，请结合上下文语境，将整段选中文本翻译成${langName}。
+
+【强制规则】：
+1. 翻译用户选中的完整文本，不要只翻译其中某个单词或片段！
+2. 绝不要输出任何多余的开头语、解释、拼音或 Markdown 语法！
+3. 翻译必须精准贴合当前语境，自然流畅。
+4. 【输出格式】：直接输出${langName}翻译结果，不需要英文原文。`;
+    userContent = `【选中的文本】：${word}\n【所在上下文】：${sentence}`;
+  } else {
+    // Single-word mode: user clicked/long-pressed a single word
+    systemPrompt = getContextualTranslatePrompt(langName);
+    
+    const collocEnabled = settings.enableContextualCollocation ?? true;
+    if (collocEnabled) {
+      systemPrompt += `
 3. 【智能语境搭配（最高优先级）】：请务必检查用户点击的单词，在句子中是否与相邻的单词组成了复合名词、固定搭配或动词短语。
    - 如果是，你**必须自动向外扩展**，将整个词组作为一个整体提取出来，并输出该词组的翻译！
    - 如果没有搭配，才只翻译用户点击的独立单词。
 4. 【输出格式】：不管你提取的是词组还是独立单词，输出格式必须严格为："英文原文 (${langName}翻译)"。
    - 错误示例（只输出翻译）："拳击比赛"`;
-  } else {
-    systemPrompt += `
+    } else {
+      systemPrompt += `
 3. 【输出格式】：只翻译用户点击的单词，输出格式必须严格为："英文原文 (${langName}翻译)"。`;
+    }
+    userContent = `【用户点击的单词】：${word}\n【所在句子】：${sentence}`;
   }
 
   const messages = [
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: `【用户点击的单词】：${word}\n【所在句子】：${sentence}` }
+    { role: 'user', content: userContent }
   ];
 
   const payload = {

@@ -16,6 +16,12 @@ if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
 export function speakText(text: string, currentSettings?: any, onComplete?: (success: boolean, errorMsg?: string) => void) {
   debugLog('speakText 被调用', { text: text.substring(0, 20) + '...', currentSettings });
   
+  if (/[\u4e00-\u9fa5]/.test(text)) {
+    debugLog('跳过 TTS：文本包含中文字符');
+    if (onComplete) onComplete(false, 'Text contains Chinese characters');
+    return;
+  }
+
   if (!('speechSynthesis' in window)) {
     console.error('[RTTR TTS] 当前浏览器不支持 speechSynthesis');
     if (onComplete) onComplete(false, 'Browser does not support speechSynthesis');
