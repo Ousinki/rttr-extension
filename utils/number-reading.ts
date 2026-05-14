@@ -28,9 +28,14 @@ export function getNumberReading(value: string): string {
     return `${getNumberReading(rest)} ${cName}`.trim();
   }
 
-  const unitMatch = clean.match(/^(.+?)\s+([A-Za-z%]+)$/);
+  const unitMatch = clean.match(/^(.+?)\s*([A-Za-z%°]+)$/);
   if (unitMatch) {
-    return `${getNumberReading(unitMatch[1])} ${unitMatch[2]}`;
+    let unitPart = unitMatch[2].toLowerCase();
+    if (unitPart === '%') unitPart = 'percent';
+    if (unitPart === '°') unitPart = 'degrees';
+    if (unitPart === '°c') unitPart = 'degrees celsius';
+    if (unitPart === '°f') unitPart = 'degrees fahrenheit';
+    return `${getNumberReading(unitMatch[1])} ${unitPart}`;
   }
   if (clean.includes('.') && clean.split('.').length > 2) {
     return clean.split('.').map(readIntegerLike).join(' dot ');
@@ -49,7 +54,7 @@ export function getNumberReading(value: string): string {
 }
 
 export function isNumberLikeText(value: string): boolean {
-  return /^(?:\[\d+\]|[£$€¥]?\s?\d+(?:,\d{3})*(?:\.\d+)*(?:\s?(?:days?|years?|months?|percent|%))?)$/i.test(value.trim());
+  return /^(?:\[\d+\]|[£$€¥]?\s?\d+(?:,\d{3})*(?:\.\d+)*(?:\s?(?:days?|years?|months?|weeks?|hours?|minutes?|seconds?|percent|%|meters?|kilometers?|miles?|bytes?|kb|mb|gb|tb|notes?|bills?|°[CF]?))?)$/i.test(value.trim());
 }
 
 function readYear(year: number): string {
