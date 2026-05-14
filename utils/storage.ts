@@ -32,6 +32,7 @@ export interface RTTRSettings {
   paragraphShortcut: string;                      // 段落翻译快捷键 (例如 'Alt+KeyT')
   targetLanguage: 'zh-CN' | 'zh-TW' | 'ja' | 'en'; // 目标翻译语言
   enableNumberConversion: boolean;                   // 数字单位转换 (100 million → 1亿)
+  enableContextMenu: boolean;                         // 右键自定义菜单
 }
 
 // ─── 默认值 ──────────────────────────────────────────────
@@ -61,6 +62,7 @@ const DEFAULT_SETTINGS: RTTRSettings = {
   paragraphShortcut: '',
   targetLanguage: 'zh-CN',
   enableNumberConversion: false,
+  enableContextMenu: true,
 };
 
 // ─── Storage Items (WXT 类型安全存储) ────────────────────

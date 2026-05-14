@@ -500,6 +500,7 @@ export default defineContentScript({
     // Context Menu Logic
     document.addEventListener('contextmenu', async (e) => {
       if (!currentSettings?.enabled) return;
+      if (!currentSettings?.enableContextMenu) return;
       const target = e.target as HTMLElement;
 
       const iconExplain = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>';

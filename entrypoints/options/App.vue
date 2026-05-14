@@ -334,6 +334,16 @@ const uiDict: Record<string, Record<string, string>> = {
     "zh-TW": "自動識別 100 million、5 billion 等數字並轉換為中文計量（1億、50億）",
     "ja": "100 million、5 billionなどの数値を自動認識し、中国語の計量単位（1億、50億）に変換",
     "en": "Auto-detect numbers like 100 million, 5 billion and convert to Chinese units (1亿, 50亿)"
+  },
+  "右键自定义菜单": {
+    "zh-TW": "右鍵自訂選單",
+    "ja": "右クリックカスタムメニュー",
+    "en": "Custom Right-Click Menu"
+  },
+  "关闭后右键将恢复浏览器原生菜单": {
+    "zh-TW": "關閉後右鍵將恢復瀏覽器原生選單",
+    "ja": "無効にすると右クリックはブラウザ標準メニューに戻ります",
+    "en": "When disabled, right-click will show the browser's native context menu"
   }
 };
 
@@ -838,6 +848,14 @@ watch(settings, () => {
           <div>
             <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("数字单位转换") }}</div>
             <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("自动识别 100 million、5 billion 等数字并转换为中文计量（1亿、50亿）") }}</div>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" v-model="settings.enableContextMenu" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
+          <div>
+            <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("右键自定义菜单") }}</div>
+            <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("关闭后右键将恢复浏览器原生菜单") }}</div>
           </div>
         </div>
 
