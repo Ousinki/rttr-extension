@@ -915,6 +915,38 @@ watch(settings, () => {
               <option value="inline">{{ t("行内原位替换 (沉浸感更强)") }}</option>
             </select>
           </div>
+
+          <!-- Syllable Mode Animations -->
+          <div v-if="settings.enableInlineSyllableRuby" style="padding-left: 22px; margin-top: 4px;">
+            <div class="anim-container anim-syl-container" :key="settings.syllableDisplayMode" style="height: 120px; padding: 16px 24px; display: flex; flex-direction: column; justify-content: center; align-items: center; background: #fafafa; border-radius: 8px; border: 1px solid #e5e7eb; overflow: hidden; position: relative;">
+              <div style="font-size: 18px; color: #333; position: relative;">
+                <span>He left </span>
+                <span class="syl-target-word" style="position: relative; display: inline-block; cursor: pointer;">
+                  <span class="syl-word-original">unpunished</span>
+                  
+                  <!-- Badge Mode -->
+                  <div v-if="settings.syllableDisplayMode === 'badge'" class="syl-badge anim-syl-pop">
+                    <div style="color: #B56B45; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; font-weight: 600; letter-spacing: 0.5px;">un·pun·ished</div>
+                    <div style="color: #7eb8ff; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; font-weight: 500;">/ʌnˈpʌnɪʃt/</div>
+                  </div>
+
+                  <!-- Overlay Mode -->
+                  <div v-if="settings.syllableDisplayMode === 'overlay'" class="syl-overlay anim-syl-show">
+                    un·pun·ished
+                  </div>
+
+                  <!-- Inline Mode -->
+                  <span v-if="settings.syllableDisplayMode === 'inline'" class="syl-inline anim-syl-swap">
+                    un·pun·ished
+                  </span>
+
+                  <div class="anim-click-ripple-syl"></div>
+                </span>
+                <span>.</span>
+              </div>
+              <svg class="anim-cursor anim-cursor-syl" width="24" height="24" viewBox="0 0 24 24"><path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z" fill="#000" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -1986,5 +2018,135 @@ body {
   /* Hover while keyboard is pressed and translation happens */
   15%, 85% { transform: translate(0px, 0px); opacity: 1; }
   90%, 100% { transform: translate(-80px, 80px); opacity: 0; }
+}
+
+/* Syllable Modes Animations */
+.anim-cursor-syl {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 10;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+  transform-origin: top left;
+  animation: sylClickCursor 4s infinite;
+}
+
+.anim-click-ripple-syl {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  margin-top: -10px;
+  margin-left: -10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: sylClickRipple 4s infinite;
+}
+
+@keyframes sylClickCursor {
+  0%, 15% { transform: translate(-80px, 40px) scale(1); }
+  35% { transform: translate(15px, 0px) scale(1); }
+  45% { transform: translate(15px, 0px) scale(0.85); }
+  50%, 75% { transform: translate(15px, 0px) scale(1); }
+  85%, 100% { transform: translate(-80px, 40px) scale(1); }
+}
+
+@keyframes sylClickRipple {
+  0%, 44% { opacity: 0; transform: scale(0.1); }
+  45% { opacity: 1; transform: scale(0.1); }
+  50% { opacity: 0; transform: scale(1.5); }
+  100% { opacity: 0; }
+}
+
+/* Badge Mode */
+.syl-badge {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  background: rgba(28, 28, 30, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  padding: 3px 10px;
+  border-radius: 6px;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.06);
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 5;
+  opacity: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.syl-badge::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 5px;
+  border-style: solid;
+  border-color: rgba(28, 28, 30, 0.92) transparent transparent transparent;
+}
+.anim-syl-pop {
+  animation: sylBadgePop 4s infinite;
+}
+@keyframes sylBadgePop {
+  0%, 46% { opacity: 0; transform: translateX(-50%) translateY(10px) scale(0.8); }
+  50%, 80% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  85%, 100% { opacity: 0; transform: translateX(-50%) translateY(-5px) scale(0.9); }
+}
+
+/* Overlay Mode */
+.syl-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  background: #fdf012;
+  box-shadow: 0 0 0 1px rgba(220, 200, 0, 0.8);
+  white-space: nowrap;
+  padding: 0 4px;
+  z-index: 5;
+  pointer-events: none;
+  opacity: 0;
+}
+.anim-syl-show {
+  animation: sylOverlayShow 4s infinite;
+}
+@keyframes sylOverlayShow {
+  0%, 46% { opacity: 0; transform: translate(-50%, -50%); }
+  50%, 80% { opacity: 1; transform: translate(-50%, -50%); }
+  85%, 100% { opacity: 0; transform: translate(-50%, -50%); }
+}
+
+/* Inline Mode */
+.syl-inline {
+  position: absolute;
+  top: 0;
+  left: 0;
+  color: #B56B45; /* Match real inline syllable color */
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+}
+.anim-syl-swap {
+  animation: sylInlineShow 4s infinite;
+}
+@keyframes sylInlineShow {
+  0%, 46% { opacity: 0; }
+  50%, 80% { opacity: 1; }
+  85%, 100% { opacity: 0; }
+}
+
+.syl-target-word:has(.syl-inline) .syl-word-original {
+  animation: sylInlineHide 4s infinite;
+}
+@keyframes sylInlineHide {
+  0%, 46% { opacity: 1; color: inherit; }
+  50%, 80% { opacity: 0; color: transparent; }
+  85%, 100% { opacity: 1; color: inherit; }
 }
 </style>
