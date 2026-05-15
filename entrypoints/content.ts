@@ -467,10 +467,18 @@ export default defineContentScript({
       const text = sel?.toString().trim() || '';
       if (text && sel && sel.rangeCount > 0) {
         const range = sel.getRangeAt(0);
-        const rect = range.getBoundingClientRect();
-        if (e.clientX >= rect.left - 5 && e.clientX <= rect.right + 5 &&
-            e.clientY >= rect.top - 5 && e.clientY <= rect.bottom + 5) {
-          selClickInfo = { text, rect };
+        const rects = range.getClientRects();
+        let isInside = false;
+        for (let i = 0; i < rects.length; i++) {
+          const r = rects[i];
+          if (e.clientX >= r.left - 5 && e.clientX <= r.right + 5 &&
+              e.clientY >= r.top - 5 && e.clientY <= r.bottom + 5) {
+            isInside = true;
+            break;
+          }
+        }
+        if (isInside) {
+          selClickInfo = { text, rect: range.getBoundingClientRect() };
           return;
         }
       }
@@ -626,9 +634,18 @@ export default defineContentScript({
       if (selText.length > 0 && sel && sel.rangeCount > 0) {
         // Long press on selection → translate selection
         const range = sel.getRangeAt(0);
-        const rangeRect = range.getBoundingClientRect();
-        if (e.clientX < rangeRect.left || e.clientX > rangeRect.right ||
-            e.clientY < rangeRect.top || e.clientY > rangeRect.bottom) return;
+        const rects = range.getClientRects();
+        let isInside = false;
+        for (let i = 0; i < rects.length; i++) {
+          const r = rects[i];
+          if (e.clientX >= r.left - 5 && e.clientX <= r.right + 5 &&
+              e.clientY >= r.top - 5 && e.clientY <= r.bottom + 5) {
+            isInside = true;
+            break;
+          }
+        }
+        if (!isInside) return;
+        
         e.preventDefault(); // Keep the blue selection highlight visible
         longPressWord = selText;
         longPressSentence = getSentenceAroundNode(range.startContainer);
