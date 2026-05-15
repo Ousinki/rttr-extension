@@ -290,41 +290,7 @@ const uiDict: Record<string, Record<string, string>> = {
     "ja": "上部",
     "en": "above"
   },
-  "语音合成 (TTS) 设置": {
-    "zh-TW": "語音合成 (TTS) 設定",
-    "ja": "音声合成 (TTS) 設定",
-    "en": "Text-to-Speech (TTS) Settings"
-  },
-  "发音人 (Voice)": {
-    "zh-TW": "發音人 (Voice)",
-    "ja": "話者 (Voice)",
-    "en": "Voice"
-  },
-  "(系统默认)": {
-    "zh-TW": "(系統預設)",
-    "ja": "(システムデフォルト)",
-    "en": "(System Default)"
-  },
-  "语言 (Language)": {
-    "zh-TW": "語言 (Language)",
-    "ja": "言語 (Language)",
-    "en": "Language"
-  },
-  "测试中...": {
-    "zh-TW": "測試中...",
-    "ja": "テスト中...",
-    "en": "Testing..."
-  },
-  "播放中...": {
-    "zh-TW": "播放中...",
-    "ja": "再生中...",
-    "en": "Playing..."
-  },
-  "请在 Chrome 的扩展快捷键页面设置。": {
-    "zh-TW": "請在 Chrome 的擴充功能快捷鍵頁面設定。",
-    "ja": "Chromeの拡張機能ショートカットページで設定してください。",
-    "en": "Please configure in Chrome's extension shortcuts page."
-  },
+
   "数字单位转换": {
     "zh-TW": "數字單位轉換",
     "ja": "数値単位変換",
@@ -344,6 +310,16 @@ const uiDict: Record<string, Record<string, string>> = {
     "zh-TW": "關閉後右鍵將恢復瀏覽器原生選單",
     "ja": "無効にすると右クリックはブラウザ標準メニューに戻ります",
     "en": "When disabled, right-click will show the browser's native context menu"
+  },
+  "单击断音节": {
+    "zh-TW": "單擊斷音節",
+    "ja": "クリックで音節分割",
+    "en": "Click-to-Syllabify"
+  },
+  "点击英文单词时自动显示音节划分（如 un·pun·ished）": {
+    "zh-TW": "點擊英文單詞時自動顯示音節劃分（如 un·pun·ished）",
+    "ja": "英単語をクリックすると音節分割を表示（例：un·pun·ished）",
+    "en": "Show syllable breaks when clicking English words (e.g. un·pun·ished)"
   }
 };
 
@@ -376,6 +352,10 @@ const settings = ref<RTTRSettings>({
   enableLongPressTranslate: true,
   enableContextualCollocation: true,
   paragraphShortcut: '',
+  targetLanguage: 'zh-CN',
+  enableNumberConversion: true,
+  enableContextMenu: true,
+  enableInlineSyllableRuby: true
 });
 
 const voices = ref<SpeechSynthesisVoice[]>([]);
@@ -856,6 +836,14 @@ watch(settings, () => {
           <div>
             <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("右键自定义菜单") }}</div>
             <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("关闭后右键将恢复浏览器原生菜单") }}</div>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" v-model="settings.enableInlineSyllableRuby" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
+          <div>
+            <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("单击断音节") }}</div>
+            <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("点击英文单词时自动显示音节划分（如 un·pun·ished）") }}</div>
           </div>
         </div>
 

@@ -13,6 +13,7 @@ import { safeSendMessage } from '@/utils/content-messaging';
 import { recognizeImageWord } from '@/utils/content-ocr';
 import { speakText } from '@/utils/tts';
 import { getNumberReading, isNumberLikeText } from '@/utils/number-reading';
+import { syllabifyText } from '@/utils/syllables';
 
 
 
@@ -108,6 +109,15 @@ export default defineContentScript({
     let lastSelectionClickTime = 0;
     let pointerDownPos = { x: 0, y: 0 };
 
+    // Syllable span tracking
+    let activeSyllable: { span: HTMLSpanElement; cleanup: () => void } | null = null;
+    function cleanupActiveSyllable() {
+      if (activeSyllable) {
+        activeSyllable.cleanup();
+        activeSyllable = null;
+      }
+    }
+
 
 
     function getActiveSelection(): Selection | null {
@@ -139,6 +149,7 @@ export default defineContentScript({
       if (!isInsideUi) {
         uiActions.hideContextMenu();
         uiActions.hideExplainPanel();
+        cleanupActiveSyllable();
       }
 
       // Single Click Pronounce Logic
@@ -171,10 +182,12 @@ export default defineContentScript({
 
             speakText(word, currentSettings);
 
-            const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
             const cachedIpa = getCachedIpa(word);
+            const sylText = currentSettings?.enableInlineSyllableRuby ? syllabifyText(word, '·') : word;
 
             requestAnimationFrame(() => {
+              // Show IPA badge (floating, no jitter)
+              const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
               if (currentSettings.showSingleClickIPA && cachedIpa) {
                 uiActions.showPronounceBadge(cachedIpa, rect, false, word);
               } else {
@@ -187,6 +200,66 @@ export default defineContentScript({
                     }
                   });
                 }
+              }
+
+              // Inline syllable replacement
+              if (sylText !== word && sylText.includes('·')) {
+                // Clean up any previous syllable span first
+                cleanupActiveSyllable();
+                
+                const span = document.createElement('span');
+                span.className = 'rttr-inline-syllable rttr-ui-ignore';
+                span.textContent = sylText;
+                
+                try {
+                  result.range.deleteContents();
+                  result.range.insertNode(span);
+                } catch (e) {
+                  console.error('Failed to insert syllable span', e);
+                }
+                
+                const originalWord = word;
+                let moveHandler: ((evt: MouseEvent) => void) | null = null;
+                
+                const cleanup = () => {
+                  if (span.parentNode) {
+                    span.replaceWith(document.createTextNode(originalWord));
+                  }
+                  if (moveHandler) {
+                    document.removeEventListener('mousemove', moveHandler);
+                    moveHandler = null;
+                  }
+                  if (activeSyllable?.span === span) {
+                    activeSyllable = null;
+                  }
+                };
+                
+                // Track globally for reliable cleanup
+                activeSyllable = { span, cleanup };
+                
+                // Mousemove proximity detection: cleanup when cursor leaves word area
+                moveHandler = (evt: MouseEvent) => {
+                  if (!span.parentNode) {
+                    cleanup();
+                    return;
+                  }
+                  const rect = span.getBoundingClientRect();
+                  const pad = 15; // px padding around the word
+                  if (
+                    evt.clientX < rect.left - pad ||
+                    evt.clientX > rect.right + pad ||
+                    evt.clientY < rect.top - pad ||
+                    evt.clientY > rect.bottom + pad
+                  ) {
+                    cleanup();
+                  }
+                };
+                // Delay attaching to avoid immediate cleanup from the click position
+                setTimeout(() => {
+                  if (activeSyllable?.span === span) {
+                    document.addEventListener('mousemove', moveHandler!);
+                  }
+                }, 150);
               }
             });
 
@@ -929,6 +1002,14 @@ function injectStyles() {
     }
     @keyframes rttr-spin {
       to { transform: rotate(360deg); }
+    }
+    
+    .rttr-inline-syllable {
+      color: #B56B45;
+      font-family: inherit;
+      font-size: inherit;
+      line-height: inherit;
+      letter-spacing: inherit;
     }
   `;
   document.head.appendChild(style);

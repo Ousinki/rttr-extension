@@ -33,6 +33,7 @@ export interface RTTRSettings {
   targetLanguage: 'zh-CN' | 'zh-TW' | 'ja' | 'en'; // 目标翻译语言
   enableNumberConversion: boolean;                   // 数字单位转换 (100 million → 1亿)
   enableContextMenu: boolean;                         // 右键自定义菜单
+  enableInlineSyllableRuby: boolean;                  // 单击单词时断音节 (Syllabification)
 }
 
 // ─── 默认值 ──────────────────────────────────────────────
@@ -59,10 +60,11 @@ const DEFAULT_SETTINGS: RTTRSettings = {
   enableClickTranslate: false,
   enableLongPressTranslate: true,
   enableContextualCollocation: true,
-  paragraphShortcut: '',
+  paragraphShortcut: 'Alt+KeyT',
   targetLanguage: 'zh-CN',
-  enableNumberConversion: false,
+  enableNumberConversion: true,
   enableContextMenu: true,
+  enableInlineSyllableRuby: true
 };
 
 // ─── Storage Items (WXT 类型安全存储) ────────────────────
