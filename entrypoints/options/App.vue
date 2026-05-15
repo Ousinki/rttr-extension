@@ -355,7 +355,8 @@ const settings = ref<RTTRSettings>({
   targetLanguage: 'zh-CN',
   enableNumberConversion: true,
   enableContextMenu: true,
-  enableInlineSyllableRuby: true
+  enableInlineSyllableRuby: true,
+  syllableDisplayMode: 'badge'
 });
 
 const voices = ref<SpeechSynthesisVoice[]>([]);
@@ -823,30 +824,6 @@ watch(settings, () => {
           </button>
         </div>
 
-        <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
-          <input type="checkbox" v-model="settings.enableNumberConversion" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
-          <div>
-            <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("数字单位转换") }}</div>
-            <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("自动识别 100 million、5 billion 等数字并转换为中文计量（1亿、50亿）") }}</div>
-          </div>
-        </div>
-
-        <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
-          <input type="checkbox" v-model="settings.enableContextMenu" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
-          <div>
-            <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("右键自定义菜单") }}</div>
-            <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("关闭后右键将恢复浏览器原生菜单") }}</div>
-          </div>
-        </div>
-
-        <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
-          <input type="checkbox" v-model="settings.enableInlineSyllableRuby" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
-          <div>
-            <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("单击断音节") }}</div>
-            <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("点击英文单词时自动显示音节划分（如 un·pun·ished）") }}</div>
-          </div>
-        </div>
-
         <div class="animation-previews" style="grid-template-columns: 1fr;">
           <div class="preview-box active">
             <div class="preview-title">{{ t("沉浸式 Ruby 注音效果演示") }}</div>
@@ -896,6 +873,47 @@ watch(settings, () => {
               <!-- Floating mouse cursor -->
               <svg class="anim-cursor anim-paragraph-cursor" width="24" height="24" viewBox="0 0 24 24"><path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z" fill="#000" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Other Features Settings -->
+      <section class="settings-card">
+        <h2>{{ t("其他辅助功能") }}</h2>
+        <p class="section-desc">{{ t("管理浏览器扩展的其他增强体验与功能。") }}</p>
+
+        <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" v-model="settings.enableNumberConversion" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
+          <div>
+            <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("数字单位转换") }}</div>
+            <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("自动识别 100 million、5 billion 等数字并转换为中文计量（1亿、50亿）") }}</div>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" v-model="settings.enableContextMenu" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
+          <div>
+            <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("右键自定义菜单") }}</div>
+            <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("关闭后右键将恢复浏览器原生菜单") }}</div>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" v-model="settings.enableInlineSyllableRuby" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
+            <div>
+              <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("单击断音节") }}</div>
+              <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("点击英文单词时自动显示音节划分（如 un·pun·ished）") }}</div>
+            </div>
+          </div>
+          
+          <div v-if="settings.enableInlineSyllableRuby" style="padding-left: 22px; display: flex; align-items: center; gap: 12px;">
+            <span style="font-size: 12px; color: #4b5563;">{{ t("展示方式") }}</span>
+            <select v-model="settings.syllableDisplayMode" style="flex: 1; max-width: 200px; padding: 4px 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; background: white; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.05); color: #111827;">
+              <option value="badge">{{ t("气泡内展示 (推荐，零干扰)") }}</option>
+              <option value="overlay">{{ t("图层覆盖 (如 Mac 原生词典)") }}</option>
+              <option value="inline">{{ t("行内原位替换 (沉浸感更强)") }}</option>
+            </select>
           </div>
         </div>
       </section>

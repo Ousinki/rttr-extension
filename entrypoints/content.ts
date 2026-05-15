@@ -15,7 +15,96 @@ import { speakText } from '@/utils/tts';
 import { getNumberReading, isNumberLikeText } from '@/utils/number-reading';
 import { syllabifyText } from '@/utils/syllables';
 
+function buildOverlayLines(range: Range, sylText: string): { text: string; rect: DOMRect }[] {
+  const rects = Array.from(range.getClientRects());
+  if (rects.length === 0) return [];
+  if (rects.length === 1) {
+    return [{ text: sylText, rect: rects[0] }];
+  }
 
+  const probe = document.createRange();
+  const charRects: DOMRect[] = [];
+  const walker = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT);
+  let n;
+  while ((n = walker.nextNode())) {
+    if (range.intersectsNode(n)) {
+      const textNode = n as Text;
+      const startOffset = n === range.startContainer ? range.startOffset : 0;
+      const endOffset = n === range.endContainer ? range.endOffset : textNode.length;
+      for (let i = startOffset; i < endOffset; i++) {
+        probe.setStart(textNode, i);
+        probe.setEnd(textNode, i + 1);
+        const r = probe.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) charRects.push(r);
+      }
+    }
+  }
+
+  const lines: { text: string; rect: DOMRect }[] = [];
+  let currentLineChars = '';
+  let currentLineRect: DOMRect | null = null;
+  let sylIndex = 0;
+  let charIndex = 0;
+
+  while (sylIndex < sylText.length) {
+    const char = sylText[sylIndex];
+    if (char === '·') {
+      currentLineChars += char;
+      sylIndex++;
+      continue;
+    }
+
+    const rect = charRects[charIndex];
+    if (rect) {
+      if (!currentLineRect) {
+        currentLineRect = rect;
+        currentLineChars = char;
+      } else {
+        if (Math.abs(rect.top - currentLineRect.top) < 10) {
+          currentLineChars += char;
+          const left = Math.min(currentLineRect.left, rect.left);
+          const right = Math.max(currentLineRect.right, rect.right);
+          const top = Math.min(currentLineRect.top, rect.top);
+          const bottom = Math.max(currentLineRect.bottom, rect.bottom);
+          currentLineRect = new DOMRect(left, top, right - left, bottom - top);
+        } else {
+          lines.push({ text: currentLineChars, rect: currentLineRect });
+          currentLineChars = char;
+          currentLineRect = rect;
+        }
+      }
+    } else {
+      currentLineChars += char;
+    }
+    sylIndex++;
+    charIndex++;
+  }
+
+  if (currentLineRect && currentLineChars) {
+    lines.push({ text: currentLineChars, rect: currentLineRect });
+  }
+
+  return lines.length > 0 ? lines : [{ text: sylText, rect: rects[0] }];
+}
+
+function getClosestRect(range: Range, x: number, y: number): DOMRect {
+  const rects = Array.from(range.getClientRects());
+  if (rects.length === 0) return range.getBoundingClientRect();
+  if (rects.length === 1) return rects[0];
+
+  let bestRect = rects[0];
+  let minDistance = Infinity;
+  for (const r of rects) {
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    const dist = Math.pow(cx - x, 2) + Math.pow(cy - y, 2);
+    if (dist < minDistance) {
+      minDistance = dist;
+      bestRect = r;
+    }
+  }
+  return bestRect;
+}
 
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -132,6 +221,100 @@ export default defineContentScript({
       return sel;
     }
 
+    function applyInlineSyllableReplacement(range: Range, sylText: string) {
+      cleanupActiveSyllable();
+      const textNode = range.startContainer as Text;
+      if (textNode.nodeType !== Node.TEXT_NODE) return;
+      const wordStart = range.startOffset;
+      const wordEnd = (range.endContainer === textNode) ? range.endOffset : textNode.data.length;
+      
+      const wordInNode = textNode.data.substring(wordStart, wordEnd);
+      // Ensure we are syllabifying the exact substring
+      const sylForNode = syllabifyText(wordInNode, '·');
+      
+      const wordNode = wordStart > 0 ? textNode.splitText(wordStart) : textNode;
+      const wordLen = wordEnd - wordStart;
+      if (wordNode.data.length > wordLen) {
+        wordNode.splitText(wordLen);
+      }
+      
+      const span = document.createElement('span');
+      span.className = 'rttr-inline-syllable rttr-ui-ignore';
+      span.textContent = sylForNode;
+      if (!wordNode.parentNode) return;
+      wordNode.parentNode.replaceChild(span, wordNode);
+      
+      let moveHandler: ((evt: MouseEvent) => void) | null = null;
+      
+      const cleanup = () => {
+        if (span.parentNode) {
+          span.parentNode.replaceChild(wordNode, span);
+          const next = wordNode.nextSibling;
+          if (next && next.nodeType === Node.TEXT_NODE) {
+            wordNode.data += (next as Text).data;
+            next.remove();
+          }
+          const prev = wordNode.previousSibling;
+          if (prev && prev.nodeType === Node.TEXT_NODE) {
+            (prev as Text).data += wordNode.data;
+            wordNode.remove();
+          }
+        }
+        if (moveHandler) {
+          document.removeEventListener('mousemove', moveHandler);
+          moveHandler = null;
+        }
+        if (activeSyllable?.span === span) {
+          activeSyllable = null;
+        }
+      };
+      
+      activeSyllable = { span, cleanup };
+      
+      moveHandler = (evt: MouseEvent) => {
+        if (!span.parentNode) {
+          cleanup();
+          return;
+        }
+        const spanRect = span.getBoundingClientRect();
+        const pad = 15;
+        if (
+          evt.clientX < spanRect.left - pad ||
+          evt.clientX > spanRect.right + pad ||
+          evt.clientY < spanRect.top - pad ||
+          evt.clientY > spanRect.bottom + pad
+        ) {
+          cleanup();
+        }
+      };
+      setTimeout(() => {
+        if (activeSyllable?.span === span) {
+          document.addEventListener('mousemove', moveHandler!);
+        }
+      }, 150);
+    }
+
+    function trackOverlayHide(rect: DOMRect) {
+      let moveHandler: ((evt: MouseEvent) => void) | null = null;
+      moveHandler = (evt: MouseEvent) => {
+        const pad = 20;
+        if (
+          evt.clientX < rect.left - pad ||
+          evt.clientX > rect.right + pad ||
+          evt.clientY < rect.top - pad ||
+          evt.clientY > rect.bottom + pad
+        ) {
+          uiActions.hideOverlaySyllable();
+          if (moveHandler) {
+            document.removeEventListener('mousemove', moveHandler);
+          }
+        }
+      };
+      setTimeout(() => {
+        document.addEventListener('mousemove', moveHandler!);
+      }, 150);
+    }
+
     // -- Global Event Listeners --
 
     document.addEventListener('click', async (e) => {
@@ -150,6 +333,7 @@ export default defineContentScript({
         uiActions.hideContextMenu();
         uiActions.hideExplainPanel();
         cleanupActiveSyllable();
+        uiActions.hideOverlaySyllable();
       }
 
       // Single Click Pronounce Logic
@@ -163,7 +347,9 @@ export default defineContentScript({
           const result = getWordAtClick(e as MouseEvent);
           if (result && /^[a-zA-Z0-9'.\-\[\]$£€¥°%]+$/.test(result.word.trim()) && !result.word.includes(' ')) {
             const word = result.word.trim();
-            const rect = result.range.getBoundingClientRect();
+            const clickX = (e as MouseEvent).clientX;
+            const clickY = (e as MouseEvent).clientY;
+            const rect = getClosestRect(result.range, clickX, clickY);
             const sentence = getSentenceAroundNode(result.range.startContainer);
             if (isNumberLikeText(word)) {
               const numberPhrase = expandNumberWithUnit(result.range);
@@ -183,113 +369,47 @@ export default defineContentScript({
             speakText(word, currentSettings);
 
             const cachedIpa = getCachedIpa(word);
-            const sylText = currentSettings?.enableInlineSyllableRuby ? syllabifyText(word, '·') : word;
+            const isSyllableEnabled = currentSettings?.enableInlineSyllableRuby;
+            const displayMode = currentSettings?.syllableDisplayMode || 'badge';
+            const sylText = isSyllableEnabled ? syllabifyText(word, '·') : word;
+            const hasSyllable = sylText !== word && sylText.includes('·');
+            const finalSylText = (hasSyllable && displayMode === 'badge') ? sylText : null;
+
+            if (hasSyllable) {
+              if (displayMode === 'inline') {
+                applyInlineSyllableReplacement(result.range, sylText);
+              } else if (displayMode === 'overlay') {
+                const parent = result.range.startContainer.parentElement || document.body;
+                const computedStyle = window.getComputedStyle(parent);
+                const rect = result.range.getBoundingClientRect();
+                const overlayLines = buildOverlayLines(result.range, sylText);
+                uiActions.showOverlaySyllable(
+                  overlayLines, 
+                  computedStyle.fontSize, 
+                  computedStyle.fontWeight, 
+                  computedStyle.fontFamily,
+                  computedStyle.color,
+                  computedStyle.letterSpacing,
+                  computedStyle.fontStyle
+                );
+                trackOverlayHide(rect);
+              }
+            }
 
             requestAnimationFrame(() => {
               // Show IPA badge (floating, no jitter)
               const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
               if (currentSettings.showSingleClickIPA && cachedIpa) {
-                uiActions.showPronounceBadge(cachedIpa, rect, false, word);
+                uiActions.showPronounceBadge(cachedIpa, rect, false, word, finalSylText);
               } else {
                 const shouldFetchIpa = currentSettings.showSingleClickIPA;
-                uiActions.showPronounceBadge(speakerSVG, rect, true, word);
+                uiActions.showPronounceBadge(speakerSVG, rect, true, word, finalSylText);
                 if (shouldFetchIpa) {
                   lookupIpa(word).then((ipa) => {
                     if (ipa) {
-                      uiActions.showPronounceBadge(ipa, rect, false, word);
+                      uiActions.showPronounceBadge(ipa, rect, false, word, finalSylText);
                     }
                   });
-                }
-              }
-
-              // Inline syllable replacement
-              if (sylText !== word && sylText.includes('·')) {
-                // Clean up any previous syllable span first
-                cleanupActiveSyllable();
-                
-                // Use splitText() to safely isolate the word portion, then wrap it in a styled span.
-                // This preserves parent wrappers like <strong> because the span becomes a CHILD,
-                // not a replacement of the parent element.
-                const textNode = result.range.startContainer as Text;
-                if (textNode.nodeType === Node.TEXT_NODE) {
-                  const wordStart = result.range.startOffset;
-                  const wordEnd = (result.range.endContainer === textNode)
-                    ? result.range.endOffset
-                    : textNode.data.length;
-                  
-                  // Re-syllabify only the portion of the word within this text node
-                  const wordInNode = textNode.data.substring(wordStart, wordEnd);
-                  const sylForNode = syllabifyText(wordInNode, '·');
-                  
-                  // Split the text node into [before][word][after]
-                  // After splitText, textNode = "before", wordNode = "word...", afterNode = "after"
-                  const wordNode = wordStart > 0 ? textNode.splitText(wordStart) : textNode;
-                  const wordLen = wordEnd - wordStart;
-                  if (wordNode.data.length > wordLen) {
-                    wordNode.splitText(wordLen); // creates the "after" text node
-                  }
-                  
-                  // Now wrap wordNode in a styled span (inserted as child of the same parent, e.g. <strong>)
-                  const span = document.createElement('span');
-                  span.className = 'rttr-inline-syllable rttr-ui-ignore';
-                  span.textContent = sylForNode;
-                  wordNode.parentNode!.replaceChild(span, wordNode);
-                  
-                  let moveHandler: ((evt: MouseEvent) => void) | null = null;
-                  
-                  const cleanup = () => {
-                    // Restore: replace span with original text node
-                    if (span.parentNode) {
-                      span.parentNode.replaceChild(wordNode, span);
-                      // Manually merge only the adjacent text nodes we split,
-                      // instead of normalize() which recurses the entire subtree
-                      // and could invalidate framework-held node references.
-                      const next = wordNode.nextSibling;
-                      if (next && next.nodeType === Node.TEXT_NODE) {
-                        wordNode.data += (next as Text).data;
-                        next.remove();
-                      }
-                      const prev = wordNode.previousSibling;
-                      if (prev && prev.nodeType === Node.TEXT_NODE) {
-                        (prev as Text).data += wordNode.data;
-                        wordNode.remove();
-                      }
-                    }
-                    if (moveHandler) {
-                      document.removeEventListener('mousemove', moveHandler);
-                      moveHandler = null;
-                    }
-                    if (activeSyllable?.span === span) {
-                      activeSyllable = null;
-                    }
-                  };
-                  
-                  // Track globally for reliable cleanup
-                  activeSyllable = { span, cleanup };
-                  
-                  // Mousemove proximity detection: cleanup when cursor leaves word area
-                  moveHandler = (evt: MouseEvent) => {
-                    if (!span.parentNode) {
-                      cleanup();
-                      return;
-                    }
-                    const rect = span.getBoundingClientRect();
-                    const pad = 15; // px padding around the word
-                    if (
-                      evt.clientX < rect.left - pad ||
-                      evt.clientX > rect.right + pad ||
-                      evt.clientY < rect.top - pad ||
-                      evt.clientY > rect.bottom + pad
-                    ) {
-                      cleanup();
-                    }
-                  };
-                  // Delay attaching to avoid immediate cleanup from the click position
-                  setTimeout(() => {
-                    if (activeSyllable?.span === span) {
-                      document.addEventListener('mousemove', moveHandler!);
-                    }
-                  }, 150);
                 }
               }
             });
@@ -512,7 +632,7 @@ export default defineContentScript({
         e.preventDefault(); // Keep the blue selection highlight visible
         longPressWord = selText;
         longPressSentence = getSentenceAroundNode(range.startContainer);
-        longPressRect = () => range.getBoundingClientRect();
+        longPressRect = () => getClosestRect(range, pointerDownPos.x, pointerDownPos.y);
       } else {
         const annotatedTarget = getAnnotatedLongPressTarget(target);
         if (annotatedTarget) {
@@ -525,7 +645,7 @@ export default defineContentScript({
         if (!result || !/^[a-zA-Z0-9\s'.\-\[\]$£€¥°%]+$/.test(result.word)) return;
         longPressWord = result.word;
         longPressSentence = getSentenceAroundNode(result.range.startContainer);
-        longPressRect = () => result.range.getBoundingClientRect();
+        longPressRect = () => getClosestRect(result.range, pointerDownPos.x, pointerDownPos.y);
         }
       }
 
@@ -544,14 +664,48 @@ export default defineContentScript({
         const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
         
         const cachedIpa = !isMultiWord ? getCachedIpa(longPressWord) : null;
+        
+        const isSyllableEnabled = currentSettings?.enableInlineSyllableRuby;
+        const displayMode = currentSettings?.syllableDisplayMode || 'badge';
+        const sylText = isSyllableEnabled ? syllabifyText(longPressWord, '·') : longPressWord;
+        const hasSyllable = sylText !== longPressWord && sylText.includes('·');
+        const finalSylText = (hasSyllable && displayMode === 'badge') ? sylText : null;
+
+        if (hasSyllable && !isMultiWord) {
+          if (displayMode === 'inline') {
+            const wordResult = getWordAtClick(longPressEvent as MouseEvent);
+            if (wordResult && wordResult.word === longPressWord) {
+              applyInlineSyllableReplacement(wordResult.range, sylText);
+            }
+          } else if (displayMode === 'overlay') {
+            const wordResult = getWordAtClick(longPressEvent as MouseEvent);
+            if (wordResult && wordResult.word === longPressWord) {
+              const parent = wordResult.range.startContainer.parentElement || document.body;
+              const computedStyle = window.getComputedStyle(parent);
+              const rect = wordResult.range.getBoundingClientRect();
+              const overlayLines = buildOverlayLines(wordResult.range, sylText);
+              uiActions.showOverlaySyllable(
+                overlayLines, 
+                computedStyle.fontSize, 
+                computedStyle.fontWeight, 
+                computedStyle.fontFamily,
+                computedStyle.color,
+                computedStyle.letterSpacing,
+                computedStyle.fontStyle
+              );
+              trackOverlayHide(rect);
+            }
+          }
+        }
+
         if (!isMultiWord && currentSettings.showSingleClickIPA && cachedIpa) {
-          uiActions.showPronounceBadge(cachedIpa, longPressRect(), false, longPressWord);
+          uiActions.showPronounceBadge(cachedIpa, longPressRect(), false, longPressWord, finalSylText);
         } else {
-          uiActions.showPronounceBadge(speakerSVG, longPressRect(), true, longPressWord);
+          uiActions.showPronounceBadge(speakerSVG, longPressRect(), true, longPressWord, finalSylText);
           if (!isMultiWord && currentSettings.showSingleClickIPA) {
             lookupIpa(longPressWord).then((ipa) => {
               if (ipa) {
-                uiActions.showPronounceBadge(ipa, longPressRect(), false, longPressWord);
+                uiActions.showPronounceBadge(ipa, longPressRect(), false, longPressWord, finalSylText);
               }
             });
           }
@@ -898,7 +1052,28 @@ function getWordAtClick(e: MouseEvent): { word: string; range: Range } | null {
   let endGlobal = targetGlobalOffset;
   while (endGlobal < fullText.length && wordRe.test(fullText[endGlobal])) endGlobal++;
 
-  if (startGlobal === endGlobal) return null;
+  // Trim trailing punctuation that shouldn't be part of the word
+  while (endGlobal > startGlobal) {
+    const lastChar = fullText[endGlobal - 1];
+    if (['.', ',', ';', ':', '!', '?', "'", '"', ']', ')', '}'].includes(lastChar)) {
+      endGlobal--;
+    } else {
+      break;
+    }
+  }
+
+  // Trim leading punctuation
+  while (startGlobal < endGlobal) {
+    const firstChar = fullText[startGlobal];
+    // We keep currency symbols because number logic might use them, but we strip brackets/quotes
+    if (['.', ',', ';', ':', '!', '?', "'", '"', '[', '(', '{'].includes(firstChar)) {
+      startGlobal++;
+    } else {
+      break;
+    }
+  }
+
+  if (startGlobal >= endGlobal) return null;
 
   const word = fullText.substring(startGlobal, endGlobal);
   

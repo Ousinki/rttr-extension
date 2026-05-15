@@ -18,7 +18,15 @@ export function syllabify(word: string): string[] {
 /**
  * Returns a syllabified string joined by the specified separator (default is middle dot).
  * Example: "unpunished" -> "un·pun·ished"
+ * Hyphenated words are split by hyphen, syllabified individually, and rejoined.
  */
 export function syllabifyText(word: string, separator: string = '·'): string {
+  if (word.includes('-')) {
+    return word.split('-').map(part => {
+      // Don't syllabify empty parts
+      if (!part) return '';
+      return h.hyphenate(part).join(separator);
+    }).join('-');
+  }
   return h.hyphenate(word).join(separator);
 }

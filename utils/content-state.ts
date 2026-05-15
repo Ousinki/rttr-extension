@@ -103,9 +103,20 @@ export const uiState = reactive({
   pronounceBadge: {
     visible: false,
     word: null as string | null,
+    sylWord: null as string | null,
     content: '',
     isHTML: false,
     rect: null as Rect | null,
+  },
+  overlaySyllable: {
+    visible: false,
+    lines: [] as { text: string; rect: Rect | null }[],
+    fontSize: '16px',
+    fontWeight: '400',
+    fontFamily: 'inherit',
+    color: '#000',
+    letterSpacing: 'normal',
+    fontStyle: 'normal',
   },
   translationBadge: {
     visible: false,
@@ -151,17 +162,18 @@ export const uiActions = {
   },
 
   // Pronounce Badge
-  showPronounceBadge(content: string, rect: DOMRect, isHTML = false, word: string | null = null) {
+  showPronounceBadge(content: string, rect: DOMRect, isHTML = false, word: string | null = null, sylWord: string | null = null) {
     const b = uiState.pronounceBadge;
     const newRect = toRect(rect);
 
-    console.log('[RTTR-DEBUG] showPronounceBadge called', { word, content, isHTML, currentVisible: b.visible });
+    console.log('[RTTR-DEBUG] showPronounceBadge called', { word, sylWord, content, isHTML, currentVisible: b.visible });
 
     // Skip redundant updates on repeated clicks of the same word so Vue
     // doesn't re-run style/transition effects and cause a flicker.
     if (
       b.visible &&
       b.word === word &&
+      b.sylWord === sylWord &&
       b.content === content &&
       b.isHTML === isHTML &&
       newRect &&
@@ -175,6 +187,7 @@ export const uiActions = {
       return;
     }
     b.word = word;
+    b.sylWord = sylWord;
     b.content = content;
     b.isHTML = isHTML;
     b.rect = newRect;
@@ -183,6 +196,29 @@ export const uiActions = {
   hidePronounceBadge() {
     uiState.pronounceBadge.visible = false;
     uiState.pronounceBadge.word = null;
+    uiState.pronounceBadge.sylWord = null;
+  },
+  // Overlay Syllable
+  showOverlaySyllable(
+    lines: { text: string; rect: DOMRect }[], 
+    fontSize: string, 
+    fontWeight: string, 
+    fontFamily: string,
+    color: string,
+    letterSpacing: string,
+    fontStyle: string
+  ) {
+    uiState.overlaySyllable.lines = lines.map(line => ({ text: line.text, rect: toRect(line.rect) }));
+    uiState.overlaySyllable.fontSize = fontSize;
+    uiState.overlaySyllable.fontWeight = fontWeight;
+    uiState.overlaySyllable.fontFamily = fontFamily;
+    uiState.overlaySyllable.color = color;
+    uiState.overlaySyllable.letterSpacing = letterSpacing;
+    uiState.overlaySyllable.fontStyle = fontStyle;
+    uiState.overlaySyllable.visible = true;
+  },
+  hideOverlaySyllable() {
+    uiState.overlaySyllable.visible = false;
   },
 
   // Translation Badge

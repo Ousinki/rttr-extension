@@ -7,8 +7,13 @@
     ]"
     :style="badgeStyle"
   >
-    <span v-if="uiState.pronounceBadge.isHTML" v-html="uiState.pronounceBadge.content"></span>
-    <span v-else>{{ uiState.pronounceBadge.content }}</span>
+    <div v-if="uiState.pronounceBadge.sylWord" class="rttr-syl-word">
+      {{ uiState.pronounceBadge.sylWord }}
+    </div>
+    <div class="rttr-badge-content">
+      <span v-if="uiState.pronounceBadge.isHTML" v-html="uiState.pronounceBadge.content"></span>
+      <span v-else>{{ uiState.pronounceBadge.content }}</span>
+    </div>
   </div>
 </template>
 
@@ -62,6 +67,24 @@ const badgeStyle = computed(() => {
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.rttr-syl-word {
+  color: #B56B45;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.rttr-badge-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 #rttr-pronounce-badge.pos-top {

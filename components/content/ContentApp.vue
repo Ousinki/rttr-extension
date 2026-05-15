@@ -6,6 +6,7 @@
     <ExplainPanel />
     <ContextMenu />
     <LongPressRing />
+    <SyllableOverlay />
   </div>
 </template>
 
@@ -16,4 +17,5 @@ import TranslationBadge from './TranslationBadge.vue';
 import ExplainPanel from './ExplainPanel.vue';
 import ContextMenu from './ContextMenu.vue';
 import LongPressRing from './LongPressRing.vue';
+import SyllableOverlay from './SyllableOverlay.vue';
 </script>
