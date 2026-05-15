@@ -110,7 +110,7 @@ export default defineContentScript({
     let pointerDownPos = { x: 0, y: 0 };
 
     // Syllable span tracking
-    let activeSyllable: { node?: Text; span?: HTMLSpanElement; cleanup: () => void } | null = null;
+    let activeSyllable: { span: HTMLSpanElement; cleanup: () => void } | null = null;
     function cleanupActiveSyllable() {
       if (activeSyllable) {
         activeSyllable.cleanup();
@@ -207,66 +207,91 @@ export default defineContentScript({
                 // Clean up any previous syllable span first
                 cleanupActiveSyllable();
                 
-                // Instead of replacing the node with a span (which can destroy parent wrappers like <strong>),
-                // we directly modify the text node's data if possible, or wrap it safely.
-                // We will wrap the text node in our span but preserve the text node itself.
+                // Use splitText() to safely isolate the word portion, then wrap it in a styled span.
+                // This preserves parent wrappers like <strong> because the span becomes a CHILD,
+                // not a replacement of the parent element.
                 const textNode = result.range.startContainer as Text;
                 if (textNode.nodeType === Node.TEXT_NODE) {
-                  const originalText = textNode.data;
-                  const beforeText = originalText.substring(0, result.range.startOffset);
-                  const afterText = originalText.substring(result.range.endOffset);
+                  const wordStart = result.range.startOffset;
+                  const wordEnd = (result.range.endContainer === textNode)
+                    ? result.range.endOffset
+                    : textNode.data.length;
                   
-                  // Modify the text node to contain the syllable text
-                  textNode.data = beforeText + sylText + afterText;
+                  // Re-syllabify only the portion of the word within this text node
+                  const wordInNode = textNode.data.substring(wordStart, wordEnd);
+                  const sylForNode = syllabifyText(wordInNode, '·');
                   
-                  const originalWord = word;
+                  // Split the text node into [before][word][after]
+                  // After splitText, textNode = "before", wordNode = "word...", afterNode = "after"
+                  const wordNode = wordStart > 0 ? textNode.splitText(wordStart) : textNode;
+                  const wordLen = wordEnd - wordStart;
+                  if (wordNode.data.length > wordLen) {
+                    wordNode.splitText(wordLen); // creates the "after" text node
+                  }
+                  
+                  // Now wrap wordNode in a styled span (inserted as child of the same parent, e.g. <strong>)
+                  const span = document.createElement('span');
+                  span.className = 'rttr-inline-syllable rttr-ui-ignore';
+                  span.textContent = sylForNode;
+                  wordNode.parentNode!.replaceChild(span, wordNode);
+                  
                   let moveHandler: ((evt: MouseEvent) => void) | null = null;
                   
                   const cleanup = () => {
-                    // Restore original text
-                    if (textNode.parentNode) {
-                      textNode.data = originalText;
+                    // Restore: replace span with original text node
+                    if (span.parentNode) {
+                      span.parentNode.replaceChild(wordNode, span);
+                      // Manually merge only the adjacent text nodes we split,
+                      // instead of normalize() which recurses the entire subtree
+                      // and could invalidate framework-held node references.
+                      const next = wordNode.nextSibling;
+                      if (next && next.nodeType === Node.TEXT_NODE) {
+                        wordNode.data += (next as Text).data;
+                        next.remove();
+                      }
+                      const prev = wordNode.previousSibling;
+                      if (prev && prev.nodeType === Node.TEXT_NODE) {
+                        (prev as Text).data += wordNode.data;
+                        wordNode.remove();
+                      }
                     }
                     if (moveHandler) {
                       document.removeEventListener('mousemove', moveHandler);
                       moveHandler = null;
                     }
-                    if (activeSyllable?.node === textNode) {
+                    if (activeSyllable?.span === span) {
                       activeSyllable = null;
                     }
                   };
                   
                   // Track globally for reliable cleanup
-                  activeSyllable = { node: textNode, cleanup };
+                  activeSyllable = { span, cleanup };
                   
                   // Mousemove proximity detection: cleanup when cursor leaves word area
                   moveHandler = (evt: MouseEvent) => {
-                    if (!textNode.parentNode || !textNode.parentElement) {
+                    if (!span.parentNode) {
                       cleanup();
                       return;
                     }
-                    // Since textNode doesn't have getBoundingClientRect, we get the range rect
-                    const range = document.createRange();
-                    range.selectNodeContents(textNode);
-                    const rect = range.getBoundingClientRect();
+                    const rect = span.getBoundingClientRect();
                     const pad = 15; // px padding around the word
-                  if (
-                    evt.clientX < rect.left - pad ||
-                    evt.clientX > rect.right + pad ||
-                    evt.clientY < rect.top - pad ||
-                    evt.clientY > rect.bottom + pad
-                  ) {
-                    cleanup();
-                  }
-                };
-                // Delay attaching to avoid immediate cleanup from the click position
-                setTimeout(() => {
-                  if (activeSyllable?.node === textNode) {
-                    document.addEventListener('mousemove', moveHandler!);
-                  }
-                }, 150);
+                    if (
+                      evt.clientX < rect.left - pad ||
+                      evt.clientX > rect.right + pad ||
+                      evt.clientY < rect.top - pad ||
+                      evt.clientY > rect.bottom + pad
+                    ) {
+                      cleanup();
+                    }
+                  };
+                  // Delay attaching to avoid immediate cleanup from the click position
+                  setTimeout(() => {
+                    if (activeSyllable?.span === span) {
+                      document.addEventListener('mousemove', moveHandler!);
+                    }
+                  }, 150);
+                }
               }
-            } // Close if (textNode.nodeType === Node.TEXT_NODE)
             });
 
             const engine = currentSettings?.translationEngine || 'google';
@@ -1018,8 +1043,12 @@ function injectStyles() {
       to { transform: rotate(360deg); }
     }
     
-    .rttr-inline-syllable {
-      color: #B56B45;
+    .rttr-inline-syllable,
+    strong .rttr-inline-syllable,
+    b .rttr-inline-syllable,
+    em .rttr-inline-syllable {
+      color: #B56B45 !important;
+      -webkit-text-fill-color: #B56B45 !important;
       font-family: inherit;
       font-size: inherit;
       line-height: inherit;
