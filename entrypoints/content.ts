@@ -509,7 +509,6 @@ export default defineContentScript({
 
       longPressTimer = setTimeout(() => {
         isLongPressFired = true;
-        speakText(longPressWord, currentSettings);
         const isMultiWord = longPressWord.trim().includes(' ');
         const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
         
@@ -535,7 +534,16 @@ export default defineContentScript({
           if (resp && resp.success && resp.translation) {
             uiActions.showTranslationBadge(resp.translation, 'AI', longPressRect(), false,
               currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
+            // Extract the English collocation from AI response "english (translation)" and speak it
+            const collocMatch = resp.translation.match(/^(.+?)\s*[（(]/);
+            const speakPhrase = collocMatch ? collocMatch[1].trim() : longPressWord;
+            speakText(speakPhrase, currentSettings);
+          } else {
+            // Fallback: speak the original word if AI fails
+            speakText(longPressWord, currentSettings);
           }
+        }).catch(() => {
+          speakText(longPressWord, currentSettings);
         });
         uiActions.popLongPressRing();
       }, 500);
