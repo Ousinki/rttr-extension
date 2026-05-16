@@ -481,7 +481,7 @@ export default defineContentScript({
       const rect = getFocusedSentenceRect();
       if (rect) {
         const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
-        uiActions.showPronounceBadge(speakerSVG, rect, true);
+        uiActions.showPronounceBadge(speakerSVG, rect, true, null, null, null, true);
         uiState.pronounceBadge.pinned = true;
       }
       speakText(text, currentSettings, () => {
@@ -501,7 +501,7 @@ export default defineContentScript({
           if (rect) {
             const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
             uiActions.showTranslationBadge(resp.targetText, resp.engine || currentSettings.translationEngine, rect, false,
-              pos, currentSettings.showTranslationEngine ?? true);
+              pos, currentSettings.showTranslationEngine ?? true, true);
             uiState.translationBadge.pinned = true;
           }
         }
@@ -512,7 +512,7 @@ export default defineContentScript({
       const rect = getFocusedSentenceRect();
       if (!rect) return;
       const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
-      uiActions.showTranslationBadge('AI 翻译中...', 'AI', rect, true, pos, currentSettings.showTranslationEngine ?? true);
+      uiActions.showTranslationBadge('AI 翻译中...', 'AI', rect, true, pos, currentSettings.showTranslationEngine ?? true, true);
       uiState.translationBadge.pinned = true;
       safeSendMessage({
         type: 'CONTEXTUAL_TRANSLATE',

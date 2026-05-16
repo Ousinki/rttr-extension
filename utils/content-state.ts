@@ -19,9 +19,9 @@ export interface Rect {
   scrollY: number;
 }
 
-function toRect(rect: DOMRect | null): Rect | null {
+function toRect(rect: DOMRect | null, exactRect = false): Rect | null {
   if (!rect) return null;
-  return nearestLineRect({
+  const rawRect = {
     top: rect.top,
     left: rect.left,
     right: rect.right,
@@ -30,7 +30,9 @@ function toRect(rect: DOMRect | null): Rect | null {
     height: rect.height,
     scrollX: window.scrollX,
     scrollY: window.scrollY,
-  });
+  };
+  if (exactRect) return rawRect;
+  return nearestLineRect(rawRect);
 }
 
 /**
@@ -172,9 +174,9 @@ export const uiActions = {
   },
 
   // Pronounce Badge
-  showPronounceBadge(content: string, rect: DOMRect, isHTML = false, word: string | null = null, sylWord: string | null = null, translation: string | null = null) {
+  showPronounceBadge(content: string, rect: DOMRect, isHTML = false, word: string | null = null, sylWord: string | null = null, translation: string | null = null, exactRect = false) {
     const b = uiState.pronounceBadge;
-    const newRect = toRect(rect);
+    const newRect = toRect(rect, exactRect);
 
     console.log('[RTTR-DEBUG] showPronounceBadge called', { word, sylWord, content, isHTML, currentVisible: b.visible });
 
@@ -240,11 +242,11 @@ export const uiActions = {
   },
 
   // Translation Badge
-  showTranslationBadge(text: string, engine: string, targetRect: DOMRect, isAnnotated: boolean, position: 'top' | 'bottom' = 'bottom', showEngine = true) {
+  showTranslationBadge(text: string, engine: string, targetRect: DOMRect, isAnnotated: boolean, position: 'top' | 'bottom' = 'bottom', showEngine = true, exactRect = false) {
     uiState.translationBadge.text = text;
     uiState.translationBadge.engine = engine;
     uiState.translationBadge.translationType = engine === 'AI' ? 'ai' : 'api';
-    uiState.translationBadge.rect = toRect(targetRect);
+    uiState.translationBadge.rect = toRect(targetRect, exactRect);
     uiState.translationBadge.isAnnotated = isAnnotated;
     uiState.translationBadge.position = position;
     uiState.translationBadge.showEngine = showEngine;
