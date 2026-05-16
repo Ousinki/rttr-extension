@@ -1001,6 +1001,13 @@ watch(settings, () => {
         <h2>{{ t("句子聚焦导航模式") }}</h2>
         <p class="section-desc">{{ t("右键段落选择「聚焦此句」后，使用方向键控制句子。选择你偏好的左右键行为。") }}</p>
 
+        <div class="form-row" style="margin-bottom: 20px;">
+          <label class="checkbox-label" style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" v-model="settings.autoTranslateFocus" class="checkbox">
+            <span class="label-text" style="font-weight: 500; font-size: 14px; color: #374151;">{{ t("自动显示 API 翻译悬浮窗") }}</span>
+          </label>
+        </div>
+
         <!-- Animated Demo (Vue State Driven) -->
         <div class="animation-previews" style="grid-template-columns: 1fr; margin-bottom: 20px;">
           <div class="preview-box active" style="cursor: default;">

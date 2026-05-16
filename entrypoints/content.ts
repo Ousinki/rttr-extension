@@ -463,7 +463,18 @@ export default defineContentScript({
 
 
     // Click on separator ◯ to toggle sentence focus
-    document.addEventListener('click', handleSeparatorClick, { capture: true });
+    document.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.classList.contains('rttr-sentence-sep') && !target.classList.contains('rttr-sentence-sep--hidden')) {
+        handleSeparatorClick(e);
+        if (currentSettings?.autoTranslateFocus) {
+          setTimeout(() => {
+            const text = getFocusedSentenceText();
+            if (text) doFocusAPITranslate(text);
+          }, 10);
+        }
+      }
+    }, { capture: true });
 
     // --- Focus mode action helpers ---
     function doFocusTTS(text: string) {
@@ -548,10 +559,18 @@ export default defineContentScript({
           uiActions.hideTranslationBadge();
           uiState.translationBadge.pinned = false;
           focusPrev();
+          if (currentSettings.autoTranslateFocus) {
+            const text = getFocusedSentenceText();
+            if (text) doFocusAPITranslate(text);
+          }
         } else if (e.code === 'ArrowDown') {
           uiActions.hideTranslationBadge();
           uiState.translationBadge.pinned = false;
           focusNext();
+          if (currentSettings.autoTranslateFocus) {
+            const text = getFocusedSentenceText();
+            if (text) doFocusAPITranslate(text);
+          }
         } else if (e.code === 'KeyR') {
           const text = getFocusedSentenceText();
           if (!text) return;
@@ -1090,7 +1109,15 @@ export default defineContentScript({
             if (isFocused()) {
               menuItems.push({ icon: iconFocus, label: '取消聚焦', onClick: () => unfocusSentence() });
             } else {
-              menuItems.push({ icon: iconFocus, label: '聚焦此句', onClick: () => splitAndFocusAtNode(targetRange!.startContainer, targetRange!.startOffset) });
+              menuItems.push({ icon: iconFocus, label: '聚焦此句', onClick: () => {
+                splitAndFocusAtNode(targetRange!.startContainer, targetRange!.startOffset);
+                if (currentSettings?.autoTranslateFocus) {
+                  setTimeout(() => {
+                    const text = getFocusedSentenceText();
+                    if (text) doFocusAPITranslate(text);
+                  }, 10);
+                }
+              }});
             }
           }
 

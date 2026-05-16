@@ -35,6 +35,7 @@ export interface RTTRSettings {
   enableContextMenu: boolean;                         // 右键自定义菜单
   enableInlineSyllableRuby: boolean;                  // 单击单词时断音节 (Syllabification)
   syllableDisplayMode: 'inline' | 'badge' | 'overlay'; // 音节展示模式
+  autoTranslateFocus: boolean;                        // 聚焦句子时自动翻译
 }
 
 // ─── 默认值 ──────────────────────────────────────────────
@@ -66,7 +67,8 @@ const DEFAULT_SETTINGS: RTTRSettings = {
   enableNumberConversion: true,
   enableContextMenu: true,
   enableInlineSyllableRuby: true,
-  syllableDisplayMode: 'badge'
+  syllableDisplayMode: 'badge',
+  autoTranslateFocus: false,
 };
 
 // ─── Storage Items (WXT 类型安全存储) ────────────────────
