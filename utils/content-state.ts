@@ -19,14 +19,14 @@ export interface Rect {
 
 function toRect(rect: DOMRect | null): Rect | null {
   if (!rect) return null;
-  return {
+  return nearestLineRect({
     top: rect.top,
     left: rect.left,
     right: rect.right,
     bottom: rect.bottom,
     width: rect.width,
     height: rect.height,
-  };
+  });
 }
 
 /**
@@ -108,6 +108,7 @@ export const uiState = reactive({
     content: '',
     isHTML: false,
     rect: null as Rect | null,
+    translation: null as string | null,
   },
   overlaySyllable: {
     visible: false,
@@ -124,6 +125,7 @@ export const uiState = reactive({
     pinned: false,
     text: '',
     engine: '',
+    translationType: null as 'api' | 'ai' | null,
     isAnnotated: false,
     rect: null as Rect | null,
     position: 'bottom' as 'top' | 'bottom',
@@ -164,7 +166,7 @@ export const uiActions = {
   },
 
   // Pronounce Badge
-  showPronounceBadge(content: string, rect: DOMRect, isHTML = false, word: string | null = null, sylWord: string | null = null) {
+  showPronounceBadge(content: string, rect: DOMRect, isHTML = false, word: string | null = null, sylWord: string | null = null, translation: string | null = null) {
     const b = uiState.pronounceBadge;
     const newRect = toRect(rect);
 
@@ -193,13 +195,20 @@ export const uiActions = {
     b.content = content;
     b.isHTML = isHTML;
     b.rect = newRect;
+    if (translation !== null) b.translation = translation;
     b.visible = true;
+  },
+  updatePronounceBadgeTranslation(translation: string) {
+    if (uiState.pronounceBadge.visible) {
+      uiState.pronounceBadge.translation = translation;
+    }
   },
   hidePronounceBadge() {
     uiState.pronounceBadge.visible = false;
     uiState.pronounceBadge.pinned = false;
     uiState.pronounceBadge.word = null;
     uiState.pronounceBadge.sylWord = null;
+    uiState.pronounceBadge.translation = null;
   },
   // Overlay Syllable
   showOverlaySyllable(
@@ -228,6 +237,7 @@ export const uiActions = {
   showTranslationBadge(text: string, engine: string, targetRect: DOMRect, isAnnotated: boolean, position: 'top' | 'bottom' = 'bottom', showEngine = true) {
     uiState.translationBadge.text = text;
     uiState.translationBadge.engine = engine;
+    uiState.translationBadge.translationType = engine === 'AI' ? 'ai' : 'api';
     uiState.translationBadge.rect = toRect(targetRect);
     uiState.translationBadge.isAnnotated = isAnnotated;
     uiState.translationBadge.position = position;

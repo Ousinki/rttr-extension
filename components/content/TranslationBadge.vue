@@ -21,7 +21,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { uiState, nearestLineRect } from '@/utils/content-state';
+import { uiState } from '@/utils/content-state';
 
 
 const safeEngine = computed(() => {
@@ -38,8 +38,8 @@ const parsedText = computed(() => {
 });
 
 const actualPosition = computed(() => {
-  if (!uiState.translationBadge.rect) return 'bottom';
-  const targetRect = nearestLineRect(uiState.translationBadge.rect);
+  const targetRect = uiState.translationBadge.rect;
+  if (!targetRect) return 'bottom';
   let pos = uiState.translationBadge.position || 'bottom';
   
   // Fallback to bottom if placed at top but there is not enough space
@@ -55,8 +55,8 @@ const actualPosition = computed(() => {
 });
 
 const badgeStyle = computed(() => {
-  if (!uiState.translationBadge.rect) return {};
-  const targetRect = nearestLineRect(uiState.translationBadge.rect);
+  const targetRect = uiState.translationBadge.rect;
+  if (!targetRect) return {};
   // Use viewport-relative coordinates directly (position: fixed)
   const x = targetRect.left + targetRect.width / 2;
   let y: number;
@@ -67,7 +67,7 @@ const badgeStyle = computed(() => {
   let pronouncePos = 'none';
   let pronounceExtraHeight = 0;
   if (uiState.pronounceBadge.visible && uiState.pronounceBadge.rect) {
-    const pRect = nearestLineRect(uiState.pronounceBadge.rect);
+    const pRect = uiState.pronounceBadge.rect;
     pronouncePos = pRect.top < 100 ? 'bottom' : 'top';
     pronounceExtraHeight = uiState.pronounceBadge.sylWord ? 20 : 0;
   }

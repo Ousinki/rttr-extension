@@ -432,8 +432,16 @@ export default defineContentScript({
                 engine
               }).then((resp: any) => {
                 if (resp && resp.targetText) {
-                  uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, rect, true,
-                    currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
+                  if (uiState.translationBadge.pinned) {
+                    if (uiState.pronounceBadge.visible) {
+                      uiActions.updatePronounceBadgeTranslation(resp.targetText);
+                    } else {
+                      uiActions.showPronounceBadge('', rect, false, null, null, resp.targetText);
+                    }
+                  } else {
+                    uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, rect, true,
+                      'top', currentSettings.showTranslationEngine ?? true);
+                  }
                 }
               });
             }
@@ -445,6 +453,63 @@ export default defineContentScript({
 
     // Click on separator ◯ to toggle sentence focus
     document.addEventListener('click', handleSeparatorClick, { capture: true });
+
+    // --- Focus mode action helpers ---
+    function doFocusTTS(text: string) {
+      const rect = getFocusedSentenceRect();
+      if (rect) {
+        const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+        uiActions.showPronounceBadge(speakerSVG, rect, true);
+        uiState.pronounceBadge.pinned = true;
+      }
+      speakText(text, currentSettings, () => {
+        uiActions.hidePronounceBadge();
+      });
+    }
+
+    function doFocusAPITranslate(text: string) {
+      if (currentSettings.translationEngine === 'none') return;
+      safeSendMessage({
+        type: 'FETCH_TRANSLATION', text, sourceLang: 'auto',
+        targetLang: currentSettings.targetLanguage || 'zh-CN',
+        engine: currentSettings.translationEngine || 'google'
+      }).then((resp: any) => {
+        if (resp?.targetText) {
+          const rect = getFocusedSentenceRect();
+          if (rect) {
+            uiActions.showTranslationBadge(resp.targetText, resp.engine || currentSettings.translationEngine, rect, false,
+              currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
+            uiState.translationBadge.pinned = true;
+          }
+        }
+      });
+    }
+
+    function doFocusAITranslate(text: string) {
+      const rect = getFocusedSentenceRect();
+      if (!rect) return;
+      uiActions.showTranslationBadge('AI 翻译中...', 'AI', rect, true, currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
+      uiState.translationBadge.pinned = true;
+      safeSendMessage({
+        type: 'CONTEXTUAL_TRANSLATE',
+        word: text,
+        sentence: text
+      }).then((resp: any) => {
+        if (resp?.success && resp.translation) {
+          const newRect = getFocusedSentenceRect();
+          if (newRect) {
+            uiActions.showTranslationBadge(resp.translation, 'AI', newRect, false, currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
+            uiState.translationBadge.pinned = true;
+          }
+        } else if (resp?.error) {
+          const newRect = getFocusedSentenceRect();
+          if (newRect) {
+            uiActions.showTranslationBadge(`翻译失败: ${resp.error}`, 'AI', newRect, false, currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
+            uiState.translationBadge.pinned = true;
+          }
+        }
+      });
+    }
 
     document.addEventListener('keydown', async (e) => {
       if (!currentSettings?.enabled) return;
@@ -468,87 +533,68 @@ export default defineContentScript({
           uiState.translationBadge.pinned = false;
           focusNext();
         } else if (e.code === 'ArrowLeft') {
-          const text = getFocusedSentenceText();
-          if (text) {
-            const rect = getFocusedSentenceRect();
-            if (rect) {
-              const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
-              uiActions.showPronounceBadge(speakerSVG, rect, true);
-              uiState.pronounceBadge.pinned = true;
-            }
-            speakText(text, currentSettings, () => {
-              uiActions.hidePronounceBadge();
-            });
-          }
-        } else if (e.code === 'ArrowRight') {
+          const focusMode = currentSettings.focusNavMode || 'tts';
           const text = getFocusedSentenceText();
           if (!text) return;
 
-          const hadBadge = uiState.translationBadge.visible && uiState.translationBadge.pinned;
-
-          // Long-press detection: always start a timer on keydown
-          let longPressTriggered = false;
-          const longPressTimer = setTimeout(() => {
-            longPressTriggered = true;
-            // AI contextual translation (replaces any existing badge)
-            const rect = getFocusedSentenceRect();
-            if (rect) {
-              uiActions.showTranslationBadge('AI 翻译中...', 'AI', rect, true, currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
-              uiState.translationBadge.pinned = true;
-              safeSendMessage({
-                type: 'CONTEXTUAL_TRANSLATE',
-                word: text,
-                sentence: text
-              }).then((resp: any) => {
-                if (resp?.success && resp.translation) {
-                  const newRect = getFocusedSentenceRect();
-                  if (newRect) {
-                    uiActions.showTranslationBadge(resp.translation, 'AI', newRect, false, currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
-                    uiState.translationBadge.pinned = true;
-                  }
-                } else if (resp?.error) {
-                  const newRect = getFocusedSentenceRect();
-                  if (newRect) {
-                    uiActions.showTranslationBadge(`翻译失败: ${resp.error}`, 'AI', newRect, false, currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
-                    uiState.translationBadge.pinned = true;
-                  }
-                }
-              });
-            }
-          }, 500);
-
-          // On keyup, decide: dismiss existing badge OR do API translation
-          const onKeyUp = (upEvent: KeyboardEvent) => {
-            if (upEvent.code !== 'ArrowRight') return;
-            document.removeEventListener('keyup', onKeyUp, { capture: true });
-            clearTimeout(longPressTimer);
-            if (longPressTriggered) return; // Long press already handled
-
-            if (hadBadge) {
-              // Short press while badge is visible → dismiss
-              uiActions.hideTranslationBadge();
-              uiState.translationBadge.pinned = false;
-            } else {
-              // Short press with no badge → API translation
-              if (currentSettings.translationEngine !== 'none') {
-                safeSendMessage({
-                  type: 'FETCH_TRANSLATION', text, sourceLang: 'auto',
-                  targetLang: currentSettings.targetLanguage || 'zh-CN',
-                  engine: currentSettings.translationEngine || 'google'
-                }).then((resp: any) => {
-                  if (resp?.targetText) {
-                    const rect = getFocusedSentenceRect();
-                    if (rect) {
-                      uiActions.showTranslationBadge(resp.targetText, resp.engine || currentSettings.translationEngine, rect, false,
-                        currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
-                      uiState.translationBadge.pinned = true;
-                    }
-                  }
-                });
+          if (focusMode === 'tts') {
+            // Mode A: ← = TTS
+            doFocusTTS(text);
+          } else {
+            // Mode B: ← = API translation (toggle off if API, switch if AI)
+            if (uiState.translationBadge.visible && uiState.translationBadge.pinned) {
+              if (uiState.translationBadge.translationType === 'api') {
+                uiActions.hideTranslationBadge();
+                uiState.translationBadge.pinned = false;
+              } else {
+                doFocusAPITranslate(text);
               }
+            } else {
+              doFocusAPITranslate(text);
             }
-          };
-          document.addEventListener('keyup', onKeyUp, { capture: true, once: true } as any);
+          }
+        } else if (e.code === 'ArrowRight') {
+          const focusMode = currentSettings.focusNavMode || 'tts';
+          const text = getFocusedSentenceText();
+          if (!text) return;
+
+          if (focusMode === 'translate') {
+            // Mode B: → = AI translation (toggle off if AI, switch if API)
+            if (uiState.translationBadge.visible && uiState.translationBadge.pinned) {
+              if (uiState.translationBadge.translationType === 'ai') {
+                uiActions.hideTranslationBadge();
+                uiState.translationBadge.pinned = false;
+              } else {
+                doFocusAITranslate(text);
+              }
+            } else {
+              doFocusAITranslate(text);
+            }
+          } else {
+            // Mode A: → short = API translate, long = AI translate
+            const hadBadge = uiState.translationBadge.visible && uiState.translationBadge.pinned;
+
+            let longPressTriggered = false;
+            const longPressTimer = setTimeout(() => {
+              longPressTriggered = true;
+              doFocusAITranslate(text);
+            }, 500);
+
+            const onKeyUp = (upEvent: KeyboardEvent) => {
+              if (upEvent.code !== 'ArrowRight') return;
+              document.removeEventListener('keyup', onKeyUp, { capture: true });
+              clearTimeout(longPressTimer);
+              if (longPressTriggered) return;
+
+              if (hadBadge) {
+                uiActions.hideTranslationBadge();
+                uiState.translationBadge.pinned = false;
+              } else {
+                doFocusAPITranslate(text);
+              }
+            };
+            document.addEventListener('keyup', onKeyUp, { capture: true, once: true } as any);
+          }
         }
         return;
       }
@@ -652,8 +698,16 @@ export default defineContentScript({
               targetLang: currentSettings.targetLanguage || 'zh-CN', engine
             }).then((resp: any) => {
               if (resp && resp.targetText) {
-                uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, info.rect, false,
-                  currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
+                if (uiState.translationBadge.pinned) {
+                  if (uiState.pronounceBadge.visible) {
+                    uiActions.updatePronounceBadgeTranslation(resp.targetText);
+                  } else {
+                    uiActions.showPronounceBadge('', info.rect, false, null, null, resp.targetText);
+                  }
+                } else {
+                  uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, info.rect, false,
+                    'top', currentSettings.showTranslationEngine ?? true);
+                }
               }
             });
           }
@@ -705,8 +759,16 @@ export default defineContentScript({
             targetLang: currentSettings.targetLanguage || 'zh-CN', engine
           }).then((resp: any) => {
             if (resp && resp.targetText) {
-              uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, rect, false,
-                currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
+              if (uiState.translationBadge.pinned) {
+                if (uiState.pronounceBadge.visible) {
+                  uiActions.updatePronounceBadgeTranslation(resp.targetText);
+                } else {
+                  uiActions.showPronounceBadge('', rect, false, null, null, resp.targetText);
+                }
+              } else {
+                uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, rect, false,
+                  'top', currentSettings.showTranslationEngine ?? true);
+              }
             }
           });
         }
@@ -858,8 +920,16 @@ export default defineContentScript({
           sentence: longPressSentence
         }).then((resp: any) => {
           if (resp && resp.success && resp.translation) {
-            uiActions.showTranslationBadge(resp.translation, 'AI', longPressRect(), false,
-              currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
+            if (uiState.translationBadge.pinned) {
+              if (uiState.pronounceBadge.visible) {
+                uiActions.updatePronounceBadgeTranslation(resp.translation);
+              } else {
+                uiActions.showPronounceBadge('', longPressRect(), false, null, null, resp.translation);
+              }
+            } else {
+              uiActions.showTranslationBadge(resp.translation, 'AI', longPressRect(), false,
+                'top', currentSettings.showTranslationEngine ?? true);
+            }
             // Extract the English collocation from AI response "english (translation)" and speak it
             const collocMatch = resp.translation.match(/^(.+?)\s*[（(]/);
             const speakPhrase = collocMatch ? collocMatch[1].trim() : longPressWord;
@@ -1002,8 +1072,16 @@ export default defineContentScript({
               sentence
             }).then((resp: any) => {
               if (resp?.success && resp.translation) {
-                uiActions.showTranslationBadge(resp.translation, 'AI', rect, false,
-                  currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
+                if (uiState.translationBadge.pinned) {
+                  if (uiState.pronounceBadge.visible) {
+                    uiActions.updatePronounceBadgeTranslation(resp.translation);
+                  } else {
+                    uiActions.showPronounceBadge('', rect, false, null, null, resp.translation);
+                  }
+                } else {
+                  uiActions.showTranslationBadge(resp.translation, 'AI', rect, false,
+                    currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
+                }
               }
             });
           }});
@@ -1219,7 +1297,7 @@ function getWordAtClick(e: MouseEvent): { word: string; range: Range } | null {
 
   const prevCh = targetGlobalOffset > 0 ? fullText[targetGlobalOffset - 1] : '';
   const nextCh = targetGlobalOffset < fullText.length ? fullText[targetGlobalOffset] : '';
-  const wordRe = /[a-zA-Z0-9'.\-\[\]$£€¥°%]/;
+  const wordRe = /[a-zA-Z0-9'.\-$£€¥°%]/;
   if (!wordRe.test(prevCh) && !wordRe.test(nextCh)) return null;
 
   let startGlobal = targetGlobalOffset;

@@ -10,11 +10,11 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { uiState, nearestLineRect } from '@/utils/content-state';
+import { uiState } from '@/utils/content-state';
 
 const tooltipStyle = computed(() => {
   if (!uiState.tooltip.rect) return {};
-  const rect = nearestLineRect(uiState.tooltip.rect);
+  const rect = uiState.tooltip.rect;
   const top = rect.top - 8;
   const centerX = rect.left + rect.width / 2;
   const left = centerX;

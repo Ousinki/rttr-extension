@@ -14,22 +14,25 @@
       <span v-if="uiState.pronounceBadge.isHTML" v-html="uiState.pronounceBadge.content"></span>
       <span v-else>{{ uiState.pronounceBadge.content }}</span>
     </div>
+    <div v-if="uiState.pronounceBadge.translation" class="rttr-word-translation">
+      {{ uiState.pronounceBadge.translation }}
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { uiState, nearestLineRect } from '@/utils/content-state';
+import { uiState } from '@/utils/content-state';
 
 const isBottom = computed(() => {
   if (!uiState.pronounceBadge.rect) return false;
-  const rect = nearestLineRect(uiState.pronounceBadge.rect);
+  const rect = uiState.pronounceBadge.rect;
   return rect.top < 100;
 });
 
 const badgeStyle = computed(() => {
   if (!uiState.pronounceBadge.rect) return {};
-  const rect = nearestLineRect(uiState.pronounceBadge.rect);
+  const rect = uiState.pronounceBadge.rect;
   
   // Use viewport-relative coordinates directly (position: fixed)
   const x = rect.left + rect.width / 2;
@@ -85,6 +88,17 @@ const badgeStyle = computed(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.rttr-word-translation {
+  margin-top: 2px;
+  padding-top: 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 400;
+  font-family: system-ui, -apple-system, sans-serif;
+  text-align: center;
 }
 
 #rttr-pronounce-badge.pos-top {

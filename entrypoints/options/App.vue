@@ -356,7 +356,8 @@ const settings = ref<RTTRSettings>({
   enableNumberConversion: true,
   enableContextMenu: true,
   enableInlineSyllableRuby: true,
-  syllableDisplayMode: 'badge'
+  syllableDisplayMode: 'badge',
+  focusNavMode: 'tts' as 'tts' | 'translate'
 });
 
 const voices = ref<SpeechSynthesisVoice[]>([]);
@@ -370,6 +371,26 @@ const paragraphCommandShortcut = ref('');
 const commandShortcutTokens = computed(() => parseCommandShortcut(paragraphCommandShortcut.value));
 const commandShortcutModifiers = computed(() => commandShortcutTokens.value.filter(token => token.kind === 'modifier'));
 const commandShortcutKeys = computed(() => commandShortcutTokens.value.filter(token => token.kind === 'key'));
+
+// --- Simulated DOM Animation State ---
+const demoState = ref({ step: 0 });
+let demoTimer: ReturnType<typeof setInterval> | null = null;
+
+const runDemoLoop = () => {
+  demoState.value.step = 0;
+  setTimeout(() => { demoState.value.step = 1; }, 500);   // cursor enters
+  setTimeout(() => { demoState.value.step = 2; }, 1500);  // right click
+  setTimeout(() => { demoState.value.step = 3; }, 1800);  // menu appears
+  setTimeout(() => { demoState.value.step = 4; }, 2800);  // menu click
+  setTimeout(() => { demoState.value.step = 5; }, 3200);  // focus active (sentence 1)
+  setTimeout(() => { demoState.value.step = 6; }, 4500);  // down press (sentence 2)
+  setTimeout(() => { demoState.value.step = 7; }, 4700);  // down release
+  setTimeout(() => { demoState.value.step = 8; }, 6000);  // down press (sentence 3)
+  setTimeout(() => { demoState.value.step = 9; }, 6200);  // down release
+  setTimeout(() => { demoState.value.step = 10; }, 7500); // down press (sentence 4)
+  setTimeout(() => { demoState.value.step = 11; }, 7700); // down release
+  setTimeout(() => { demoState.value.step = 12; }, 9500); // hold, then reset
+};
 
 const loadVoices = () => {
   const synth = window.speechSynthesis;
@@ -397,9 +418,13 @@ onMounted(async () => {
 
   window.addEventListener('focus', handleCommandShortcutRefresh);
   document.addEventListener('visibilitychange', handleCommandShortcutRefresh);
+
+  runDemoLoop();
+  demoTimer = setInterval(runDemoLoop, 10000);
 });
 
 onBeforeUnmount(() => {
+  if (demoTimer) clearInterval(demoTimer);
   window.removeEventListener('focus', handleCommandShortcutRefresh);
   document.removeEventListener('visibilitychange', handleCommandShortcutRefresh);
 });
@@ -948,6 +973,113 @@ watch(settings, () => {
             </div>
           </div>
         </div>
+      </section>
+
+      <!-- Sentence Focus Navigation Mode -->
+      <section class="settings-card">
+        <h2>{{ t("句子聚焦导航模式") }}</h2>
+        <p class="section-desc">{{ t("右键段落选择「聚焦此句」后，使用方向键控制句子。选择你偏好的左右键行为。") }}</p>
+
+        <!-- Animated Demo (Vue State Driven) -->
+        <div class="animation-previews" style="grid-template-columns: 1fr; margin-bottom: 20px;">
+          <div class="preview-box active" style="cursor: default;">
+            <div class="preview-title">{{ t("效果演示") }}</div>
+            <div class="anim-container" style="height: 200px; padding: 20px 28px; flex-direction: column; align-items: flex-start; justify-content: center; background: #fafafa; overflow: hidden; position: relative;">
+              
+              <!-- Paragraph Text -->
+              <div class="focus-demo-text" style="font-size: 14px; line-height: 2.0; color: #333; text-align: left; width: 100%; transition: all 0.3s;"
+                   :style="{ color: demoState.step >= 5 ? '#bbb' : '#333' }">
+                <span style="transition: color 0.3s;" :style="{ color: (demoState.step >= 5 && demoState.step < 6) ? '#111' : 'inherit' }">The quick brown fox jumps over the lazy dog.</span><span class="demo-sep" :class="{ 'demo-sep-visible': demoState.step >= 5 }">&#9675;</span><span style="transition: color 0.3s;" :style="{ color: (demoState.step >= 6 && demoState.step < 8) ? '#111' : 'inherit' }">It was a bright and sunny day.</span><span class="demo-sep" :class="{ 'demo-sep-visible': demoState.step >= 5 }">&#9675;</span><span style="transition: color 0.3s;" :style="{ color: (demoState.step >= 8 && demoState.step < 10) ? '#111' : 'inherit' }">Birds were singing in the trees.</span><span class="demo-sep" :class="{ 'demo-sep-visible': demoState.step >= 5 }">&#9675;</span><span style="transition: color 0.3s;" :style="{ color: demoState.step >= 10 ? '#111' : 'inherit' }">A gentle breeze blew across the field.</span>
+              </div>
+
+              <!-- Context Menu -->
+              <div class="demo-menu" :class="{ 'demo-menu-visible': demoState.step === 3 || demoState.step === 4 }">
+                <div class="demo-menu-item" :style="{ backgroundColor: demoState.step === 4 ? '#007aff' : 'transparent', color: demoState.step === 4 ? '#fff' : '#374151' }">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/></svg>
+                  {{ t("聚焦此句") }}
+                </div>
+              </div>
+
+              <!-- Ripple -->
+              <div v-if="demoState.step === 2" class="demo-ripple"></div>
+              <div v-if="demoState.step === 4" class="demo-ripple" style="left: calc(48% + 34px); top: calc(38% + 14px); border-color: rgba(0,0,0,0.4);"></div>
+
+              <!-- Cursor -->
+              <svg class="demo-cursor" :class="{ 
+                'cursor-start': demoState.step === 0,
+                'cursor-target': demoState.step >= 1 && demoState.step < 3,
+                'cursor-menu': demoState.step >= 3 && demoState.step <= 4,
+                'cursor-hide': demoState.step >= 5
+              }" width="24" height="24" viewBox="0 0 24 24">
+                <path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z" fill="#000" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/>
+              </svg>
+
+              <!-- Mouse Indicator -->
+              <div class="demo-mouse-indicator" :class="{ 'mouse-hidden': demoState.step >= 5 }">
+                <svg width="24" height="36" viewBox="0 0 24 36" fill="none" stroke="#9ca3af" stroke-width="1.5">
+                  <!-- Left Button -->
+                  <path d="M 4 10 A 8 8 0 0 1 12 2 L 12 14 L 4 14 Z" :fill="demoState.step === 4 ? '#007aff' : 'transparent'" style="transition: fill 0.15s;" />
+                  <!-- Right Button -->
+                  <path d="M 12 2 A 8 8 0 0 1 20 10 L 20 14 L 12 14 Z" :fill="demoState.step === 2 ? '#007aff' : 'transparent'" style="transition: fill 0.15s;" />
+                  <!-- Body -->
+                  <path d="M 4 14 L 20 14 L 20 22 A 8 8 0 0 1 4 22 Z" />
+                  <!-- Scroll Wheel -->
+                  <line x1="12" y1="4" x2="12" y2="8" />
+                </svg>
+              </div>
+
+              <!-- Down Arrow Indicator -->
+              <div class="demo-key-indicator" :class="{ 'key-visible': demoState.step >= 6, 'key-pressed': demoState.step === 6 || demoState.step === 8 || demoState.step === 10 }">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 5v14M19 12l-7 7-7-7"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mode Selector Cards -->
+        <div class="animation-previews" style="grid-template-columns: 1fr 1fr;">
+          <div class="preview-box" :class="{ active: settings.focusNavMode === 'tts' }" @click="settings.focusNavMode = 'tts'">
+            <div class="preview-title">{{ t("朗读优先") }}</div>
+            <div style="padding: 8px 12px;">
+              <div class="focus-keys-hint">
+                <div class="focus-key-group">
+                  <span class="focus-key">&#8592;</span>
+                  <span class="focus-key-label">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                    TTS
+                  </span>
+                </div>
+                <div class="focus-key-group">
+                  <span class="focus-key">&#8594;</span>
+                  <span class="focus-key-label">API {{ t("翻译") }}</span>
+                </div>
+                <div class="focus-key-group">
+                  <span class="focus-key focus-key-long">&#8594;</span>
+                  <span class="focus-key-label">长按 AI {{ t("翻译") }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="preview-box" :class="{ active: settings.focusNavMode === 'translate' }" @click="settings.focusNavMode = 'translate'">
+            <div class="preview-title">{{ t("翻译优先") }}</div>
+            <div style="padding: 8px 12px;">
+              <div class="focus-keys-hint">
+                <div class="focus-key-group">
+                  <span class="focus-key">&#8592;</span>
+                  <span class="focus-key-label">API {{ t("翻译") }}</span>
+                </div>
+                <div class="focus-key-group">
+                  <span class="focus-key">&#8594;</span>
+                  <span class="focus-key-label">AI {{ t("翻译") }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <p style="font-size: 11px; color: #9ca3af; margin-top: 12px; text-align: center;">{{ t("↑↓ 切换上下句 · ESC 退出聚焦 · 再按一次 →/← 关闭翻译框") }}</p>
       </section>
 
       <!-- TTS Settings -->
@@ -2148,5 +2280,182 @@ body {
   0%, 46% { opacity: 1; color: inherit; }
   50%, 80% { opacity: 0; color: transparent; }
   85%, 100% { opacity: 1; color: inherit; }
+}
+
+/* --- Vue State-Driven Demo Styles --- */
+.demo-sep {
+  display: inline;
+  font-size: 0px;
+  color: transparent;
+  margin: 0;
+  vertical-align: middle;
+  transition: all 0.3s ease;
+}
+.demo-sep-visible {
+  display: inline-block;
+  color: #007aff;
+  margin: 0 1px;
+  font-size: 1.6em;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.demo-menu {
+  position: absolute;
+  left: calc(48% + 18px); top: calc(38% - 6px);
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+  padding: 4px;
+  opacity: 0;
+  transform: scale(0.92) translateY(4px);
+  transform-origin: top left;
+  pointer-events: none;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 10;
+}
+.demo-menu-visible {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+
+.demo-menu-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 14px;
+  font-size: 12px; font-weight: 500;
+  border-radius: 5px; white-space: nowrap;
+  transition: all 0.15s ease;
+}
+.demo-menu-item svg { flex-shrink: 0; }
+
+.demo-cursor {
+  position: absolute;
+  transition: all 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+  z-index: 20;
+}
+.cursor-start { left: 82%; top: 72%; opacity: 0; }
+.cursor-target { left: 48%; top: 38%; opacity: 1; }
+.cursor-menu { left: calc(48% + 30px); top: calc(38% + 10px); opacity: 1; }
+.cursor-hide { left: calc(48% + 30px); top: calc(38% + 10px); opacity: 0; }
+
+.demo-mouse-indicator {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  opacity: 0.6;
+  z-index: 10;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform: translateY(0);
+}
+.demo-mouse-indicator.mouse-hidden {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.demo-key-indicator {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  background: #fff;
+  border: 2px solid #e5e7eb;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 10;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+}
+.demo-key-indicator.key-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.demo-key-indicator.key-pressed {
+  background: #e5e7eb;
+  color: #374151;
+  border-color: #d1d5db;
+  transform: translateY(2px) scale(0.95);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.demo-ripple {
+  position: absolute;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(0,122,255,0.6);
+  left: calc(48% + 4px); top: calc(38% + 4px);
+  transform: scale(0.3);
+  pointer-events: none;
+  animation: demoRippleAnim 0.4s ease-out forwards;
+  z-index: 15;
+}
+@keyframes demoRippleAnim {
+  0%   { opacity: 1; transform: scale(0.3); }
+  100% { opacity: 0; transform: scale(2.5); }
+}
+
+/* --- Focus Mode Selector Styles --- */
+.focus-keys-hint {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+}
+
+.focus-key-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.focus-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px; height: 22px;
+  padding: 0 5px;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 11px; font-weight: 600;
+  color: #374151;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.focus-key-long {
+  position: relative;
+  background: linear-gradient(135deg, #fff 60%, #e0e7ff);
+  border-color: #818cf8;
+  color: #4338ca;
+}
+.focus-key-long::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 6px;
+  border: 1.5px solid rgba(99,102,241,0.4);
+  animation: focusKeyPulse 2s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes focusKeyPulse {
+  0%, 100% { opacity: 0; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+.focus-key-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  color: #6b7280;
+  font-weight: 500;
+  white-space: nowrap;
 }
 </style>
