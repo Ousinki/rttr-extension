@@ -34,8 +34,7 @@ export interface RTTRSettings {
   enableNumberConversion: boolean;                   // 数字单位转换 (100 million → 1亿)
   enableContextMenu: boolean;                         // 右键自定义菜单
   enableInlineSyllableRuby: boolean;                  // 单击单词时断音节 (Syllabification)
-  syllableDisplayMode: 'inline' | 'badge';            // 音节展示模式
-  focusNavMode: 'tts' | 'translate';                   // 句子聚焦导航模式
+  syllableDisplayMode: 'inline' | 'badge' | 'overlay'; // 音节展示模式
 }
 
 // ─── 默认值 ──────────────────────────────────────────────
@@ -67,8 +66,7 @@ const DEFAULT_SETTINGS: RTTRSettings = {
   enableNumberConversion: true,
   enableContextMenu: true,
   enableInlineSyllableRuby: true,
-  syllableDisplayMode: 'badge',
-  focusNavMode: 'tts'
+  syllableDisplayMode: 'badge'
 };
 
 // ─── Storage Items (WXT 类型安全存储) ────────────────────

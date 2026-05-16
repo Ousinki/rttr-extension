@@ -537,7 +537,10 @@ export default defineContentScript({
       }
 
       // Arrow key navigation in sentence focus mode
-      if (isFocused() && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+      if (isFocused() && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyR'].includes(e.code)) {
+        if (e.code === 'KeyR' && (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey)) {
+          return; // Allow native shortcuts like Cmd+R
+        }
         e.preventDefault();
         e.stopPropagation();
         if (e.repeat) return; // Ignore auto-repeat from holding key down
@@ -549,68 +552,35 @@ export default defineContentScript({
           uiActions.hideTranslationBadge();
           uiState.translationBadge.pinned = false;
           focusNext();
-        } else if (e.code === 'ArrowLeft') {
-          const focusMode = currentSettings.focusNavMode || 'tts';
+        } else if (e.code === 'KeyR') {
           const text = getFocusedSentenceText();
           if (!text) return;
-
-          if (focusMode === 'tts') {
-            // Mode A: ← = TTS
-            doFocusTTS(text);
-          } else {
-            // Mode B: ← = API translation (toggle off if API, switch if AI)
-            if (uiState.translationBadge.visible && uiState.translationBadge.pinned) {
-              if (uiState.translationBadge.translationType === 'api') {
-                uiActions.hideTranslationBadge();
-                uiState.translationBadge.pinned = false;
-              } else {
-                doFocusAPITranslate(text);
-              }
+          doFocusTTS(text);
+        } else if (e.code === 'ArrowLeft') {
+          const text = getFocusedSentenceText();
+          if (!text) return;
+          if (uiState.translationBadge.visible && uiState.translationBadge.pinned) {
+            if (uiState.translationBadge.translationType === 'api') {
+              uiActions.hideTranslationBadge();
+              uiState.translationBadge.pinned = false;
             } else {
               doFocusAPITranslate(text);
             }
+          } else {
+            doFocusAPITranslate(text);
           }
         } else if (e.code === 'ArrowRight') {
-          const focusMode = currentSettings.focusNavMode || 'tts';
           const text = getFocusedSentenceText();
           if (!text) return;
-
-          if (focusMode === 'translate') {
-            // Mode B: → = AI translation (toggle off if AI, switch if API)
-            if (uiState.translationBadge.visible && uiState.translationBadge.pinned) {
-              if (uiState.translationBadge.translationType === 'ai') {
-                uiActions.hideTranslationBadge();
-                uiState.translationBadge.pinned = false;
-              } else {
-                doFocusAITranslate(text);
-              }
+          if (uiState.translationBadge.visible && uiState.translationBadge.pinned) {
+            if (uiState.translationBadge.translationType === 'ai') {
+              uiActions.hideTranslationBadge();
+              uiState.translationBadge.pinned = false;
             } else {
               doFocusAITranslate(text);
             }
           } else {
-            // Mode A: → short = API translate, long = AI translate
-            const hadBadge = uiState.translationBadge.visible && uiState.translationBadge.pinned;
-
-            let longPressTriggered = false;
-            const longPressTimer = setTimeout(() => {
-              longPressTriggered = true;
-              doFocusAITranslate(text);
-            }, 500);
-
-            const onKeyUp = (upEvent: KeyboardEvent) => {
-              if (upEvent.code !== 'ArrowRight') return;
-              document.removeEventListener('keyup', onKeyUp, { capture: true });
-              clearTimeout(longPressTimer);
-              if (longPressTriggered) return;
-
-              if (hadBadge) {
-                uiActions.hideTranslationBadge();
-                uiState.translationBadge.pinned = false;
-              } else {
-                doFocusAPITranslate(text);
-              }
-            };
-            document.addEventListener('keyup', onKeyUp, { capture: true, once: true } as any);
+            doFocusAITranslate(text);
           }
         }
         return;

@@ -1058,44 +1058,24 @@ watch(settings, () => {
             </div>
           </div>
         </div>
-
-        <!-- Mode Selector Cards -->
-        <div class="animation-previews" style="grid-template-columns: 1fr 1fr;">
-          <div class="preview-box" :class="{ active: settings.focusNavMode === 'tts' }" @click="settings.focusNavMode = 'tts'">
-            <div class="preview-title">{{ t("朗读优先") }}</div>
-            <div style="padding: 8px 12px;">
-              <div class="focus-keys-hint">
-                <div class="focus-key-group">
-                  <span class="focus-key">&#8592;</span>
-                  <span class="focus-key-label">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-                    TTS
-                  </span>
-                </div>
-                <div class="focus-key-group">
-                  <span class="focus-key">&#8594;</span>
-                  <span class="focus-key-label">API {{ t("翻译") }}</span>
-                </div>
-                <div class="focus-key-group">
-                  <span class="focus-key focus-key-long">&#8594;</span>
-                  <span class="focus-key-label">长按 AI {{ t("翻译") }}</span>
-                </div>
-              </div>
+        
+        <!-- Shortcut hints outside the animation card -->
+        <div style="margin-bottom: 12px;">
+          <div class="focus-keys-hint" style="justify-content: center; gap: 32px;">
+            <div class="focus-key-group">
+              <span class="focus-key">R</span>
+              <span class="focus-key-label" style="font-weight: 500;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px;"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                TTS
+              </span>
             </div>
-          </div>
-          <div class="preview-box" :class="{ active: settings.focusNavMode === 'translate' }" @click="settings.focusNavMode = 'translate'">
-            <div class="preview-title">{{ t("翻译优先") }}</div>
-            <div style="padding: 8px 12px;">
-              <div class="focus-keys-hint">
-                <div class="focus-key-group">
-                  <span class="focus-key">&#8592;</span>
-                  <span class="focus-key-label">API {{ t("翻译") }}</span>
-                </div>
-                <div class="focus-key-group">
-                  <span class="focus-key">&#8594;</span>
-                  <span class="focus-key-label">AI {{ t("翻译") }}</span>
-                </div>
-              </div>
+            <div class="focus-key-group">
+              <span class="focus-key">&#8592;</span>
+              <span class="focus-key-label" style="font-weight: 500;">API {{ t("翻译") }}</span>
+            </div>
+            <div class="focus-key-group">
+              <span class="focus-key">&#8594;</span>
+              <span class="focus-key-label" style="font-weight: 500;">AI {{ t("翻译") }}</span>
             </div>
           </div>
         </div>
