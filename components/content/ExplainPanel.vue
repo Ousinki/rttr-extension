@@ -64,19 +64,20 @@ watch(() => [uiState.explainPanel.visible, uiState.explainPanel.loading], async 
     const panelRect = panelRef.value.getBoundingClientRect();
     const padding = 12;
     
-    let top = rect.top - panelRect.height - padding;
-    let left = rect.left + (rect.width / 2) - (panelRect.width / 2);
+    let top = rect.top + window.scrollY - panelRect.height - padding;
+    let left = rect.left + window.scrollX + (rect.width / 2) - (panelRect.width / 2);
 
-    if (top < padding) {
-      top = rect.bottom + padding;
+    // If there's not enough space above, place it below the text
+    if (top < window.scrollY + padding) {
+      top = rect.bottom + window.scrollY + padding;
       isBottom.value = true;
     } else {
       isBottom.value = false;
     }
 
-    if (left < padding) left = padding;
-    if (left + panelRect.width > window.innerWidth - padding) {
-      left = window.innerWidth - panelRect.width - padding;
+    if (left < window.scrollX + padding) left = window.scrollX + padding;
+    if (left + panelRect.width > window.scrollX + window.innerWidth - padding) {
+      left = window.scrollX + window.innerWidth - panelRect.width - padding;
     }
 
     panelStyle.value = {
@@ -89,7 +90,7 @@ watch(() => [uiState.explainPanel.visible, uiState.explainPanel.loading], async 
 
 <style scoped>
 #rttr-explain-panel {
-  position: fixed;
+  position: absolute;
   z-index: 2147483646;
   width: 320px;
   background: #fdfaf5;

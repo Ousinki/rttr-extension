@@ -15,14 +15,13 @@
 <script setup lang="ts">
 import { uiState } from '@/utils/content-state';
 
-function getLineStyle(rect: DOMRect | null) {
+function getLineStyle(rect: DOMRect | null | any) {
   if (!rect) return {};
-  const centerX = rect.left + rect.width / 2;
-  const centerY = rect.top + rect.height / 2;
-  
+  const x = rect.left + window.scrollX + rect.width / 2;
+  const y = rect.top + window.scrollY + rect.height / 2;
   return {
-    left: `${centerX}px`,
-    top: `${centerY}px`,
+    left: `${x}px`,
+    top: `${y}px`,
     fontSize: uiState.overlaySyllable.fontSize,
     fontWeight: uiState.overlaySyllable.fontWeight,
     fontFamily: uiState.overlaySyllable.fontFamily,
@@ -35,7 +34,7 @@ function getLineStyle(rect: DOMRect | null) {
 
 <style scoped>
 .rttr-syllable-overlay {
-  position: fixed;
+  position: absolute;
   z-index: 2147483646; /* below pronounce badge */
   background: #fdf012; /* Pure bright yellow, mimicking Mac native */
   border-radius: 0; /* Completely straight edges, no rounding */

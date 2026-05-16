@@ -15,8 +15,8 @@ import { uiState } from '@/utils/content-state';
 const tooltipStyle = computed(() => {
   if (!uiState.tooltip.rect) return {};
   const rect = uiState.tooltip.rect;
-  const top = rect.top - 8;
-  const centerX = rect.left + rect.width / 2;
+  const top = rect.top + window.scrollY - 8;
+  const centerX = rect.left + window.scrollX + rect.width / 2;
   const left = centerX;
 
   const screenWidth = window.innerWidth;
@@ -25,10 +25,12 @@ const tooltipStyle = computed(() => {
   const padding = 16;
   
   let shiftX = 0;
-  if (centerX - maxHalfWidth < padding) {
-    shiftX = padding - (centerX - maxHalfWidth);
-  } else if (centerX + maxHalfWidth > screenWidth - padding) {
-    shiftX = (screenWidth - padding) - (centerX + maxHalfWidth);
+  // Note: centerX still needs to be checked against viewport boundaries for shift calculation
+  const viewportCenterX = rect.left + rect.width / 2;
+  if (viewportCenterX - maxHalfWidth < padding) {
+    shiftX = padding - (viewportCenterX - maxHalfWidth);
+  } else if (viewportCenterX + maxHalfWidth > screenWidth - padding) {
+    shiftX = (screenWidth - padding) - (viewportCenterX + maxHalfWidth);
   }
 
   return {
@@ -44,7 +46,7 @@ const tooltipStyle = computed(() => {
   visibility: hidden;
   opacity: 0;
   transform: translate(calc(-50% + var(--shift-x, 0px)), calc(-100% + 4px)) scale(0.98);
-  position: fixed;
+  position: absolute;
   z-index: 2147483646;
   background: rgba(28, 28, 30, 0.95);
   backdrop-filter: blur(12px);

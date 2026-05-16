@@ -34,14 +34,14 @@ const badgeStyle = computed(() => {
   if (!uiState.pronounceBadge.rect) return {};
   const rect = uiState.pronounceBadge.rect;
   
-  // Use viewport-relative coordinates directly (position: fixed)
-  const x = rect.left + rect.width / 2;
+  // Use document-relative coordinates (position: absolute)
+  const x = rect.left + window.scrollX + rect.width / 2;
   let y: number;
 
   if (isBottom.value) {
-    y = rect.bottom + 6;
+    y = rect.bottom + window.scrollY + 6;
   } else {
-    y = rect.top - 6;
+    y = rect.top + window.scrollY - 6;
   }
 
   return {
@@ -53,7 +53,7 @@ const badgeStyle = computed(() => {
 
 <style scoped>
 #rttr-pronounce-badge {
-  position: fixed;
+  position: absolute;
   z-index: 2147483647;
   background: rgba(28, 28, 30, 0.92);
   backdrop-filter: blur(10px);
