@@ -14,6 +14,7 @@ import { recognizeImageWord } from '@/utils/content-ocr';
 import { speakText } from '@/utils/tts';
 import { getNumberReading, isNumberLikeText } from '@/utils/number-reading';
 import { syllabifyText } from '@/utils/syllables';
+import { initSentenceFocus, splitBlock, handleSeparatorClick, isFocused, focusNext, focusPrev, focusSentenceAtNode, unfocusSentence, getFocusedSentenceText, getFocusedSentenceRect, isSplitActive } from "@/utils/sentence-focus";
 
 function buildOverlayLines(range: Range, sylText: string): { text: string; rect: DOMRect }[] {
   const rects = Array.from(range.getClientRects());
@@ -114,6 +115,7 @@ export default defineContentScript({
     let currentSettings: any;
     try {
       currentSettings = await settingsStorage.getValue();
+      initSentenceFocus(currentSettings);
     } catch (e) {
       console.error('[RTTR] Failed to load settings:', e);
       return;
@@ -208,6 +210,8 @@ export default defineContentScript({
         activeSyllable = null;
       }
     }
+
+
 
 
 
@@ -439,9 +443,55 @@ export default defineContentScript({
     }, { capture: true });
 
 
+    // Click on separator ◯ to toggle sentence focus
+    document.addEventListener('click', handleSeparatorClick, { capture: true });
 
     document.addEventListener('keydown', async (e) => {
       if (!currentSettings?.enabled) return;
+
+      const target = e.target as HTMLElement;
+      if (['INPUT', 'TEXTAREA'].includes(target.tagName) || target.isContentEditable) {
+        return;
+      }
+
+      // Arrow key navigation in sentence focus mode
+      if (isFocused() && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.code === 'ArrowUp') {
+          focusPrev();
+        } else if (e.code === 'ArrowDown') {
+          focusNext();
+        } else if (e.code === 'ArrowLeft') {
+          const text = getFocusedSentenceText();
+          if (text) speakText(text, currentSettings);
+        } else if (e.code === 'ArrowRight') {
+          const text = getFocusedSentenceText();
+          if (text && currentSettings.translationEngine !== 'none') {
+            safeSendMessage({
+              type: 'FETCH_TRANSLATION', text, sourceLang: 'auto',
+              targetLang: currentSettings.targetLanguage || 'zh-CN',
+              engine: currentSettings.translationEngine || 'google'
+            }).then((resp: any) => {
+              if (resp?.targetText) {
+                const rect = getFocusedSentenceRect();
+                if (rect) {
+                  uiActions.showTranslationBadge(resp.targetText, resp.engine || currentSettings.translationEngine, rect, false,
+                    currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
+                }
+              }
+            });
+          }
+        }
+        return;
+      }
+
+      // Escape exits focus mode
+      if (isFocused() && e.code === 'Escape') {
+        e.preventDefault();
+        unfocusSentence();
+        return;
+      }
 
       // Shortcut Pronounce (R key with no modifiers)
       if (currentSettings?.enableShortcutPronounce && e.code === 'KeyR' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
@@ -892,12 +942,33 @@ export default defineContentScript({
             const paragraph = resolveTranslateParagraph(targetRange!.startContainer as HTMLElement);
             handleTranslate(paragraph);
           }});
+
+          // Sentence split / focus
+          const iconSplit = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/></svg>';
+          
+          const block = findParagraph(targetRange!.startContainer as HTMLElement);
+          const isThisBlockSplit = block && block.hasAttribute('data-rttr-split');
+
+          if (!isThisBlockSplit) {
+            menuItems.push({ icon: iconSplit, label: '段落句子分隔', onClick: () => splitBlock(targetRange!.startContainer) });
+          } else {
+            menuItems.push({ icon: iconSplit, label: '取消段落分隔', onClick: () => splitBlock(targetRange!.startContainer) });
+            const iconFocus = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/></svg>';
+            if (isFocused()) {
+              menuItems.push({ icon: iconFocus, label: '取消聚焦', onClick: () => unfocusSentence() });
+            } else {
+              menuItems.push({ icon: iconFocus, label: '聚焦此句', onClick: () => focusSentenceAtNode(targetRange!.startContainer) });
+            }
+          }
+
           menuItems.push({ type: 'divider', label: 'DIVIDER' });
           menuItems.push({ icon: iconSettings, label: '设置', onClick: () => safeSendMessage({ type: 'OPEN_OPTIONS' }) });
 
           uiActions.showContextMenu(menuItems, e.clientX, e.clientY);
+          return;
         }
       }
+
     }, { capture: true });
 
     // Resolve which paragraph to translate — shared by shortcut & context menu
@@ -927,7 +998,8 @@ export default defineContentScript({
       uiActions.hideContextMenu();
       uiActions.hideExplainPanel();
 
-      const text = paragraph.textContent || '';
+      let text = paragraph.textContent || '';
+      text = text.replace(/◯/g, ' '); // Prevent AI from seeing/translating the separator symbol while preserving offsets
       console.log('[RTTR TRANSLATE] paragraph.innerHTML:', paragraph.innerHTML);
       console.log('[RTTR TRANSLATE] paragraph.textContent sent to AI:', JSON.stringify(text));
       if (!text.trim()) return;
@@ -971,6 +1043,7 @@ export default defineContentScript({
 
     settingsStorage.watch((newSettings) => {
       currentSettings = newSettings;
+      initSentenceFocus(currentSettings);
     });
 
     // Listen for messages from background (e.g. Chrome Commands global shortcuts)
@@ -1186,6 +1259,7 @@ function getAnnotatedLongPressTarget(target: HTMLElement): { text: string; node:
   };
 }
 
+
 function injectStyles() {
   const style = document.createElement('style');
   style.id = 'rttr-injected-styles';
@@ -1267,6 +1341,43 @@ function injectStyles() {
       font-size: inherit;
       line-height: inherit;
       letter-spacing: inherit;
+    }
+
+    .rttr-sentence-sep {
+      display: inline-block;
+      color: rgba(120, 130, 150, 0.5);
+      font-size: 1.4em;
+      line-height: 1;
+      vertical-align: middle;
+      margin: 0 0.1em;
+      user-select: none;
+      cursor: pointer;
+    }
+    .rttr-sentence-sep--hidden {
+      display: none;
+    }
+    .rttr-sentence-sep--trailing {
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    p:hover > .rttr-sentence-sep--trailing:last-child,
+    li:hover > .rttr-sentence-sep--trailing:last-child,
+    div:hover > .rttr-sentence-sep--trailing:last-child {
+      opacity: 1;
+    }
+    @media (prefers-color-scheme: dark) {
+      .rttr-sentence-sep {
+        color: rgba(160, 170, 190, 0.4);
+      }
+    }
+
+    ::highlight(rttr-sentence-dim) {
+      color: rgba(120, 130, 150, 0.2) !important;
+    }
+    @media (prefers-color-scheme: dark) {
+      ::highlight(rttr-sentence-dim) {
+        color: rgba(160, 170, 190, 0.15) !important;
+      }
     }
   `;
   document.head.appendChild(style);
