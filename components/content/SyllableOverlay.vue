@@ -17,8 +17,8 @@ import { uiState } from '@/utils/content-state';
 
 function getLineStyle(rect: DOMRect | null | any) {
   if (!rect) return {};
-  const x = rect.left + window.scrollX + rect.width / 2;
-  const y = rect.top + window.scrollY + rect.height / 2;
+  const x = rect.left + rect.scrollX + rect.width / 2;
+  const y = rect.top + rect.scrollY + rect.height / 2;
   return {
     left: `${x}px`,
     top: `${y}px`,

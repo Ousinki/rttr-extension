@@ -35,13 +35,13 @@ const badgeStyle = computed(() => {
   const rect = uiState.pronounceBadge.rect;
   
   // Use document-relative coordinates (position: absolute)
-  const x = rect.left + window.scrollX + rect.width / 2;
+  const x = rect.left + rect.scrollX + rect.width / 2;
   let y: number;
 
   if (isBottom.value) {
-    y = rect.bottom + window.scrollY + 6;
+    y = rect.bottom + rect.scrollY + 6;
   } else {
-    y = rect.top + window.scrollY - 6;
+    y = rect.top + rect.scrollY - 6;
   }
 
   return {

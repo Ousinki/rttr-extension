@@ -64,20 +64,20 @@ watch(() => [uiState.explainPanel.visible, uiState.explainPanel.loading], async 
     const panelRect = panelRef.value.getBoundingClientRect();
     const padding = 12;
     
-    let top = rect.top + window.scrollY - panelRect.height - padding;
-    let left = rect.left + window.scrollX + (rect.width / 2) - (panelRect.width / 2);
+    let top = rect.top + rect.scrollY - panelRect.height - padding;
+    let left = rect.left + rect.scrollX + (rect.width / 2) - (panelRect.width / 2);
 
     // If there's not enough space above, place it below the text
-    if (top < window.scrollY + padding) {
-      top = rect.bottom + window.scrollY + padding;
+    if (top < rect.scrollY + padding) {
+      top = rect.bottom + rect.scrollY + padding;
       isBottom.value = true;
     } else {
       isBottom.value = false;
     }
 
-    if (left < window.scrollX + padding) left = window.scrollX + padding;
-    if (left + panelRect.width > window.scrollX + window.innerWidth - padding) {
-      left = window.scrollX + window.innerWidth - panelRect.width - padding;
+    if (left < rect.scrollX + padding) left = rect.scrollX + padding;
+    if (left + panelRect.width > rect.scrollX + window.innerWidth - padding) {
+      left = rect.scrollX + window.innerWidth - panelRect.width - padding;
     }
 
     panelStyle.value = {

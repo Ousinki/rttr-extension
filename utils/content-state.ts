@@ -15,6 +15,8 @@ export interface Rect {
   bottom: number;
   width: number;
   height: number;
+  scrollX: number;
+  scrollY: number;
 }
 
 function toRect(rect: DOMRect | null): Rect | null {
@@ -26,6 +28,8 @@ function toRect(rect: DOMRect | null): Rect | null {
     bottom: rect.bottom,
     width: rect.width,
     height: rect.height,
+    scrollX: window.scrollX,
+    scrollY: window.scrollY,
   });
 }
 
@@ -88,6 +92,8 @@ export function nearestLineRect(rect: Rect): Rect {
     bottom: lineTop + lineHeight,
     width: rect.width,
     height: lineHeight,
+    scrollX: rect.scrollX,
+    scrollY: rect.scrollY,
   };
 }
 

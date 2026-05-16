@@ -15,8 +15,8 @@ import { uiState } from '@/utils/content-state';
 const tooltipStyle = computed(() => {
   if (!uiState.tooltip.rect) return {};
   const rect = uiState.tooltip.rect;
-  const top = rect.top + window.scrollY - 8;
-  const centerX = rect.left + window.scrollX + rect.width / 2;
+  const top = rect.top + rect.scrollY - 8;
+  const centerX = rect.left + rect.scrollX + rect.width / 2;
   const left = centerX;
 
   const screenWidth = window.innerWidth;

@@ -58,7 +58,7 @@ const badgeStyle = computed(() => {
   const targetRect = uiState.translationBadge.rect;
   if (!targetRect) return {};
   // Use document-relative coordinates (position: absolute)
-  const x = targetRect.left + window.scrollX + targetRect.width / 2;
+  const x = targetRect.left + targetRect.scrollX + targetRect.width / 2;
   let y: number;
 
   const pos = actualPosition.value;
@@ -73,13 +73,13 @@ const badgeStyle = computed(() => {
   }
 
   if (pos === 'top') {
-    y = targetRect.top + window.scrollY - 46;
+    y = targetRect.top + targetRect.scrollY - 46;
     // Only shift up if PronounceBadge is also on the top
     if (pronouncePos === 'top') {
       y -= (26 + pronounceExtraHeight);
     }
   } else {
-    y = targetRect.bottom + window.scrollY + 12;
+    y = targetRect.bottom + targetRect.scrollY + 12;
     // Only shift down if PronounceBadge is also on the bottom
     if (pronouncePos === 'bottom') {
       y += (26 + pronounceExtraHeight);
