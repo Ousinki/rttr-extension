@@ -166,6 +166,8 @@ export default defineContentScript({
           host.style.height = '0';
           host.style.zIndex = '2147483647';
           host.style.overflow = 'visible';
+          host.classList.add('notranslate');
+          host.setAttribute('translate', 'no');
         }
         
         const app = createApp(ContentApp);
@@ -239,7 +241,8 @@ export default defineContentScript({
       }
       
       const span = document.createElement('span');
-      span.className = 'rttr-inline-syllable rttr-ui-ignore';
+      span.className = 'rttr-inline-syllable rttr-ui-ignore notranslate';
+      span.setAttribute('translate', 'no');
       span.textContent = sylForNode;
       if (!wordNode.parentNode) return;
       wordNode.parentNode.replaceChild(span, wordNode);
@@ -1035,6 +1038,8 @@ function getWordAtClick(e: MouseEvent): { word: string; range: Range } | null {
   let prevLastRect: DOMRect | null = null;
   const probe = document.createRange();
 
+  let prevNode: Text | null = null;
+
   for (const node of nodes) {
     probe.selectNodeContents(node);
     const rects = probe.getClientRects();
@@ -1044,10 +1049,26 @@ function getWordAtClick(e: MouseEvent): { word: string; range: Range } | null {
     // Insert a boundary marker when the next text node lives on a different
     // visual line (e.g. separated by <br> or a block boundary), so the
     // word-expansion regex can't merge "toothache" + "pain" into one word.
+    let needsBoundary = false;
     if (prevLastRect && firstRect) {
       const sameLine = firstRect.top < prevLastRect.bottom && firstRect.bottom > prevLastRect.top;
-      if (!sameLine) fullText += '\n';
+      if (!sameLine) needsBoundary = true;
     }
+
+    // Also insert a boundary when adjacent text nodes belong to different
+    // inline parent elements (e.g. different <a> or <span> tags inside a
+    // <div>).  Without this, "Blog" + "Projects" + "Tags" inside
+    //   <div><a>Blog</a><a>Projects</a><a>Tags</a></div>
+    // would be concatenated into "BlogProjectsTags" and treated as one word.
+    if (!needsBoundary && prevNode && node.parentElement && prevNode.parentElement) {
+      if (node.parentElement !== prevNode.parentElement &&
+          !node.parentElement.contains(prevNode.parentElement) &&
+          !prevNode.parentElement.contains(node.parentElement)) {
+        needsBoundary = true;
+      }
+    }
+
+    if (needsBoundary) fullText += '\n';
 
     const start = fullText.length;
     fullText += node.nodeValue || '';
@@ -1056,6 +1077,7 @@ function getWordAtClick(e: MouseEvent): { word: string; range: Range } | null {
       targetGlobalOffset = start + range.startOffset;
     }
     if (lastRect) prevLastRect = lastRect;
+    prevNode = node;
   }
 
   const prevCh = targetGlobalOffset > 0 ? fullText[targetGlobalOffset - 1] : '';
