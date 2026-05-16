@@ -102,6 +102,7 @@ export const uiState = reactive({
   },
   pronounceBadge: {
     visible: false,
+    pinned: false,
     word: null as string | null,
     sylWord: null as string | null,
     content: '',
@@ -120,6 +121,7 @@ export const uiState = reactive({
   },
   translationBadge: {
     visible: false,
+    pinned: false,
     text: '',
     engine: '',
     isAnnotated: false,
@@ -195,6 +197,7 @@ export const uiActions = {
   },
   hidePronounceBadge() {
     uiState.pronounceBadge.visible = false;
+    uiState.pronounceBadge.pinned = false;
     uiState.pronounceBadge.word = null;
     uiState.pronounceBadge.sylWord = null;
   },
@@ -233,6 +236,7 @@ export const uiActions = {
   },
   hideTranslationBadge() {
     uiState.translationBadge.visible = false;
+    uiState.translationBadge.pinned = false;
   },
 
   // Explain Panel

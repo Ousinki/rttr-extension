@@ -91,6 +91,61 @@ export function focusSentenceAtSeparator(sepEl: HTMLElement): void {
   }
 }
 
+/** Split the paragraph (if not already) and focus the sentence at the given node — one-step action. */
+export function splitAndFocusAtNode(node: Node, offsetInNode: number = 0): void {
+  const block = findParagraph(node as HTMLElement);
+  if (!block) return;
+
+  // Only allow on <p> elements
+  if (block.tagName !== 'P') return;
+
+  // Compute the character offset of `node` within the block BEFORE splitting
+  // (because splitting replaces text nodes, invalidating the original reference)
+  const textOffset = getNodeOffsetInBlock(block, node, offsetInNode);
+
+  // Split if not already split
+  if (!sentenceStore.has(block)) {
+    splitBlockElement(block);
+    // If the block had only 1 sentence, splitBlockElement won't mark it — bail out
+    if (!sentenceStore.has(block)) return;
+  }
+
+  // Find the correct sentence in THIS block using the pre-computed offset
+  const data = sentenceStore.get(block);
+  if (!data) return;
+
+  let targetSentenceIdx = 0;
+  for (let i = 0; i < data.boundaries.length; i++) {
+    if (textOffset >= data.boundaries[i].startOffset && textOffset < data.boundaries[i].endOffset) {
+      targetSentenceIdx = i;
+      break;
+    }
+  }
+
+  // Rebuild all ranges and find the global index for this block's target sentence
+  const allRanges = rebuildAllRanges();
+  if (allRanges.length === 0) return;
+
+  const blockRanges = rebuildRangesForBlock(data);
+  const targetRange = blockRanges[targetSentenceIdx];
+
+  let globalIdx = 0;
+  if (targetRange) {
+    for (let i = 0; i < allRanges.length; i++) {
+      try {
+        if (allRanges[i].startContainer === targetRange.startContainer &&
+            allRanges[i].startOffset === targetRange.startOffset) {
+          globalIdx = i;
+          break;
+        }
+      } catch { /* skip */ }
+    }
+  }
+
+  focusState = { allRanges, currentIdx: globalIdx };
+  applyFocusHighlight();
+}
+
 export function focusSentenceAtNode(node: Node): void {
   const allRanges = rebuildAllRanges();
   if (allRanges.length === 0) return;
@@ -114,7 +169,7 @@ export function focusSentenceAtNode(node: Node): void {
     } catch { /* skip */ }
   }
 
-  if (idx === -1) idx = 0;
+  if (idx === -1) return; // No matching sentence found — don't jump to a random one
   focusState = { allRanges, currentIdx: idx };
   applyFocusHighlight();
 }
@@ -368,6 +423,23 @@ function applyFocusHighlight(): void {
 }
 
 // --- Internal: Utilities ---
+
+/** Compute the character offset of the click position within `block`. 
+ *  `offsetInNode` is the offset within the text node (e.g. from Range.startOffset). */
+function getNodeOffsetInBlock(block: Element, node: Node, offsetInNode: number = 0): number {
+  const textNodes = collectTextNodes(block, false);
+  let cumOffset = 0;
+  for (const tn of textNodes) {
+    if (tn === node) {
+      return cumOffset + offsetInNode;
+    }
+    if (tn.parentNode === node || node.contains(tn)) {
+      return cumOffset + offsetInNode;
+    }
+    cumOffset += tn.textContent?.length || 0;
+  }
+  return 0;
+}
 
 function collectBlockText(block: Element): string {
   const nodes = collectTextNodes(block, false);

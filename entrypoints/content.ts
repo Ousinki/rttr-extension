@@ -14,7 +14,7 @@ import { recognizeImageWord } from '@/utils/content-ocr';
 import { speakText } from '@/utils/tts';
 import { getNumberReading, isNumberLikeText } from '@/utils/number-reading';
 import { syllabifyText } from '@/utils/syllables';
-import { initSentenceFocus, splitBlock, handleSeparatorClick, isFocused, focusNext, focusPrev, focusSentenceAtNode, unfocusSentence, getFocusedSentenceText, getFocusedSentenceRect, isSplitActive } from "@/utils/sentence-focus";
+import { initSentenceFocus, splitBlock, splitAndFocusAtNode, handleSeparatorClick, isFocused, focusNext, focusPrev, focusSentenceAtNode, unfocusSentence, getFocusedSentenceText, getFocusedSentenceRect, isSplitActive } from "@/utils/sentence-focus";
 
 function buildOverlayLines(range: Range, sylText: string): { text: string; rect: DOMRect }[] {
   const rects = Array.from(range.getClientRects());
@@ -458,30 +458,97 @@ export default defineContentScript({
       if (isFocused() && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
         e.preventDefault();
         e.stopPropagation();
+        if (e.repeat) return; // Ignore auto-repeat from holding key down
         if (e.code === 'ArrowUp') {
+          uiActions.hideTranslationBadge();
+          uiState.translationBadge.pinned = false;
           focusPrev();
         } else if (e.code === 'ArrowDown') {
+          uiActions.hideTranslationBadge();
+          uiState.translationBadge.pinned = false;
           focusNext();
         } else if (e.code === 'ArrowLeft') {
           const text = getFocusedSentenceText();
-          if (text) speakText(text, currentSettings);
-        } else if (e.code === 'ArrowRight') {
-          const text = getFocusedSentenceText();
-          if (text && currentSettings.translationEngine !== 'none') {
-            safeSendMessage({
-              type: 'FETCH_TRANSLATION', text, sourceLang: 'auto',
-              targetLang: currentSettings.targetLanguage || 'zh-CN',
-              engine: currentSettings.translationEngine || 'google'
-            }).then((resp: any) => {
-              if (resp?.targetText) {
-                const rect = getFocusedSentenceRect();
-                if (rect) {
-                  uiActions.showTranslationBadge(resp.targetText, resp.engine || currentSettings.translationEngine, rect, false,
-                    currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
-                }
-              }
+          if (text) {
+            const rect = getFocusedSentenceRect();
+            if (rect) {
+              const speakerSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="rttr-wave1" d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path class="rttr-wave2" d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+              uiActions.showPronounceBadge(speakerSVG, rect, true);
+              uiState.pronounceBadge.pinned = true;
+            }
+            speakText(text, currentSettings, () => {
+              uiActions.hidePronounceBadge();
             });
           }
+        } else if (e.code === 'ArrowRight') {
+          const text = getFocusedSentenceText();
+          if (!text) return;
+
+          const hadBadge = uiState.translationBadge.visible && uiState.translationBadge.pinned;
+
+          // Long-press detection: always start a timer on keydown
+          let longPressTriggered = false;
+          const longPressTimer = setTimeout(() => {
+            longPressTriggered = true;
+            // AI contextual translation (replaces any existing badge)
+            const rect = getFocusedSentenceRect();
+            if (rect) {
+              uiActions.showTranslationBadge('AI 翻译中...', 'AI', rect, true, currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
+              uiState.translationBadge.pinned = true;
+              safeSendMessage({
+                type: 'CONTEXTUAL_TRANSLATE',
+                word: text,
+                sentence: text
+              }).then((resp: any) => {
+                if (resp?.success && resp.translation) {
+                  const newRect = getFocusedSentenceRect();
+                  if (newRect) {
+                    uiActions.showTranslationBadge(resp.translation, 'AI', newRect, false, currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
+                    uiState.translationBadge.pinned = true;
+                  }
+                } else if (resp?.error) {
+                  const newRect = getFocusedSentenceRect();
+                  if (newRect) {
+                    uiActions.showTranslationBadge(`翻译失败: ${resp.error}`, 'AI', newRect, false, currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
+                    uiState.translationBadge.pinned = true;
+                  }
+                }
+              });
+            }
+          }, 500);
+
+          // On keyup, decide: dismiss existing badge OR do API translation
+          const onKeyUp = (upEvent: KeyboardEvent) => {
+            if (upEvent.code !== 'ArrowRight') return;
+            document.removeEventListener('keyup', onKeyUp, { capture: true });
+            clearTimeout(longPressTimer);
+            if (longPressTriggered) return; // Long press already handled
+
+            if (hadBadge) {
+              // Short press while badge is visible → dismiss
+              uiActions.hideTranslationBadge();
+              uiState.translationBadge.pinned = false;
+            } else {
+              // Short press with no badge → API translation
+              if (currentSettings.translationEngine !== 'none') {
+                safeSendMessage({
+                  type: 'FETCH_TRANSLATION', text, sourceLang: 'auto',
+                  targetLang: currentSettings.targetLanguage || 'zh-CN',
+                  engine: currentSettings.translationEngine || 'google'
+                }).then((resp: any) => {
+                  if (resp?.targetText) {
+                    const rect = getFocusedSentenceRect();
+                    if (rect) {
+                      uiActions.showTranslationBadge(resp.targetText, resp.engine || currentSettings.translationEngine, rect, false,
+                        currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
+                      uiState.translationBadge.pinned = true;
+                    }
+                  }
+                });
+              }
+            }
+          };
+          document.addEventListener('keyup', onKeyUp, { capture: true, once: true } as any);
         }
         return;
       }
@@ -489,6 +556,10 @@ export default defineContentScript({
       // Escape exits focus mode
       if (isFocused() && e.code === 'Escape') {
         e.preventDefault();
+        uiActions.hideTranslationBadge();
+        uiActions.hidePronounceBadge();
+        uiState.translationBadge.pinned = false;
+        uiState.pronounceBadge.pinned = false;
         unfocusSentence();
         return;
       }
@@ -646,7 +717,7 @@ export default defineContentScript({
       if (!currentSettings?.enabled) return;
       lastMouseTarget = e.target as HTMLElement;
 
-      if (uiState.translationBadge.visible && uiState.translationBadge.rect) {
+      if (uiState.translationBadge.visible && uiState.translationBadge.rect && !uiState.translationBadge.pinned) {
         const rect = uiState.translationBadge.rect;
         const PAD = 30;
         const inX = e.clientX >= rect.left - PAD && e.clientX <= rect.right + PAD;
@@ -656,7 +727,7 @@ export default defineContentScript({
         }
       }
       
-      if (uiState.pronounceBadge.visible && uiState.pronounceBadge.rect) {
+      if (uiState.pronounceBadge.visible && uiState.pronounceBadge.rect && !uiState.pronounceBadge.pinned) {
         const rect = uiState.pronounceBadge.rect;
         const PAD = 30;
         const inX = e.clientX >= rect.left - PAD && e.clientX <= rect.right + PAD;
@@ -943,21 +1014,14 @@ export default defineContentScript({
             handleTranslate(paragraph);
           }});
 
-          // Sentence split / focus
-          const iconSplit = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/></svg>';
-          
+          // Sentence focus (only for <p> paragraphs with multiple sentences)
           const block = findParagraph(targetRange!.startContainer as HTMLElement);
-          const isThisBlockSplit = block && block.hasAttribute('data-rttr-split');
-
-          if (!isThisBlockSplit) {
-            menuItems.push({ icon: iconSplit, label: '段落句子分隔', onClick: () => splitBlock(targetRange!.startContainer) });
-          } else {
-            menuItems.push({ icon: iconSplit, label: '取消段落分隔', onClick: () => splitBlock(targetRange!.startContainer) });
+          if (block && block.tagName === 'P') {
             const iconFocus = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/></svg>';
             if (isFocused()) {
               menuItems.push({ icon: iconFocus, label: '取消聚焦', onClick: () => unfocusSentence() });
             } else {
-              menuItems.push({ icon: iconFocus, label: '聚焦此句', onClick: () => focusSentenceAtNode(targetRange!.startContainer) });
+              menuItems.push({ icon: iconFocus, label: '聚焦此句', onClick: () => splitAndFocusAtNode(targetRange!.startContainer, targetRange!.startOffset) });
             }
           }
 
@@ -1352,6 +1416,15 @@ function injectStyles() {
       margin: 0 0.1em;
       user-select: none;
       cursor: pointer;
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+                  color 0.25s ease,
+                  text-shadow 0.25s ease,
+                  filter 0.25s ease;
+    }
+    .rttr-sentence-sep:hover {
+      transform: scale(1.15);
+      color: rgba(90, 160, 230, 0.9);
+      text-shadow: 0 0 6px rgba(90, 160, 230, 0.4), 0 0 12px rgba(90, 160, 230, 0.15);
     }
     .rttr-sentence-sep--hidden {
       display: none;
