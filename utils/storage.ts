@@ -22,7 +22,7 @@ export interface RTTRSettings {
   enableShortcutPronounce: boolean; // 快捷键发音
   enableSingleClickPronounce: boolean; // 单击发音
   translationEngine: 'none' | 'google' | 'deepl' | 'bing'; // 悬浮窗翻译引擎
-  translationPosition: 'top' | 'bottom';          // 翻译悬浮窗位置
+  translationPosition: 'top' | 'bottom' | 'pronounce-badge'; // 翻译悬浮窗位置
   showTranslationEngine: boolean;                 // 是否显示引擎标识
   showSingleClickIPA: boolean;                    // 单击发音时是否显示音标悬浮窗
   enableAutoTranslate: boolean;                   // 划词松手自动翻译

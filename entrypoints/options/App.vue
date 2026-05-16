@@ -654,6 +654,27 @@ watch(settings, () => {
               </div>
             </div>
           </div>
+
+          <!-- 位置 3：音标悬浮窗内 -->
+          <div class="preview-box" style="grid-column: 1 / -1; max-width: 50%; margin: 0 auto; width: 100%;" :class="{ active: settings.translationEngine !== 'none' && settings.translationPosition === 'pronounce-badge' }" @click="settings.translationEngine !== 'none' && (settings.translationPosition = 'pronounce-badge')">
+            <div class="preview-title">{{ t("显示在音标悬浮窗内") }}</div>
+            <div class="anim-container anim-translation" style="height: 140px;">
+              <div class="anim-text" style="padding-top: 40px;">
+                <span class="trans-target-word">
+                  <span style="color: #007aff;">hypothesis</span>
+                  <!-- 黑色音标悬浮窗带翻译 -->
+                  <div class="anim-badge-black trans-ipa-badge" style="top: -46px; opacity: 1;">
+                    <div style="padding-bottom: 3px;">/ haɪˈpɒθəsɪs /</div>
+                    <div style="border-top: 1px solid rgba(255,255,255,0.15); padding-top: 3px; font-weight: 400; color: #fff; text-align: center;">
+                      {{ t("假设") }}
+                    </div>
+                  </div>
+                  <div class="anim-click-ripple-trans"></div>
+                  <svg class="anim-cursor-trans" width="24" height="24" viewBox="0 0 24 24"><path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z" fill="#000" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
