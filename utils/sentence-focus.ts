@@ -234,14 +234,16 @@ function splitBlockElement(block: Element): void {
   if (block.closest(SKIP_SELECTOR)) return;
 
   const boundaries = computeSentenceBoundaries(block);
-  if (boundaries.length <= 1) return;
+  if (boundaries.length === 0) return;
 
   const fullText = collectBlockText(block);
 
   sentenceStore.set(block, { block, boundaries, fullText });
   splitBlocks.add(block);
 
-  insertVisualSeparators(block, boundaries);
+  if (boundaries.length > 1) {
+    insertVisualSeparators(block, boundaries);
+  }
   block.setAttribute('data-rttr-split', 'true');
 }
 
