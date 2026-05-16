@@ -10,5 +10,9 @@
   "commandTranslateParagraph": {
     "message": "翻譯鼠標懸浮段落",
     "description": "Command to translate hovered paragraph."
+  },
+  "commandToggleExtension": {
+    "message": "開啟/關閉 RTTR 擴充功能",
+    "description": "Command to toggle extension"
   }
 }

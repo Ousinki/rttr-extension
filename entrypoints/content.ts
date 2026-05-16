@@ -547,9 +547,11 @@ export default defineContentScript({
         return;
       }
 
+      const isRKey = e.key.toLowerCase() === 'r';
+
       // Arrow key navigation in sentence focus mode
-      if (isFocused() && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyR'].includes(e.code)) {
-        if (e.code === 'KeyR' && (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey)) {
+      if (isFocused() && (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code) || isRKey)) {
+        if (isRKey && (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey)) {
           return; // Allow native shortcuts like Cmd+R
         }
         e.preventDefault();
@@ -571,7 +573,7 @@ export default defineContentScript({
             const text = getFocusedSentenceText();
             if (text) doFocusAPITranslate(text);
           }
-        } else if (e.code === 'KeyR') {
+        } else if (isRKey) {
           const text = getFocusedSentenceText();
           if (!text) return;
           doFocusTTS(text);
@@ -617,10 +619,11 @@ export default defineContentScript({
       }
 
       // Shortcut Pronounce (R key with no modifiers)
-      if (currentSettings?.enableShortcutPronounce && e.code === 'KeyR' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+      if (currentSettings?.enableShortcutPronounce && isRKey && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
         const sel = getActiveSelection();
         const text = sel?.toString().trim();
         if (sel && text && text.length > 0) {
+          if (e.repeat) return; // Prevent spamming TTS when holding key
           e.preventDefault();
           speakText(text, currentSettings);
           const range = sel.getRangeAt(0);
@@ -1202,6 +1205,9 @@ export default defineContentScript({
     }
 
     settingsStorage.watch((newSettings) => {
+      if (currentSettings && currentSettings.enabled !== newSettings.enabled) {
+        showToast(newSettings.enabled ? '✅ RTTR 扩展已开启' : '💤 RTTR 扩展已关闭');
+      }
       currentSettings = newSettings;
       initSentenceFocus(currentSettings);
     });
@@ -1550,4 +1556,50 @@ function injectStyles() {
     }
   `;
   document.head.appendChild(style);
+}
+
+function showToast(message: string) {
+  let toast = document.getElementById('rttr-global-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'rttr-global-toast';
+    Object.assign(toast.style, {
+      all: 'initial',
+      position: 'fixed',
+      top: '24px',
+      left: '50%',
+      transform: 'translateX(-50%) translateY(-10px)',
+      backgroundColor: 'rgba(17, 24, 39, 0.9)',
+      color: '#ffffff',
+      padding: '10px 20px',
+      borderRadius: '24px',
+      fontSize: '14px',
+      fontWeight: '500',
+      zIndex: '2147483647',
+      pointerEvents: 'none',
+      transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+      opacity: '0',
+      fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+    });
+    document.documentElement.appendChild(toast);
+  }
+  toast.textContent = message;
+  
+  // Force reflow
+  void toast.offsetWidth;
+  
+  toast.style.opacity = '1';
+  toast.style.transform = 'translateX(-50%) translateY(0)';
+  
+  if ((toast as any)._timeoutId) {
+    clearTimeout((toast as any)._timeoutId);
+  }
+  
+  (toast as any)._timeoutId = setTimeout(() => {
+    if (toast) {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateX(-50%) translateY(-10px)';
+    }
+  }, 1000);
 }

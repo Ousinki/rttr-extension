@@ -48,6 +48,12 @@ export default defineConfig({
         },
         description: '__MSG_commandTranslateParagraph__',
       },
+      '_execute_action': {
+        suggested_key: {
+          default: 'Alt+Q',
+          mac: 'Alt+Q',
+        },
+      },
     },
   },
 });

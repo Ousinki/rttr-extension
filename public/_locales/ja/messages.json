@@ -10,5 +10,9 @@
   "commandTranslateParagraph": {
     "message": "ホバーした段落を翻訳",
     "description": "Command to translate hovered paragraph."
+  },
+  "commandToggleExtension": {
+    "message": "RTTR拡張機能のオン/オフを切り替える",
+    "description": "Command to toggle extension"
   }
 }

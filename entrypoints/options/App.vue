@@ -155,6 +155,21 @@ const uiDict: Record<string, Record<string, string>> = {
     "ja": "段落翻訳のトリガーショートカットを設定します。元の英語レイアウトを崩さずに、翻訳をルビのように単語の上に挿入します。",
     "en": "Configure paragraph translation trigger. It injects translation above unfamiliar words like ruby text without breaking English layout."
   },
+  "全局快捷键与段落翻译": {
+    "zh-TW": "全域快捷鍵與段落翻譯",
+    "ja": "グローバルショートカットと段落翻訳",
+    "en": "Global Shortcuts & Paragraph Translation"
+  },
+  "段落翻译": {
+    "zh-TW": "段落翻譯",
+    "ja": "段落翻訳",
+    "en": "Paragraph Translation"
+  },
+  "开启/关闭 RTTR": {
+    "zh-TW": "開啟/關閉 RTTR",
+    "ja": "RTTRのオン/オフ",
+    "en": "Toggle RTTR On/Off"
+  },
   "触发快捷键": {
     "zh-TW": "觸發快捷鍵",
     "ja": "トリガーショートカット",
@@ -368,6 +383,7 @@ const testResult = ref<string>('');
 const testingTTS = ref(false);
 const testResultTTS = ref<string>('');
 const paragraphCommandShortcut = ref('');
+const toggleCommandShortcut = ref('');
 const commandShortcutTokens = computed(() => parseCommandShortcut(paragraphCommandShortcut.value));
 const commandShortcutModifiers = computed(() => commandShortcutTokens.value.filter(token => token.kind === 'modifier'));
 const commandShortcutKeys = computed(() => commandShortcutTokens.value.filter(token => token.kind === 'key'));
@@ -465,6 +481,8 @@ async function loadCommandShortcuts() {
   const commands = await browser.commands.getAll();
   const paragraphCommand = commands.find(command => command.name === 'translate-paragraph');
   paragraphCommandShortcut.value = paragraphCommand?.shortcut || '';
+  const toggleCommand = commands.find(command => command.name === '_execute_action');
+  toggleCommandShortcut.value = toggleCommand?.shortcut || '';
 }
 
 function formatCommandShortcut(shortcut: string): string {
@@ -850,16 +868,27 @@ watch(settings, () => {
         </div>
       </section>
 
-      <!-- Paragraph Translation Settings -->
+      <!-- Global Shortcuts Settings -->
       <section class="settings-card">
-        <h2>{{ t("段落翻译与无缝注音") }}</h2>
+        <h2>{{ t("全局快捷键与段落翻译") }}</h2>
         <p class="section-desc">{{ t("配置段落翻译的触发快捷键。它能在不破坏原有英文版面的前提下，将中文翻译像拼音一样注入到生词上方。") }}</p>
 
         <div style="margin-bottom: 24px; padding: 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between;">
-          <div>
-            <div style="font-size: 14px; font-weight: 600; color: #111827; margin-bottom: 4px;">{{ t("触发快捷键") }}</div>
-            <div style="font-size: 12px; color: #6b7280;">
-              当前：{{ formatCommandShortcut(paragraphCommandShortcut) }}。{{ t('请在 Chrome 的扩展快捷键页面设置。') }}
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div>
+              <div style="font-size: 14px; font-weight: 600; color: #111827; margin-bottom: 4px;">{{ t("段落翻译") }}</div>
+              <div style="font-size: 12px; color: #6b7280;">
+                当前：{{ formatCommandShortcut(paragraphCommandShortcut) }}
+              </div>
+            </div>
+            <div>
+              <div style="font-size: 14px; font-weight: 600; color: #111827; margin-bottom: 4px;">{{ t("开启/关闭 RTTR") }}</div>
+              <div style="font-size: 12px; color: #6b7280;">
+                当前：{{ formatCommandShortcut(toggleCommandShortcut) }}
+              </div>
+            </div>
+            <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">
+              {{ t('请在 Chrome 的扩展快捷键页面设置。') }}
             </div>
           </div>
           <button

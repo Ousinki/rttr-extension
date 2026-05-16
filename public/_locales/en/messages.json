@@ -10,5 +10,9 @@
   "commandTranslateParagraph": {
     "message": "Translate Hovered Paragraph",
     "description": "Command to translate hovered paragraph."
+  },
+  "commandToggleExtension": {
+    "message": "Toggle Extension On/Off",
+    "description": "Command to toggle extension"
   }
 }
