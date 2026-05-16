@@ -63,27 +63,26 @@ const badgeStyle = computed(() => {
 
   const pos = actualPosition.value;
 
-  // Extra height when pronounce badge has syllable word (2 lines instead of 1)
-  const pronounceExtraHeight = (uiState.pronounceBadge.visible && uiState.pronounceBadge.sylWord) ? 20 : 0;
+  // Determine if PronounceBadge is visible and where it is
+  let pronouncePos = 'none';
+  let pronounceExtraHeight = 0;
+  if (uiState.pronounceBadge.visible && uiState.pronounceBadge.rect) {
+    const pRect = nearestLineRect(uiState.pronounceBadge.rect);
+    pronouncePos = pRect.top < 100 ? 'bottom' : 'top';
+    pronounceExtraHeight = uiState.pronounceBadge.sylWord ? 20 : 0;
+  }
 
   if (pos === 'top') {
-    y = targetRect.top - 46 - pronounceExtraHeight;
-    // If pronounce badge is also visible and flipped to top, shift further up
-    if (uiState.pronounceBadge.visible && uiState.pronounceBadge.rect) {
-      const pRect = nearestLineRect(uiState.pronounceBadge.rect);
-      if (pRect.bottom > window.innerHeight - 80) {
-        y -= 26;
-      }
+    y = targetRect.top - 46;
+    // Only shift up if PronounceBadge is also on the top
+    if (pronouncePos === 'top') {
+      y -= (26 + pronounceExtraHeight);
     }
   } else {
-    y = targetRect.bottom + 12 + pronounceExtraHeight;
-    // If pronounce badge is also visible and flipped to bottom, add extra
-    // offset so the two badges don't overlap
-    if (uiState.pronounceBadge.visible && uiState.pronounceBadge.rect) {
-      const pRect = nearestLineRect(uiState.pronounceBadge.rect);
-      if (pRect.top < 100) {
-        y += 26;
-      }
+    y = targetRect.bottom + 12;
+    // Only shift down if PronounceBadge is also on the bottom
+    if (pronouncePos === 'bottom') {
+      y += (26 + pronounceExtraHeight);
     }
   }
 
