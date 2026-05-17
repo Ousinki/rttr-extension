@@ -1105,9 +1105,9 @@ export default defineContentScript({
             handleTranslate(paragraph);
           }});
 
-          // Sentence focus (only for <p> paragraphs with multiple sentences)
+          // Sentence focus (for valid block elements with multiple sentences)
           const block = findParagraph(targetRange!.startContainer as HTMLElement);
-          if (block && block.tagName === 'P') {
+          if (block) {
             const iconFocus = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/></svg>';
             if (isFocused()) {
               menuItems.push({ icon: iconFocus, label: '取消聚焦', onClick: () => unfocusSentence() });

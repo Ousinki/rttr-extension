@@ -1,4 +1,4 @@
-import { findParagraph } from '@/utils/content-dom';
+import { findParagraph, BLOCK_TAGS } from '@/utils/content-dom';
 import type { RTTRSettings as Settings } from '@/utils/storage';
 
 // --- Data Structures ---
@@ -96,8 +96,7 @@ export function splitAndFocusAtNode(node: Node, offsetInNode: number = 0): void 
   const block = findParagraph(node as HTMLElement);
   if (!block) return;
 
-  // Only allow on <p> elements
-  if (block.tagName !== 'P') return;
+  // Only allow on block elements (handled by findParagraph)
 
   // Compute the character offset of `node` within the block BEFORE splitting
   // (because splitting replaces text nodes, invalidating the original reference)
@@ -254,9 +253,47 @@ function removeSplitFromBlock(block: Element): void {
   splitBlocks.delete(block);
 }
 
+function getForcedBreaks(block: Element, skipSeparators: boolean): Set<number> {
+  const breaks = new Set<number>();
+  let cum = 0;
+  
+  const walker = document.createTreeWalker(block, NodeFilter.SHOW_ALL, {
+    acceptNode(node) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const parent = node.parentElement;
+        if (!parent) return NodeFilter.FILTER_REJECT;
+        if (parent.closest('script, style, rt, rp')) return NodeFilter.FILTER_REJECT;
+        if (skipSeparators && parent.closest('.rttr-sentence-sep')) return NodeFilter.FILTER_REJECT;
+        if (!skipSeparators && parent.closest('.rttr-sentence-sep, [data-rttr-split="true"] [data-rttr-split="true"]')) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        const el = node as Element;
+        if (['SCRIPT', 'STYLE', 'RT', 'RP'].includes(el.tagName)) return NodeFilter.FILTER_REJECT;
+        if (BLOCK_TAGS.has(el.tagName) || el.tagName === 'BR' || el.tagName === 'HR') {
+          breaks.add(cum);
+        }
+        return NodeFilter.FILTER_SKIP;
+      }
+      return NodeFilter.FILTER_SKIP;
+    }
+  });
+
+  let nd: Node | null;
+  while ((nd = walker.nextNode())) {
+    if (nd.nodeType === Node.TEXT_NODE) {
+      cum += nd.textContent?.length || 0;
+    }
+  }
+  return breaks;
+}
+
 function computeSentenceBoundaries(block: Element): SentenceBoundary[] {
   const textNodes = collectTextNodes(block, false);
   if (textNodes.length === 0) return [];
+  
+  const forcedBreaks = getForcedBreaks(block, false);
 
   const blockText = textNodes.map(t => t.textContent || '').join('');
   if (blockText.trim().length < 20) return [];
@@ -267,12 +304,25 @@ function computeSentenceBoundaries(block: Element): SentenceBoundary[] {
 
   const boundaries: SentenceBoundary[] = [];
   for (const seg of segments) {
-    const trimmed = seg.segment.replace(/\s+$/, '');
-    if (trimmed.trim().length === 0) continue;
-    boundaries.push({
-      startOffset: seg.index,
-      endOffset: seg.index + trimmed.length,
-    });
+    let currentStart = seg.index;
+    const segEnd = seg.index + seg.segment.length;
+    
+    for (let i = currentStart + 1; i < segEnd; i++) {
+      if (forcedBreaks.has(i)) {
+        const textPart = blockText.slice(currentStart, i);
+        const trimmed = textPart.replace(/\s+$/, '');
+        if (trimmed.trim().length > 0) {
+          boundaries.push({ startOffset: currentStart, endOffset: currentStart + trimmed.length });
+        }
+        currentStart = i;
+      }
+    }
+    
+    const textPart = blockText.slice(currentStart, segEnd);
+    const trimmed = textPart.replace(/\s+$/, '');
+    if (trimmed.trim().length > 0) {
+      boundaries.push({ startOffset: currentStart, endOffset: currentStart + trimmed.length });
+    }
   }
 
   return boundaries;
