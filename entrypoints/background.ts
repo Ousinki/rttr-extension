@@ -18,7 +18,7 @@ import { shouldSkip } from '@/utils/skip-words';
 import type { AnnotationResult } from '@/utils/ai';
 
 const PARAGRAPH_SEGMENT_CACHE_KEY = 'rttr_paragraph_segment_cache_v4';
-const SEGMENT_TIMEOUT_MS = 15000;
+const SEGMENT_TIMEOUT_MS = 25000;
 const MAX_SEGMENT_CACHE_ENTRIES = 150;
 const PHRASE_CONNECTORS = new Set([
   'about', 'after', 'against', 'around', 'at', 'between', 'by', 'for', 'from',

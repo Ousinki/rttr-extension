@@ -178,6 +178,7 @@ ${text}`;
         { role: 'user', content: userPrompt },
       ],
       temperature: 0.1,
+      response_format: { type: 'json_object' },
     }),
   });
 
@@ -232,14 +233,15 @@ function normalizeTokens(rawTokens: unknown[], originalText: string): Annotation
   const results: AnnotationResult[] = [];
   let cursor = 0;
 
-  for (const raw of rawTokens) {
-    const item = normalizeRawToken(raw);
-    if (!item) continue;
-    const { text, importance, kind, translation, explanation } = item;
-    if (!text) continue;
+  const items = rawTokens
+    .map(raw => normalizeRawToken(raw))
+    .filter(item => item && item.text)
+    .sort((a, b) => (a!.start || 0) - (b!.start || 0));
 
-    let start = item.start;
-    let end = item.end;
+  for (const item of items) {
+    const { text, importance, kind, translation, explanation } = item!;
+    let start = item!.start;
+    let end = item!.end;
 
     if (start < 0 || end < 0 || end < start || originalText.slice(start, end) !== text) {
       const nextIndex = originalText.indexOf(text, cursor);
