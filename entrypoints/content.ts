@@ -171,7 +171,7 @@ export default defineContentScript({
         if (root.host) {
           const host = root.host as HTMLElement;
           host.style.pointerEvents = 'none';
-          host.style.position = 'fixed';
+          host.style.position = 'absolute';
           host.style.top = '0';
           host.style.left = '0';
           host.style.width = '0';
@@ -195,6 +195,12 @@ export default defineContentScript({
       console.error('[RTTR] Failed to setup ShadowRoot UI:', e);
       return;
     }
+
+    // Auto-update popup coordinates when window is resized and text reflows
+    const resizeObserver = new ResizeObserver(() => {
+      uiActions.updateActiveRects();
+    });
+    resizeObserver.observe(document.body);
 
     // -- Event State --
 
@@ -450,8 +456,7 @@ export default defineContentScript({
                     }
                   } else {
                     const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
-                    uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, rect, true,
-                      pos, currentSettings.showTranslationEngine ?? true);
+                    uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, rect, true, pos, currentSettings.showTranslationEngine ?? true, false, () => getClosestRect(result.range, e.clientX, e.clientY));
                   }
                 }
               });
@@ -500,8 +505,7 @@ export default defineContentScript({
           const rect = getFocusedSentenceRect();
           if (rect) {
             const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
-            uiActions.showTranslationBadge(resp.targetText, resp.engine || currentSettings.translationEngine, rect, false,
-              pos, currentSettings.showTranslationEngine ?? true, true);
+            uiActions.showTranslationBadge(resp.targetText,  resp.engine || currentSettings.translationEngine, rect, false, pos, currentSettings.showTranslationEngine ?? true, true, getFocusedSentenceRect);
             uiState.translationBadge.pinned = true;
           }
         }
@@ -512,7 +516,7 @@ export default defineContentScript({
       const rect = getFocusedSentenceRect();
       if (!rect) return;
       const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
-      uiActions.showTranslationBadge('AI 翻译中...', 'AI', rect, true, pos, currentSettings.showTranslationEngine ?? true, true);
+      uiActions.showTranslationBadge('AI 翻译中...', 'AI', rect, true, pos, currentSettings.showTranslationEngine ?? true, true, getFocusedSentenceRect);
       uiState.translationBadge.pinned = true;
       safeSendMessage({
         type: 'CONTEXTUAL_TRANSLATE',
@@ -523,14 +527,14 @@ export default defineContentScript({
           const newRect = getFocusedSentenceRect();
           if (newRect) {
             const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
-            uiActions.showTranslationBadge(resp.translation, 'AI', newRect, false, pos, currentSettings.showTranslationEngine ?? true);
+            uiActions.showTranslationBadge(resp.translation, 'AI', newRect, false, pos, currentSettings.showTranslationEngine ?? true, false, getFocusedSentenceRect);
             uiState.translationBadge.pinned = true;
           }
         } else if (resp?.error) {
           const newRect = getFocusedSentenceRect();
           if (newRect) {
             const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
-            uiActions.showTranslationBadge(`翻译失败: ${resp.error}`, 'AI', newRect, false, pos, currentSettings.showTranslationEngine ?? true);
+            uiActions.showTranslationBadge(`翻译失败: ${resp.error}`, 'AI', newRect, false, pos, currentSettings.showTranslationEngine ?? true, false, getFocusedSentenceRect);
             uiState.translationBadge.pinned = true;
           }
         }
@@ -714,9 +718,8 @@ export default defineContentScript({
                     uiActions.showPronounceBadge('', info.rect, false, null, null, resp.targetText);
                   }
                 } else {
-                  const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'top');
-                  uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, info.rect, false,
-                    pos, currentSettings.showTranslationEngine ?? true);
+                  const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
+                  uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, info.rect, false, pos, currentSettings.showTranslationEngine ?? true, false, () => info.rect);
                 }
               }
             });
@@ -776,9 +779,8 @@ export default defineContentScript({
                   uiActions.showPronounceBadge('', rect, false, null, null, resp.targetText);
                 }
               } else {
-                const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'top');
-                uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, rect, false,
-                  pos, currentSettings.showTranslationEngine ?? true);
+                const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
+                uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, rect, false, pos, currentSettings.showTranslationEngine ?? true, false, () => { const sel = document.getSelection(); return sel && sel.rangeCount > 0 ? sel.getRangeAt(0).getBoundingClientRect() : null; });
               }
             }
           });
@@ -938,9 +940,8 @@ export default defineContentScript({
                 uiActions.showPronounceBadge('', longPressRect(), false, null, null, resp.translation);
               }
             } else {
-              const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'top');
-              uiActions.showTranslationBadge(resp.translation, 'AI', longPressRect(), false,
-                pos, currentSettings.showTranslationEngine ?? true);
+              const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
+              uiActions.showTranslationBadge(resp.translation, 'AI', longPressRect(), false, pos, currentSettings.showTranslationEngine ?? true, false, longPressRect);
             }
             // Extract the English collocation from AI response "english (translation)" and speak it
             const collocMatch = resp.translation.match(/^(.+?)\s*[（(]/);
@@ -1091,9 +1092,8 @@ export default defineContentScript({
                     uiActions.showPronounceBadge('', rect, false, null, null, resp.translation);
                   }
                 } else {
-                  const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'top');
-                  uiActions.showTranslationBadge(resp.translation, 'AI', rect, false,
-                    pos, currentSettings.showTranslationEngine ?? true);
+                  const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
+                  uiActions.showTranslationBadge(resp.translation, 'AI', rect, false, pos, currentSettings.showTranslationEngine ?? true, false, () => targetRange!.getBoundingClientRect());
                 }
               }
             });

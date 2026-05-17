@@ -117,6 +117,8 @@ export const uiState = reactive({
     isHTML: false,
     rect: null as Rect | null,
     translation: null as string | null,
+    exactRect: false,
+    updater: null as (() => DOMRect | null) | null,
   },
   overlaySyllable: {
     visible: false,
@@ -138,6 +140,8 @@ export const uiState = reactive({
     rect: null as Rect | null,
     position: 'bottom' as 'top' | 'bottom',
     showEngine: true,
+    exactRect: false,
+    updater: null as (() => DOMRect | null) | null,
   },
   explainPanel: {
     visible: false,
@@ -147,6 +151,7 @@ export const uiState = reactive({
     explanation: '',
     rect: null as Rect | null,
     isBottom: false,
+    updater: null as (() => DOMRect | null) | null,
   },
   contextMenu: {
     visible: false,
@@ -174,7 +179,7 @@ export const uiActions = {
   },
 
   // Pronounce Badge
-  showPronounceBadge(content: string, rect: DOMRect, isHTML = false, word: string | null = null, sylWord: string | null = null, translation: string | null = null, exactRect = false) {
+  showPronounceBadge(content: string, rect: DOMRect, isHTML = false, word: string | null = null, sylWord: string | null = null, translation: string | null = null, exactRect = false, updater: (() => DOMRect | null) | null = null) {
     const b = uiState.pronounceBadge;
     const newRect = toRect(rect, exactRect);
 
@@ -203,6 +208,8 @@ export const uiActions = {
     b.content = content;
     b.isHTML = isHTML;
     b.rect = newRect;
+    b.exactRect = exactRect;
+    b.updater = updater;
     if (translation !== null) b.translation = translation;
     b.visible = true;
   },
@@ -242,11 +249,13 @@ export const uiActions = {
   },
 
   // Translation Badge
-  showTranslationBadge(text: string, engine: string, targetRect: DOMRect, isAnnotated: boolean, position: 'top' | 'bottom' = 'bottom', showEngine = true, exactRect = false) {
+  showTranslationBadge(text: string, engine: string, targetRect: DOMRect, isAnnotated: boolean, position: 'top' | 'bottom' = 'bottom', showEngine = true, exactRect = false, updater: (() => DOMRect | null) | null = null) {
     uiState.translationBadge.text = text;
     uiState.translationBadge.engine = engine;
     uiState.translationBadge.translationType = engine === 'AI' ? 'ai' : 'api';
     uiState.translationBadge.rect = toRect(targetRect, exactRect);
+    uiState.translationBadge.exactRect = exactRect;
+    uiState.translationBadge.updater = updater;
     uiState.translationBadge.isAnnotated = isAnnotated;
     uiState.translationBadge.position = position;
     uiState.translationBadge.showEngine = showEngine;
@@ -264,12 +273,13 @@ export const uiActions = {
     uiState.explainPanel.loading = true;
     uiState.explainPanel.visible = true;
   },
-  showExplainPanel(word: string, ipa: string | null, explanation: string, rect: DOMRect, isBottom = false) {
+  showExplainPanel(word: string, ipa: string | null, explanation: string, rect: DOMRect, isBottom = false, updater: (() => DOMRect | null) | null = null) {
     uiState.explainPanel.word = word;
     uiState.explainPanel.ipa = ipa;
     uiState.explainPanel.explanation = explanation;
     uiState.explainPanel.rect = toRect(rect);
     uiState.explainPanel.isBottom = isBottom;
+    uiState.explainPanel.updater = updater;
     uiState.explainPanel.loading = false;
     uiState.explainPanel.visible = true;
   },
@@ -311,4 +321,19 @@ export const uiActions = {
     uiState.longPressRing.visible = false;
     uiState.longPressRing.pop = false;
   },
+  
+  updateActiveRects() {
+    if (uiState.translationBadge.visible && uiState.translationBadge.updater) {
+      const newRect = uiState.translationBadge.updater();
+      if (newRect) uiState.translationBadge.rect = toRect(newRect, uiState.translationBadge.exactRect);
+    }
+    if (uiState.pronounceBadge.visible && uiState.pronounceBadge.updater) {
+      const newRect = uiState.pronounceBadge.updater();
+      if (newRect) uiState.pronounceBadge.rect = toRect(newRect, uiState.pronounceBadge.exactRect);
+    }
+    if (uiState.explainPanel.visible && uiState.explainPanel.updater) {
+      const newRect = uiState.explainPanel.updater();
+      if (newRect) uiState.explainPanel.rect = toRect(newRect, false);
+    }
+  }
 };

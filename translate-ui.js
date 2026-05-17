@@ -235,6 +235,81 @@ const uiDict = {
     "zh-TW": "RTTR 高級設定",
     "ja": "RTTR 詳細設定",
     "en": "RTTR Advanced Settings"
+  },
+  "点击英文单词时自动显示音节划分（如 un·pun·ished）": {
+    "zh-TW": "點擊英文單詞時自動顯示音節劃分（如 un·pun·ished）",
+    "ja": "英単語をクリックすると音節分割を表示（例：un·pun·ished）",
+    "en": "Show syllable breaks when clicking English words (e.g. un·pun·ished)"
+  },
+  "其他辅助功能": {
+    "zh-TW": "其他輔助功能",
+    "ja": "その他のアクセシビリティ",
+    "en": "Other Accessibility Features"
+  },
+  "管理浏览器扩展的其他增强体验与功能。": {
+    "zh-TW": "管理瀏覽器擴充功能的其他增強體驗與功能。",
+    "ja": "ブラウザ拡張機能のその他の強化体験や機能を管理します。",
+    "en": "Manage other enhanced experiences and features of the browser extension."
+  },
+  "展示方式": {
+    "zh-TW": "展示方式",
+    "ja": "表示方法",
+    "en": "Display Mode"
+  },
+  "气泡内展示 (推荐，零干扰)": {
+    "zh-TW": "氣泡內展示 (推薦，零干擾)",
+    "ja": "バブル内で表示 (推奨、干渉なし)",
+    "en": "Show in tooltip (Recommended, zero interference)"
+  },
+  "图层覆盖 (如 Mac 原生词典)": {
+    "zh-TW": "圖層覆蓋 (如 Mac 原生詞典)",
+    "ja": "オーバーレイ表示 (Macの標準辞書のように)",
+    "en": "Overlay (Like macOS native dictionary)"
+  },
+  "行内原位替换 (沉浸感更强)": {
+    "zh-TW": "行內原位替換 (沉浸感更強)",
+    "ja": "インライン置換 (より没入感のある)",
+    "en": "Inline replacement (More immersive)"
+  },
+  "句子聚焦导航模式": {
+    "zh-TW": "句子聚焦導航模式",
+    "ja": "文フォーカスナビゲーションモード",
+    "en": "Sentence Focus Navigation Mode"
+  },
+  "右键段落选择「聚焦此句」后，使用方向键控制句子。选择你偏好的左右键行为。": {
+    "zh-TW": "右鍵段落選擇「聚焦此句」後，使用方向鍵控制句子。選擇你偏好的左右鍵行為。",
+    "ja": "段落を右クリックして「この文にフォーカス」を選択後、方向キーで文を操作します。左右キーの好みの動作を選択してください。",
+    "en": "Right-click a paragraph and select 'Focus this sentence', then use arrow keys to navigate. Choose your preferred left/right key behavior."
+  },
+  "自动显示 API 翻译悬浮窗": {
+    "zh-TW": "自動顯示 API 翻譯懸浮窗",
+    "ja": "API翻訳ポップアップを自動表示",
+    "en": "Auto-show API translation tooltip"
+  },
+  "效果演示": {
+    "zh-TW": "效果展示",
+    "ja": "デモ",
+    "en": "Preview"
+  },
+  "↑↓ 切换上下句 · ESC 退出聚焦 · 再按一次 →/← 关闭翻译框": {
+    "zh-TW": "↑↓ 切換上下句 · ESC 退出聚焦 · 再按一次 →/← 關閉翻譯框",
+    "ja": "↑↓ 前後の文に切り替え · ESC フォーカス解除 · もう一度 →/← で翻訳枠を閉じる",
+    "en": "↑↓ Switch sentence · ESC Exit focus · Press →/← again to close translation box"
+  },
+  "聚焦此句": {
+    "zh-TW": "聚焦此句",
+    "ja": "この文にフォーカス",
+    "en": "Focus this sentence"
+  },
+  "翻译": {
+    "zh-TW": "翻譯",
+    "ja": "翻訳",
+    "en": "Translation"
+  },
+  "在线": {
+    "zh-TW": "在線",
+    "ja": "オンライン",
+    "en": "Online"
   }
 };
 
@@ -258,7 +333,7 @@ for (const key of Object.keys(uiDict)) {
   
   // Handle literal text in HTML nodes
   const regex = new RegExp('([>\\\\n\\\\s])' + key.replace(/[.*+?^$\\{\\}()|[\\]\\\\]/g, '\\\\$&') + '([<\\\\n\\\\s])', 'g');
-  content = content.replace(regex, \`$1{{ t('\${key}') }}$2\`);
+  content = content.replace(regex, `$1{{ t('${key}') }}$2`);
 }
 
 // Manual replacements for trickier parts

@@ -73,7 +73,7 @@ const badgeStyle = computed(() => {
   }
 
   if (pos === 'top') {
-    y = targetRect.top + targetRect.scrollY - 46;
+    y = targetRect.top + targetRect.scrollY - 12;
     // Only shift up if PronounceBadge is also on the top
     if (pronouncePos === 'top') {
       y -= (26 + pronounceExtraHeight);
@@ -125,10 +125,10 @@ const badgeStyle = computed(() => {
 }
 
 .rttr-translation-tooltip.pos-top {
-  transform: translate(-50%, 8px);
+  transform: translate(-50%, calc(-100% + 8px));
 }
 .rttr-translation-tooltip.pos-top.rttr-visible {
-  transform: translate(-50%, 0);
+  transform: translate(-50%, -100%);
 }
 
 .rttr-translation-tooltip.pos-bottom {
