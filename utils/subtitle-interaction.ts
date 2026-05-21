@@ -39,11 +39,16 @@ const SUBTITLE_CONTAINER_SELECTORS = [
   '.bilibili-player-video-subtitle',
   '.bpx-player-subtitle-panel',
   // YouTube (整条字幕容器链)
+  '#ytp-caption-window-container',
   '.ytp-caption-window-container',
   '.caption-window',
   '.ytp-caption-window-bottom',
   '.ytp-caption-window-top',
   '.captions-text',
+  // Immersive Translate (沉浸式翻译容器)
+  '.imt-caption-window',
+  '.imt-caption-window-container',
+  '.imt-captions-text',
 ].join(', ');
 
 // ─── CSS 样式注入 ───────────────────────────────────────────
@@ -57,10 +62,17 @@ function injectSubtitleStyles() {
   style.textContent = `
     /* ─── RTTR 通用字幕交互样式 ─── */
 
-    /* 字幕容器链：启用鼠标事件（YouTube 默认 pointer-events: none） */
+    /* 字幕容器链：必须允许 pointer-events (空背景允许穿透，只响应字体的 pointer-events) */
     ${SUBTITLE_CONTAINER_SELECTORS.split(', ').join(',\n    ')} {
+      pointer-events: none !important;
+    }
+
+    /* 显式为具体容器下的所有子孙元素开启 pointer-events */
+    #ytp-caption-window-container *,
+    .ytp-caption-window-container *,
+    .caption-window *,
+    .imt-caption-window * {
       pointer-events: auto !important;
-      cursor: move;
     }
 
     /* 字幕文本区：I 型光标，允许选词，启用鼠标事件 */
@@ -71,8 +83,24 @@ function injectSubtitleStyles() {
       pointer-events: auto !important;
     }
 
+    /* 针对 YouTube 和沉浸式翻译特殊的高优先级覆盖，防止其他样式重置 pointer-events */
+    #ytp-caption-window-container .ytp-caption-segment,
+    .ytp-caption-window-container .ytp-caption-segment,
+    .caption-window .ytp-caption-segment,
+    .imt-caption-window .source-cue,
+    .imt-caption-window .imt-cue,
+    .imt-caption-window .target-cue {
+      pointer-events: auto !important;
+      cursor: text !important;
+      user-select: text !important;
+      -webkit-user-select: text !important;
+    }
+
     /* 选中文本高亮色 */
-    ${SUBTITLE_TEXT_SELECTORS.split(', ').map(s => s + '::selection').join(',\n    ')} {
+    ${SUBTITLE_TEXT_SELECTORS.split(', ').map(s => s + '::selection').join(',\n    ')},
+    #ytp-caption-window-container .ytp-caption-segment::selection,
+    .imt-caption-window .source-cue::selection,
+    .imt-caption-window .imt-cue::selection {
       background: rgba(0, 174, 236, 0.35) !important;
       color: #fff !important;
     }
@@ -83,6 +111,7 @@ function injectSubtitleStyles() {
       text-shadow: 0 0 8px rgba(0, 174, 236, 0.4) !important;
       transition: color 0.2s ease, text-shadow 0.2s ease !important;
       border-radius: 2px;
+      pointer-events: auto !important;
     }
     .rttr-word-highlight.fading {
       color: inherit !important;
