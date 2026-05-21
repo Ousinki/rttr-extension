@@ -42,7 +42,7 @@ export interface BiliVideoPreference {
   subtitleOverlayEnabled: boolean;
   hudEnabled: boolean;
   studyActive?: boolean;
-  subtitleHoverPauseEnabled?: boolean;
+  subtitleHoverPauseEnabled?: 'off' | 'hover' | 'click';
 }
 
 const DEFAULT_PREF: BiliVideoPreference = {
@@ -51,7 +51,7 @@ const DEFAULT_PREF: BiliVideoPreference = {
   subtitleOverlayEnabled: true,
   hudEnabled: true,
   studyActive: false,
-  subtitleHoverPauseEnabled: true,
+  subtitleHoverPauseEnabled: 'hover',
 };
 
 export async function saveBiliPreference(bvid: string, pref: BiliVideoPreference): Promise<void> {

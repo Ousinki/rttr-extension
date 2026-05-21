@@ -42,7 +42,7 @@ export interface RTTRSettings {
   biliAutoPause: boolean;                             // B 站视频精读时自动暂停
   biliCustomSubtitles: boolean;                       // 隐藏 B 站原生字幕并渲染 RTTR 交互字幕
   biliHudVisible: boolean;                            // 默认显示精读讲义 HUD 面板
-  biliSubtitleHoverPause: boolean;                    // 鼠标悬停原生字幕时自动暂停视频
+  biliSubtitleHoverPause: 'off' | 'hover' | 'click';  // 原生字幕暂停模式：关闭/悬停暂停/点击暂停
 }
 
 // ─── 默认值 ──────────────────────────────────────────────
@@ -81,7 +81,7 @@ const DEFAULT_SETTINGS: RTTRSettings = {
   biliAutoPause: false,
   biliCustomSubtitles: true,
   biliHudVisible: true,
-  biliSubtitleHoverPause: true,
+  biliSubtitleHoverPause: 'hover',
 };
 
 // ─── Storage Items (WXT 类型安全存储) ────────────────────

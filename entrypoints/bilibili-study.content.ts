@@ -317,7 +317,7 @@ export default defineContentScript({
     const boundSubtitleElements = new WeakSet<Element>();
 
     const handleSubtitleMouseEnter = () => {
-      if (!biliState.subtitleHoverPause) return;
+      if (biliState.subtitleHoverPause !== 'hover') return;
       // 稍作防抖，避免鼠标快速划过误触
       hoverDebounce = setTimeout(() => {
         const video = document.querySelector('video, bwp-video') as HTMLVideoElement;
@@ -335,7 +335,7 @@ export default defineContentScript({
         clearTimeout(hoverDebounce);
         hoverDebounce = null;
       }
-      // 仅当是我们触发的暂停时才自动恢复播放
+      // 仅当是我们触发的暂停时才自动恢复播放（hover/click 两种模式都适用）
       if (hoverPausedByUs) {
         const video = document.querySelector('video, bwp-video') as HTMLVideoElement;
         if (video && video.paused) {
@@ -352,7 +352,7 @@ export default defineContentScript({
       el.addEventListener('mouseenter', handleSubtitleMouseEnter);
       el.addEventListener('mouseleave', handleSubtitleMouseLeave);
 
-      // 点击查词高亮：识别点击位置的单词并高亮
+      // 点击查词高亮 + 点击暂停模式
       el.addEventListener('click', (e: Event) => {
         const mouseEvent = e as MouseEvent;
         // 清除之前的高亮
@@ -360,7 +360,7 @@ export default defineContentScript({
           const parent = span.parentNode;
           if (parent) {
             parent.replaceChild(document.createTextNode(span.textContent || ''), span);
-            parent.normalize(); // 合并相邻文本节点
+            parent.normalize();
           }
         });
 
@@ -380,7 +380,17 @@ export default defineContentScript({
         while (end < text.length && wordCharRegex.test(text[end])) end++;
 
         const word = text.slice(start, end).trim();
-        if (!word || word.length < 2) return; // 忽略单字符
+        if (!word || word.length < 2) return;
+
+        // 「点击暂停」模式：点击单词时才暂停视频
+        if (biliState.subtitleHoverPause === 'click' && !hoverPausedByUs) {
+          const video = document.querySelector('video, bwp-video') as HTMLVideoElement;
+          if (video && !video.paused) {
+            video.pause();
+            hoverPausedByUs = true;
+            console.log('[RTTR BiliStudy] 点击字幕单词→暂停视频');
+          }
+        }
 
         // 切分文本节点，用带颜色的 span 包裹目标单词
         try {

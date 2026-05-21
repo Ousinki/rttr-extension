@@ -476,6 +476,21 @@ const uiDict: Record<string, Record<string, string>> = {
     "ja": "Bilibiliのネイティブ字幕にマウスを乗せると動画が自動一時停止し、離れると再開します。字幕の単語をクリックして発音確認できます",
     "en": "Auto-pause video when mouse hovers over native subtitles, resume when mouse leaves. Allows clicking subtitle words for pronunciation."
   },
+  "关闭": {
+    "zh-TW": "關閉",
+    "ja": "オフ",
+    "en": "Off"
+  },
+  "悬停暂停": {
+    "zh-TW": "懸停暫停",
+    "ja": "ホバーで停止",
+    "en": "Hover Pause"
+  },
+  "点击暂停": {
+    "zh-TW": "點擊暫停",
+    "ja": "クリックで停止",
+    "en": "Click Pause"
+  },
   "字幕与视频联动演示": {
     "zh-TW": "字幕與影片聯動演示",
     "ja": "字幕と動画のデモ",
@@ -540,7 +555,7 @@ const settings = ref<RTTRSettings>({
   biliAutoPause: false,
   biliCustomSubtitles: true,
   biliHudVisible: true,
-  biliSubtitleHoverPause: true
+  biliSubtitleHoverPause: 'hover' as 'off' | 'hover' | 'click'
 });
 
 const voices = ref<SpeechSynthesisVoice[]>([]);
@@ -1444,15 +1459,25 @@ watch(settings, () => {
             </div>
           </div>
 
-          <!-- 开关控件 -->
-          <div style="margin-top: 20px; padding: 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 16px;">
-            <label class="switch-container" style="flex-shrink: 0; cursor: pointer;">
-              <input type="checkbox" v-model="settings.biliSubtitleHoverPause" class="switch-input" />
-              <span class="switch-slider"></span>
-            </label>
-            <div>
-              <div style="font-size: 13px; font-weight: 600; color: #111827;">{{ t("悬停字幕自动暂停") }}</div>
-              <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("鼠标移到 B 站原生字幕上时自动暂停视频，移开后自动继续播放，方便您点击字幕单词查词发音") }}</div>
+          <!-- 暂停模式选择 -->
+          <div style="margin-top: 20px; padding: 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb;">
+            <div style="font-size: 13px; font-weight: 600; color: #111827; margin-bottom: 4px;">{{ t("悬停字幕自动暂停") }}</div>
+            <div style="font-size: 11px; color: #6b7280; margin-bottom: 12px;">{{ t("鼠标移到 B 站原生字幕上时自动暂停视频，移开后自动继续播放，方便您点击字幕单词查词发音") }}</div>
+            <div class="segmented-control">
+              <label class="seg-option" :class="{ active: settings.biliSubtitleHoverPause === 'off' }">
+                <input type="radio" v-model="settings.biliSubtitleHoverPause" value="off" style="display: none;" />
+                <span>{{ t("关闭") }}</span>
+              </label>
+              <label class="seg-option" :class="{ active: settings.biliSubtitleHoverPause === 'hover' }">
+                <input type="radio" v-model="settings.biliSubtitleHoverPause" value="hover" style="display: none;" />
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z"/></svg>
+                <span>{{ t("悬停暂停") }}</span>
+              </label>
+              <label class="seg-option" :class="{ active: settings.biliSubtitleHoverPause === 'click' }">
+                <input type="radio" v-model="settings.biliSubtitleHoverPause" value="click" style="display: none;" />
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M15 15l-2 5L9 9l11 4-5 2z"/><path d="M2 12h3M12 2v3M4.93 4.93l2.12 2.12"/></svg>
+                <span>{{ t("点击暂停") }}</span>
+              </label>
             </div>
           </div>
         </section>
@@ -2974,6 +2999,43 @@ body {
 }
 
 /* Elegant Master Toggles */
+
+/* Segmented control (3-option radio) */
+.segmented-control {
+  display: flex;
+  gap: 6px;
+  background: #e8eaed;
+  border-radius: 10px;
+  padding: 3px;
+}
+
+.seg-option {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+}
+
+.seg-option:hover {
+  color: #374151;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.seg-option.active {
+  color: #00aeec;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  font-weight: 600;
+}
 .switch-container {
   position: relative;
   display: inline-block;

@@ -32,7 +32,7 @@ export interface BiliState {
   loopEnd: number;
   customSubtitlesEnabled: boolean;
   studyActive: boolean;
-  subtitleHoverPause: boolean;
+  subtitleHoverPause: 'off' | 'hover' | 'click';
 }
 
 export const biliState = reactive<BiliState>({
@@ -58,7 +58,7 @@ export const biliState = reactive<BiliState>({
   loopEnd: 0,
   customSubtitlesEnabled: true,
   studyActive: false,
-  subtitleHoverPause: true,
+  subtitleHoverPause: 'hover',
 });
 
 import { storage } from '#imports';
@@ -87,7 +87,7 @@ export const biliActions = {
       subtitleOverlayEnabled: boolean;
       hudEnabled: boolean;
       studyActive?: boolean;
-      subtitleHoverPauseEnabled?: boolean;
+      subtitleHoverPauseEnabled?: 'off' | 'hover' | 'click';
     }>(prefKey);
     const globalSettings = await settingsStorage.getValue();
 
@@ -211,8 +211,8 @@ export const biliActions = {
     this.savePrefs();
   },
 
-  setSubtitleHoverPause(enabled: boolean) {
-    biliState.subtitleHoverPause = enabled;
+  setSubtitleHoverPause(mode: 'off' | 'hover' | 'click') {
+    biliState.subtitleHoverPause = mode;
     this.savePrefs();
   },
 
