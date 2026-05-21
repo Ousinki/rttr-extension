@@ -119,43 +119,6 @@ export default defineContentScript({
         .rttr-bili-study-btn.active .rttr-r2 {
           fill: url(#rttr-grad4) !important;
         }
-
-        /* ─── B站原生字幕交互增强 ─── */
-        /* 字幕文本区：I 型文本选择光标，方便用户感知可以选词 */
-        .bili-subtitle-x-subtitle-panel-text,
-        .bilibili-player-video-subtitle-text,
-        .bpx-player-subtitle-panel-text {
-          cursor: text !important;
-          user-select: text !important;
-          -webkit-user-select: text !important;
-        }
-
-        /* 字幕容器（非文本区域）：保留移动光标 */
-        .bili-subtitle-x-subtitle-panel,
-        .bilibili-player-video-subtitle,
-        .bpx-player-subtitle-panel {
-          cursor: move;
-        }
-
-        /* 选中文本的高亮色 */
-        .bili-subtitle-x-subtitle-panel-text::selection,
-        .bilibili-player-video-subtitle-text::selection,
-        .bpx-player-subtitle-panel-text::selection {
-          background: rgba(0, 174, 236, 0.35) !important;
-          color: #fff !important;
-        }
-
-        /* 被 RTTR 点击查词高亮的单词 */
-        .rttr-word-highlight {
-          color: #00aeec !important;
-          text-shadow: 0 0 8px rgba(0, 174, 236, 0.4) !important;
-          transition: color 0.2s ease, text-shadow 0.2s ease !important;
-          border-radius: 2px;
-        }
-        .rttr-word-highlight.fading {
-          color: inherit !important;
-          text-shadow: none !important;
-        }
       `;
       document.head.appendChild(style);
     };
@@ -310,148 +273,6 @@ export default defineContentScript({
     mountCheckInterval = setInterval(mountStudyUI, 1500);
     mountStudyUI(); // 立即尝试挂载
 
-    // 3.5 原生字幕悬停暂停功能
-    // 监听 B 站原生字幕元素的出现，动态绑定 mouseenter/mouseleave 事件
-    let hoverPausedByUs = false; // 标记是否是我们触发的暂停，避免干扰用户手动暂停
-    let hoverDebounce: ReturnType<typeof setTimeout> | null = null;
-    const boundSubtitleElements = new WeakSet<Element>();
-
-    const handleSubtitleMouseEnter = () => {
-      if (biliState.subtitleHoverPause !== 'hover') return;
-      // 稍作防抖，避免鼠标快速划过误触
-      hoverDebounce = setTimeout(() => {
-        const video = document.querySelector('video, bwp-video') as HTMLVideoElement;
-        if (video && !video.paused) {
-          video.pause();
-          hoverPausedByUs = true;
-          console.log('[RTTR BiliStudy] 悬停原生字幕→自动暂停视频');
-        }
-      }, 120);
-    };
-
-    const handleSubtitleMouseLeave = () => {
-      // 取消防抖计时器
-      if (hoverDebounce) {
-        clearTimeout(hoverDebounce);
-        hoverDebounce = null;
-      }
-      // 仅当是我们触发的暂停时才自动恢复播放（hover/click 两种模式都适用）
-      if (hoverPausedByUs) {
-        const video = document.querySelector('video, bwp-video') as HTMLVideoElement;
-        if (video && video.paused) {
-          video.play();
-          console.log('[RTTR BiliStudy] 离开原生字幕→自动恢复播放');
-        }
-        hoverPausedByUs = false;
-      }
-    };
-
-    const bindHoverToSubtitleElement = (el: Element) => {
-      if (boundSubtitleElements.has(el)) return;
-      boundSubtitleElements.add(el);
-      el.addEventListener('mouseenter', handleSubtitleMouseEnter);
-      el.addEventListener('mouseleave', handleSubtitleMouseLeave);
-
-      // 点击查词高亮 + 点击暂停模式
-      el.addEventListener('click', (e: Event) => {
-        const mouseEvent = e as MouseEvent;
-        // 清除之前的高亮
-        el.querySelectorAll('.rttr-word-highlight').forEach(span => {
-          const parent = span.parentNode;
-          if (parent) {
-            parent.replaceChild(document.createTextNode(span.textContent || ''), span);
-            parent.normalize();
-          }
-        });
-
-        // 使用 caretRangeFromPoint 精准定位到点击位置的文本
-        const range = document.caretRangeFromPoint?.(mouseEvent.clientX, mouseEvent.clientY);
-        if (!range || !range.startContainer || range.startContainer.nodeType !== Node.TEXT_NODE) return;
-
-        const textNode = range.startContainer as Text;
-        const text = textNode.textContent || '';
-        const offset = range.startOffset;
-
-        // 向前向后扫描，提取完整英文单词边界
-        let start = offset;
-        let end = offset;
-        const wordCharRegex = /[a-zA-Z'-]/;
-        while (start > 0 && wordCharRegex.test(text[start - 1])) start--;
-        while (end < text.length && wordCharRegex.test(text[end])) end++;
-
-        const word = text.slice(start, end).trim();
-        if (!word || word.length < 2) return;
-
-        // 「点击暂停」模式：点击单词时才暂停视频
-        if (biliState.subtitleHoverPause === 'click' && !hoverPausedByUs) {
-          const video = document.querySelector('video, bwp-video') as HTMLVideoElement;
-          if (video && !video.paused) {
-            video.pause();
-            hoverPausedByUs = true;
-            console.log('[RTTR BiliStudy] 点击字幕单词→暂停视频');
-          }
-        }
-
-        // 切分文本节点，用带颜色的 span 包裹目标单词
-        try {
-          const wordRange = document.createRange();
-          wordRange.setStart(textNode, start);
-          wordRange.setEnd(textNode, end);
-
-          const highlightSpan = document.createElement('span');
-          highlightSpan.className = 'rttr-word-highlight';
-          wordRange.surroundContents(highlightSpan);
-
-          // 鼠标离开该单词时淡出并移除高亮
-          highlightSpan.addEventListener('mouseleave', () => {
-            highlightSpan.classList.add('fading');
-            setTimeout(() => {
-              const parent = highlightSpan.parentNode;
-              if (parent) {
-                parent.replaceChild(document.createTextNode(highlightSpan.textContent || ''), highlightSpan);
-                parent.normalize();
-              }
-            }, 300);
-          });
-        } catch (err) {
-          // surroundContents 在跨节点时可能失败，静默忽略
-        }
-      });
-    };
-
-    // 立即扫描已存在的原生字幕元素
-    const scanAndBindSubtitles = () => {
-      const subtitleEls = document.querySelectorAll(
-        '.bili-subtitle-x-subtitle-panel-text, .bilibili-player-video-subtitle-text, .bpx-player-subtitle-panel-text'
-      );
-      subtitleEls.forEach(bindHoverToSubtitleElement);
-    };
-
-    // 使用 MutationObserver 监听 B 站原生字幕的动态插入
-    const subtitleObserver = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        for (const node of mutation.addedNodes) {
-          if (!(node instanceof HTMLElement)) continue;
-          // 检查新增的节点本身是否是字幕元素
-          if (
-            node.classList.contains('bili-subtitle-x-subtitle-panel-text') ||
-            node.classList.contains('bilibili-player-video-subtitle-text') ||
-            node.classList.contains('bpx-player-subtitle-panel-text')
-          ) {
-            bindHoverToSubtitleElement(node);
-          }
-          // 检查子元素中是否包含字幕
-          const childSubs = node.querySelectorAll(
-            '.bili-subtitle-x-subtitle-panel-text, .bilibili-player-video-subtitle-text, .bpx-player-subtitle-panel-text'
-          );
-          childSubs.forEach(bindHoverToSubtitleElement);
-        }
-      }
-    });
-
-    subtitleObserver.observe(document.body, { childList: true, subtree: true });
-    scanAndBindSubtitles(); // 首次立即扫描
-
     // 4. 监听字幕中单词点击触发的 rttr-lookup-word 事件，桥接核心翻译和发音引擎
     const handleWordLookup = async (e: Event) => {
       const customEvent = e as CustomEvent<{ word: string; rect: DOMRect; event: MouseEvent }>;
@@ -554,10 +375,6 @@ export default defineContentScript({
 
       unwatchStudyActive();
       unwatchSettings();
-
-      // 清理字幕悬停监听器
-      subtitleObserver.disconnect();
-      if (hoverDebounce) clearTimeout(hoverDebounce);
     });
   }
 });
