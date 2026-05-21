@@ -6,6 +6,9 @@
  * - 点击单词高亮（蓝色品牌色 + mouseleave 淡出）
  * - I 型文本光标覆盖
  * - 支持：Bilibili、YouTube 及其他视频平台
+ * 
+ * 使用事件委托（event delegation）而非逐元素绑定，
+ * 确保即使字幕元素被频繁创建/销毁也能可靠工作。
  */
 
 import { settingsStorage } from '@/utils/storage';
@@ -21,7 +24,6 @@ const SUBTITLE_TEXT_SELECTORS = [
   // YouTube (原生)
   '.ytp-caption-segment',
   '.caption-visual-line',
-  '.captions-text span',
   // YouTube (沉浸式翻译等插件)
   '.source-cue',
   '.imt-cue',
@@ -90,18 +92,16 @@ function injectSubtitleStyles() {
   document.head.appendChild(style);
 }
 
-// ─── 交互逻辑 ───────────────────────────────────────────────
+// ─── 工具函数 ───────────────────────────────────────────────
 
 /** 查找最近的 <video> 元素 */
 function findNearestVideo(el: Element): HTMLVideoElement | null {
-  // 1. 尝试在同一个播放器容器内找 video
   const playerContainers = [
     '.bpx-player-video-wrap',    // Bilibili
     '.bilibili-player-video',    // Bilibili (旧版)
     '#movie_player',             // YouTube
     '.html5-video-player',       // YouTube
     '.video-player',             // 通用
-    'video',                     // 直接找
   ];
 
   for (const selector of playerContainers) {
@@ -112,21 +112,24 @@ function findNearestVideo(el: Element): HTMLVideoElement | null {
     }
   }
 
-  // 2. 回退：直接找页面上第一个 video
+  // 回退：页面上第一个 video
   return document.querySelector('video, bwp-video') as HTMLVideoElement;
 }
 
-/** 判断元素是否是字幕文本元素 */
-function isSubtitleElement(el: Element): boolean {
-  return el.matches(SUBTITLE_TEXT_SELECTORS);
+/** 从事件目标向上查找字幕文本元素 */
+function findSubtitleElement(target: EventTarget | null): Element | null {
+  if (!target || !(target instanceof Element)) return null;
+  return target.closest(SUBTITLE_TEXT_SELECTORS);
 }
+
+// ─── 导出接口 ───────────────────────────────────────────────
 
 export interface SubtitleInteractionCleanup {
   destroy: () => void;
 }
 
 /**
- * 初始化通用字幕交互模块
+ * 初始化通用字幕交互模块（基于事件委托）
  * @returns 清理函数对象
  */
 export function initSubtitleInteraction(): SubtitleInteractionCleanup {
@@ -136,27 +139,46 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
   let currentMode: 'off' | 'hover' | 'click' = 'hover';
   let hoverPausedByUs = false;
   let hoverDebounce: ReturnType<typeof setTimeout> | null = null;
-  const boundElements = new WeakSet<Element>();
+  let currentHoverSubtitle: Element | null = null;
 
-  // 从设置中读取初始模式
+  // 从设置中读取初始模式（兼容旧版 boolean 值）
   settingsStorage.getValue().then(s => {
-    currentMode = s.biliSubtitleHoverPause || 'hover';
+    const val = s.biliSubtitleHoverPause as any;
+    if (val === true || val === 'hover') currentMode = 'hover';
+    else if (val === 'click') currentMode = 'click';
+    else if (val === false || val === 'off') currentMode = 'off';
+    else currentMode = 'hover';
   });
 
   // 监听设置变化
   const unwatchSettings = settingsStorage.watch((newSettings) => {
-    if (newSettings) {
-      currentMode = newSettings.biliSubtitleHoverPause || 'hover';
-    }
+    if (!newSettings) return;
+    const val = newSettings.biliSubtitleHoverPause as any;
+    if (val === true || val === 'hover') currentMode = 'hover';
+    else if (val === 'click') currentMode = 'click';
+    else currentMode = 'off';
   });
 
-  // ─── 事件处理 ───
+  // ─── 事件委托处理 ───
 
-  const handleMouseEnter = (e: Event) => {
+  /**
+   * mouseover (冒泡版 mouseenter)：鼠标移入字幕文本时
+   */
+  const onMouseOver = (e: MouseEvent) => {
+    if (currentMode === 'off') return;
+    const subtitleEl = findSubtitleElement(e.target);
+    if (!subtitleEl) return;
+
+    // 避免在同一个字幕元素内重复触发
+    if (subtitleEl === currentHoverSubtitle) return;
+    currentHoverSubtitle = subtitleEl;
+
     if (currentMode !== 'hover') return;
-    const el = e.currentTarget as Element;
+
+    // 防抖：避免鼠标快速划过误触
+    if (hoverDebounce) clearTimeout(hoverDebounce);
     hoverDebounce = setTimeout(() => {
-      const video = findNearestVideo(el);
+      const video = findNearestVideo(subtitleEl);
       if (video && !video.paused) {
         video.pause();
         hoverPausedByUs = true;
@@ -164,14 +186,28 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
     }, 120);
   };
 
-  const handleMouseLeave = () => {
+  /**
+   * mouseout (冒泡版 mouseleave)：鼠标离开字幕文本时
+   */
+  const onMouseOut = (e: MouseEvent) => {
+    const subtitleEl = findSubtitleElement(e.target);
+    if (!subtitleEl) return;
+
+    // 检查是否真的离开了字幕区域（而不是移到子元素）
+    const relatedTarget = e.relatedTarget as Element | null;
+    if (relatedTarget && subtitleEl.contains(relatedTarget)) return;
+
+    currentHoverSubtitle = null;
+
+    // 取消防抖计时器
     if (hoverDebounce) {
       clearTimeout(hoverDebounce);
       hoverDebounce = null;
     }
+
+    // 仅当是我们触发的暂停时才恢复播放
     if (hoverPausedByUs) {
-      // 找到页面上的 video 恢复播放
-      const video = document.querySelector('video, bwp-video') as HTMLVideoElement;
+      const video = findNearestVideo(subtitleEl);
       if (video && video.paused) {
         video.play();
       }
@@ -179,13 +215,16 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
     }
   };
 
-  const handleClick = (e: Event) => {
+  /**
+   * click：点击字幕单词 → 高亮 + (click 模式下)暂停
+   */
+  const onClick = (e: MouseEvent) => {
     if (currentMode === 'off') return;
-    const el = e.currentTarget as Element;
-    const mouseEvent = e as MouseEvent;
+    const subtitleEl = findSubtitleElement(e.target);
+    if (!subtitleEl) return;
 
     // 清除之前的高亮
-    el.querySelectorAll('.rttr-word-highlight').forEach(span => {
+    subtitleEl.querySelectorAll('.rttr-word-highlight').forEach(span => {
       const parent = span.parentNode;
       if (parent) {
         parent.replaceChild(document.createTextNode(span.textContent || ''), span);
@@ -194,7 +233,7 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
     });
 
     // 使用 caretRangeFromPoint 精准定位到点击位置的文本
-    const range = document.caretRangeFromPoint?.(mouseEvent.clientX, mouseEvent.clientY);
+    const range = document.caretRangeFromPoint?.(e.clientX, e.clientY);
     if (!range || !range.startContainer || range.startContainer.nodeType !== Node.TEXT_NODE) return;
 
     const textNode = range.startContainer as Text;
@@ -213,7 +252,7 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
 
     // 「点击暂停」模式：点击单词时才暂停视频
     if (currentMode === 'click' && !hoverPausedByUs) {
-      const video = findNearestVideo(el);
+      const video = findNearestVideo(subtitleEl);
       if (video && !video.paused) {
         video.pause();
         hoverPausedByUs = true;
@@ -246,43 +285,19 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
     }
   };
 
-  // ─── 元素绑定 ───
+  // ─── 注册事件委托（在 document 级别监听，冒泡捕获） ───
 
-  const bindElement = (el: Element) => {
-    if (boundElements.has(el)) return;
-    boundElements.add(el);
-    el.addEventListener('mouseenter', handleMouseEnter);
-    el.addEventListener('mouseleave', handleMouseLeave);
-    el.addEventListener('click', handleClick);
-  };
-
-  // 扫描已存在的字幕元素
-  const scanAndBind = () => {
-    document.querySelectorAll(SUBTITLE_TEXT_SELECTORS).forEach(bindElement);
-  };
-
-  // MutationObserver 监听动态插入的字幕元素
-  const observer = new MutationObserver((mutations) => {
-    for (const mutation of mutations) {
-      for (const node of mutation.addedNodes) {
-        if (!(node instanceof HTMLElement)) continue;
-        if (isSubtitleElement(node)) {
-          bindElement(node);
-        }
-        const children = node.querySelectorAll(SUBTITLE_TEXT_SELECTORS);
-        children.forEach(bindElement);
-      }
-    }
-  });
-
-  observer.observe(document.body, { childList: true, subtree: true });
-  scanAndBind();
+  document.addEventListener('mouseover', onMouseOver, true);
+  document.addEventListener('mouseout', onMouseOut, true);
+  document.addEventListener('click', onClick, true);
 
   // ─── 返回清理函数 ───
 
   return {
     destroy() {
-      observer.disconnect();
+      document.removeEventListener('mouseover', onMouseOver, true);
+      document.removeEventListener('mouseout', onMouseOut, true);
+      document.removeEventListener('click', onClick, true);
       if (hoverDebounce) clearTimeout(hoverDebounce);
       unwatchSettings();
       const styleEl = document.getElementById(STYLE_ID);

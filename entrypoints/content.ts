@@ -14,7 +14,7 @@ import { speakText } from '@/utils/tts';
 import { getNumberReading, isNumberLikeText } from '@/utils/number-reading';
 import { syllabifyText } from '@/utils/syllables';
 import { initSentenceFocus, splitBlock, splitAndFocusAtNode, handleSeparatorClick, isFocused, focusNext, focusPrev, focusSentenceAtNode, unfocusSentence, getFocusedSentenceText, getFocusedSentenceRect, isSplitActive } from "@/utils/sentence-focus";
-import { initSubtitleInteraction, type SubtitleInteractionCleanup } from '@/utils/subtitle-interaction';
+import { initSubtitleInteraction } from '@/utils/subtitle-interaction';
 
 function shouldFallbackToPronounceBadge(text: string, settings: any): boolean {
   if (uiState.translationBadge.pinned) return true;
@@ -135,17 +135,8 @@ export default defineContentScript({
     injectStyles();
 
     // Initialize universal subtitle interaction (hover-pause, click-highlight)
-    let subtitleInteraction: SubtitleInteractionCleanup | null = null;
-    if (currentSettings.biliSubtitleHoverPause !== 'off') {
-      subtitleInteraction = initSubtitleInteraction();
-    }
-    // Watch for setting changes to enable/disable dynamically
-    settingsStorage.watch((newSettings) => {
-      if (!newSettings) return;
-      if (newSettings.biliSubtitleHoverPause !== 'off' && !subtitleInteraction) {
-        subtitleInteraction = initSubtitleInteraction();
-      }
-    });
+    // Works on all video platforms: Bilibili, YouTube, etc.
+    const subtitleInteraction = initSubtitleInteraction();
 
     // Cache to prevent UI jitter when repeatedly clicking the same word
     const localIpaCache = new Map<string, string>();
