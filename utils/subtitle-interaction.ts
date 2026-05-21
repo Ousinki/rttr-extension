@@ -30,15 +30,18 @@ const SUBTITLE_TEXT_SELECTORS = [
   '[role="caption"]',
 ].join(', ');
 
-/** 字幕容器元素的选择器（用于保留 move 光标） */
+/** 字幕容器元素的选择器（用于保留 move 光标 + 启用 pointer-events） */
 const SUBTITLE_CONTAINER_SELECTORS = [
   // Bilibili
   '.bili-subtitle-x-subtitle-panel',
   '.bilibili-player-video-subtitle',
   '.bpx-player-subtitle-panel',
-  // YouTube
+  // YouTube (整条字幕容器链)
   '.ytp-caption-window-container',
   '.caption-window',
+  '.ytp-caption-window-bottom',
+  '.ytp-caption-window-top',
+  '.captions-text',
 ].join(', ');
 
 // ─── CSS 样式注入 ───────────────────────────────────────────
@@ -51,16 +54,19 @@ function injectSubtitleStyles() {
   style.id = STYLE_ID;
   style.textContent = `
     /* ─── RTTR 通用字幕交互样式 ─── */
-    /* 字幕文本区：I 型光标，允许选词 */
-    ${SUBTITLE_TEXT_SELECTORS.split(', ').map(s => s).join(',\n    ')} {
+
+    /* 字幕容器链：启用鼠标事件（YouTube 默认 pointer-events: none） */
+    ${SUBTITLE_CONTAINER_SELECTORS.split(', ').join(',\n    ')} {
+      pointer-events: auto !important;
+      cursor: move;
+    }
+
+    /* 字幕文本区：I 型光标，允许选词，启用鼠标事件 */
+    ${SUBTITLE_TEXT_SELECTORS.split(', ').join(',\n    ')} {
       cursor: text !important;
       user-select: text !important;
       -webkit-user-select: text !important;
-    }
-
-    /* 字幕容器（非文本区域）：保留移动光标 */
-    ${SUBTITLE_CONTAINER_SELECTORS.split(', ').map(s => s).join(',\n    ')} {
-      cursor: move;
+      pointer-events: auto !important;
     }
 
     /* 选中文本高亮色 */
