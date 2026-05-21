@@ -2,7 +2,7 @@
   "name": "rttr-extension",
   "description": "RTTR — AI 语境单词上标翻译浏览器扩展",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "wxt",

@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>RTTR Promo Assets Generator</title>
+  <!-- 使用 html-to-image 彻底解决文字排版和间距 Bug -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js"></script>
+  <style>
+    body {
+      background: #0f172a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 0;
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: white;
+    }
+
+    h2 {
+      margin-top: 40px;
+      margin-bottom: 15px;
+      color: #e2e8f0;
+      font-weight: 600;
+    }
+
+    /* ==== Small Promo Tile (440x280) ==== */
+    .promo-small {
+      width: 440px;
+      height: 280px;
+      background: linear-gradient(135deg, #0f172a 0%, #020617 100%);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      padding: 0 30px;
+      box-sizing: border-box;
+      border-radius: 16px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+      margin-bottom: 20px;
+    }
+    .promo-small::before {
+      content: '';
+      position: absolute;
+      top: -50%; left: -20%; width: 150%; height: 150%;
+      background: radial-gradient(circle at 60% 40%, rgba(139, 92, 246, 0.25), transparent 60%);
+      pointer-events: none;
+    }
+    .promo-small .logo-wrapper {
+      width: 150px; height: 150px;
+      flex-shrink: 0; z-index: 10; margin-right: 15px;
+    }
+    .promo-small .text-wrapper {
+      z-index: 10; display: flex; flex-direction: column; justify-content: center;
+    }
+    .promo-small .subtitle {
+      font-size: 24px; font-weight: 800; color: #38bdf8;
+      margin-top: 0px; letter-spacing: 1.5px; text-transform: uppercase;
+    }
+    .promo-small .desc {
+      font-size: 13px; color: #94a3b8; margin-top: 14px; line-height: 1.5; font-weight: 500;
+    }
+
+    /* ==== Marquee Promo Tile (1400x560) ==== */
+    .marquee-wrapper {
+      transform: scale(0.6);
+      transform-origin: top center;
+      margin-bottom: -200px; /* 抵消缩放后的空白 */
+      transition: transform 0.01s; /* Ensure immediate sync when removing scale */
+    }
+    .promo-marquee {
+      width: 1400px;
+      height: 560px;
+      background: linear-gradient(135deg, #0f172a 0%, #020617 100%);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 100px;
+      box-sizing: border-box;
+      border-radius: 32px;
+      box-shadow: 0 40px 80px -20px rgba(0, 0, 0, 0.9);
+    }
+    .promo-marquee::before {
+      content: '';
+      position: absolute;
+      top: -100%; left: -50%; width: 200%; height: 200%;
+      background: radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.3), transparent 60%);
+      pointer-events: none;
+    }
+    .promo-marquee::after {
+      content: '';
+      position: absolute;
+      bottom: -80%; right: -30%; width: 150%; height: 150%;
+      background: radial-gradient(circle at 50% 50%, rgba(6, 182, 212, 0.25), transparent 50%);
+      pointer-events: none;
+    }
+    .promo-marquee .logo-wrapper {
+      width: 380px; height: 380px;
+      flex-shrink: 0; z-index: 10; margin-right: 80px;
+    }
+    .promo-marquee .text-wrapper {
+      z-index: 10; display: flex; flex-direction: column; justify-content: center; max-width: 700px;
+    }
+    .promo-marquee .title {
+      font-size: 140px; font-weight: 800; color: #ffffff;
+      margin: 0; line-height: 1; letter-spacing: 4px;
+      text-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .promo-marquee .subtitle {
+      font-size: 72px; font-weight: 800; color: #38bdf8;
+      margin-top: 0px; letter-spacing: 3px; text-transform: uppercase;
+    }
+    .promo-marquee .desc {
+      font-size: 28px; color: #cbd5e1; margin-top: 30px; line-height: 1.6; font-weight: 500;
+    }
+
+    /* 动作按钮 */
+    .actions {
+      margin-top: 20px; display: flex; gap: 15px; z-index: 50; position: relative;
+    }
+    .btn {
+      padding: 12px 24px; background: #3b82f6; color: white; border: none;
+      border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+    }
+    .btn:hover { background: #2563eb; transform: translateY(-1px); }
+    .hint { color: #64748b; margin-top: 10px; font-size: 13px; max-width: 600px; text-align: center; line-height: 1.5; }
+  </style>
+</head>
+<body>
+
+  <!-- ================= SMALL PROMO TILE ================= -->
+  <h2>Small Promo Tile (440x280)</h2>
+  <div class="promo-small" id="promo-small">
+    <div class="logo-wrapper">
+      <svg viewBox="0 0 1024 1024">
+        <defs>
+          <linearGradient id="grad1_sm" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#94a3b8" />
+            <stop offset="100%" stop-color="#475569" />
+          </linearGradient>
+          <linearGradient id="grad2_sm" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#cbd5e1" />
+            <stop offset="100%" stop-color="#64748b" />
+          </linearGradient>
+          <linearGradient id="grad3_sm" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#e2e8f0" />
+            <stop offset="100%" stop-color="#94a3b8" />
+          </linearGradient>
+          <linearGradient id="grad4_sm" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#ffffff" />
+            <stop offset="100%" stop-color="#cbd5e1" />
+          </linearGradient>
+          <filter id="shadow_sm" x="-30%" y="-30%" width="160%" height="160%">
+            <feDropShadow dx="-15" dy="15" stdDeviation="12" flood-color="#000000" flood-opacity="0.8"/>
+          </filter>
+        </defs>
+        <g transform="translate(56, 324) scale(1.25)">
+          <path transform="translate(0, 0)" filter="url(#shadow_sm)" d="M 0 0 h 140 c 44 0 80 36 80 80 v 20 c 0 32 -18 60 -45 72 l 75 128 h -70 l -65 -115 h -55 v 115 h -60 z M 60 60 v 65 h 70 c 14 0 25 -11 25 -25 v -15 c 0 -14 -11 -25 -25 -25 h -70 z" fill-rule="evenodd" fill="url(#grad1_sm)" stroke="#020617" stroke-width="12" stroke-linejoin="round" />
+          <path transform="translate(160, 0)" filter="url(#shadow_sm)" d="M 0 0 h 200 v 60 h -70 v 240 h -60 v -240 h -70 z" fill="url(#grad2_sm)" stroke="#020617" stroke-width="12" stroke-linejoin="round" />
+          <path transform="translate(320, 0)" filter="url(#shadow_sm)" d="M 0 0 h 200 v 60 h -70 v 240 h -60 v -240 h -70 z" fill="url(#grad3_sm)" stroke="#020617" stroke-width="12" stroke-linejoin="round" />
+          <path transform="translate(480, 0)" filter="url(#shadow_sm)" d="M 0 0 h 140 c 44 0 80 36 80 80 v 20 c 0 32 -18 60 -45 72 l 75 128 h -70 l -65 -115 h -55 v 115 h -60 z M 60 60 v 65 h 70 c 14 0 25 -11 25 -25 v -15 c 0 -14 -11 -25 -25 -25 h -70 z" fill-rule="evenodd" fill="url(#grad4_sm)" stroke="#020617" stroke-width="12" stroke-linejoin="round" />
+        </g>
+      </svg>
+    </div>
+    <div class="text-wrapper">
+      <div class="subtitle">RubyText Translator</div>
+      <div class="desc">Seamlessly inject context-aware translations without breaking the reading layout.</div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn" onclick="downloadImage('promo-small', 440, 280, 'rttr-small-promo-440x280.png')">🚀 下载 440x280</button>
+  </div>
+  <div class="hint">这是放在 <b>Small promo tile</b> (必填项) 框里的。</div>
+
+  <!-- ================= MARQUEE PROMO TILE ================= -->
+  <h2 style="margin-top: 80px;">Marquee Promo Tile (1400x560)</h2>
+  <div class="marquee-wrapper" id="marquee-wrapper">
+    <div class="promo-marquee" id="promo-marquee">
+      <div class="logo-wrapper">
+        <svg viewBox="0 0 1024 1024">
+          <defs>
+            <linearGradient id="grad1_lg" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#94a3b8" />
+              <stop offset="100%" stop-color="#475569" />
+            </linearGradient>
+            <linearGradient id="grad2_lg" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#cbd5e1" />
+              <stop offset="100%" stop-color="#64748b" />
+            </linearGradient>
+            <linearGradient id="grad3_lg" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#e2e8f0" />
+              <stop offset="100%" stop-color="#94a3b8" />
+            </linearGradient>
+            <linearGradient id="grad4_lg" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#ffffff" />
+              <stop offset="100%" stop-color="#cbd5e1" />
+            </linearGradient>
+            <filter id="shadow_lg" x="-30%" y="-30%" width="160%" height="160%">
+              <feDropShadow dx="-15" dy="15" stdDeviation="12" flood-color="#000000" flood-opacity="0.8"/>
+            </filter>
+          </defs>
+          <g transform="translate(56, 324) scale(1.25)">
+            <path transform="translate(0, 0)" filter="url(#shadow_lg)" d="M 0 0 h 140 c 44 0 80 36 80 80 v 20 c 0 32 -18 60 -45 72 l 75 128 h -70 l -65 -115 h -55 v 115 h -60 z M 60 60 v 65 h 70 c 14 0 25 -11 25 -25 v -15 c 0 -14 -11 -25 -25 -25 h -70 z" fill-rule="evenodd" fill="url(#grad1_lg)" stroke="#020617" stroke-width="12" stroke-linejoin="round" />
+            <path transform="translate(160, 0)" filter="url(#shadow_lg)" d="M 0 0 h 200 v 60 h -70 v 240 h -60 v -240 h -70 z" fill="url(#grad2_lg)" stroke="#020617" stroke-width="12" stroke-linejoin="round" />
+            <path transform="translate(320, 0)" filter="url(#shadow_lg)" d="M 0 0 h 200 v 60 h -70 v 240 h -60 v -240 h -70 z" fill="url(#grad3_lg)" stroke="#020617" stroke-width="12" stroke-linejoin="round" />
+            <path transform="translate(480, 0)" filter="url(#shadow_lg)" d="M 0 0 h 140 c 44 0 80 36 80 80 v 20 c 0 32 -18 60 -45 72 l 75 128 h -70 l -65 -115 h -55 v 115 h -60 z M 60 60 v 65 h 70 c 14 0 25 -11 25 -25 v -15 c 0 -14 -11 -25 -25 -25 h -70 z" fill-rule="evenodd" fill="url(#grad4_lg)" stroke="#020617" stroke-width="12" stroke-linejoin="round" />
+          </g>
+        </svg>
+      </div>
+      <div class="text-wrapper">
+        <div class="subtitle">RubyText Translator</div>
+        <div class="desc">Seamlessly inject context-aware translations right above the original text. Maintain your reading flow, overcome language barriers, and immerse yourself in the content without breaking the page layout.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="actions" style="margin-top: 20px;">
+    <button class="btn" style="background: #8b5cf6;" onclick="downloadImage('promo-marquee', 1400, 560, 'rttr-marquee-promo-1400x560.png')">✨ 下载 1400x560</button>
+  </div>
+  <div class="hint" style="margin-bottom: 50px;">这是放在 <b>Marquee promo tile</b> 框里的。<br/>由于 1400x560 分辨率极高，导出的图片将非常锐利、完美！</div>
+
+  <script>
+    function downloadImage(elementId, width, height, filename) {
+      const el = document.getElementById(elementId);
+      const wrapper = document.getElementById('marquee-wrapper');
+      
+      // 保存原始样式
+      const originalRadius = el.style.borderRadius;
+      const originalShadow = el.style.boxShadow;
+      const originalTransform = wrapper ? wrapper.style.transform : '';
+      
+      // 临时移除圆角和外部阴影以防止截图带背景
+      el.style.borderRadius = '0px';
+      el.style.boxShadow = 'none';
+      
+      // [修复文字乱码] html2canvas 在遇到 CSS transform scale 时会破坏字母间距(kerning)和文字排版
+      // 我们在截图前必须临时移除缩放，使其恢复 1:1 的 DOM 物理尺寸
+      if (elementId === 'promo-marquee' && wrapper) {
+        wrapper.style.transform = 'none';
+      }
+      
+      const btn = event.target;
+      const oldText = btn.innerText;
+      btn.innerText = '正在生成...';
+      
+      // 等待 DOM 样式更新一帧后再截图
+      setTimeout(() => {
+        // html-to-image 使用浏览器的原生 foreignObject 渲染，100% 还原真实排版
+        htmlToImage.toPng(el, {
+          width: width,
+          height: height,
+          canvasWidth: width * 2, // 2倍超采样以抗锯齿
+          canvasHeight: height * 2,
+          backgroundColor: '#0f172a',
+          style: {
+            transform: 'none' // 强制覆盖内部可能存在的错位
+          }
+        })
+        .then(function (dataUrl) {
+          // 创建离屏 canvas 进行降采样，保证画质
+          const img = new Image();
+          img.onload = () => {
+            const targetCanvas = document.createElement('canvas');
+            targetCanvas.width = width;
+            targetCanvas.height = height;
+            const ctx = targetCanvas.getContext('2d');
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(img, 0, 0, width, height);
+
+            const link = document.createElement('a');
+            link.download = filename;
+            link.href = targetCanvas.toDataURL('image/png', 1.0);
+            link.click();
+            
+            // 恢复原始样式
+            el.style.borderRadius = originalRadius;
+            el.style.boxShadow = originalShadow;
+            if (elementId === 'promo-marquee' && wrapper) {
+              wrapper.style.transform = originalTransform;
+            }
+            
+            btn.innerText = '✅ 生成成功！';
+            setTimeout(() => { btn.innerText = oldText; }, 2000);
+          };
+          img.src = dataUrl;
+        })
+        .catch(function (error) {
+          console.error('oops, something went wrong!', error);
+          btn.innerText = '❌ 生成失败';
+          setTimeout(() => { btn.innerText = oldText; }, 2000);
+        });
+      }, 100); // 100ms 足够浏览器重排(reflow)文字和缩放
+    }
+  </script>
+</body>
+</html>

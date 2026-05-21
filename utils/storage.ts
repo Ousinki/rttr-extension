@@ -36,6 +36,13 @@ export interface RTTRSettings {
   enableInlineSyllableRuby: boolean;                  // 单击单词时断音节 (Syllabification)
   syllableDisplayMode: 'inline' | 'badge' | 'overlay'; // 音节展示模式
   autoTranslateFocus: boolean;                        // 聚焦句子时自动翻译
+
+  // Bilibili 双语精读增强设置
+  enableBiliStudy: boolean;                           // 是否启用 B 站双语精读助手
+  biliAutoPause: boolean;                             // B 站视频精读时自动暂停
+  biliCustomSubtitles: boolean;                       // 隐藏 B 站原生字幕并渲染 RTTR 交互字幕
+  biliHudVisible: boolean;                            // 默认显示精读讲义 HUD 面板
+  biliSubtitleHoverPause: boolean;                    // 鼠标悬停原生字幕时自动暂停视频
 }
 
 // ─── 默认值 ──────────────────────────────────────────────
@@ -69,6 +76,12 @@ const DEFAULT_SETTINGS: RTTRSettings = {
   enableInlineSyllableRuby: true,
   syllableDisplayMode: 'badge',
   autoTranslateFocus: false,
+
+  enableBiliStudy: true,
+  biliAutoPause: false,
+  biliCustomSubtitles: true,
+  biliHudVisible: true,
+  biliSubtitleHoverPause: true,
 };
 
 // ─── Storage Items (WXT 类型安全存储) ────────────────────

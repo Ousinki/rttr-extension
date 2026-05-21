@@ -7,7 +7,7 @@ export default defineConfig({
     name: '__MSG_extName__',
     description: '__MSG_extDescription__',
     default_locale: 'zh_CN',
-    version: '0.1.0',
+    version: '0.2.0',
     permissions: ['storage', 'activeTab'],
     host_permissions: [
       '*://*.googleapis.com/*',
