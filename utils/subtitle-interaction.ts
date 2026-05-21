@@ -12,6 +12,7 @@
  */
 
 import { settingsStorage } from '@/utils/storage';
+import { getDeepCaretRangeFromPoint } from '@/utils/content-dom';
 
 // ─── 多平台字幕元素选择器 ───────────────────────────────────
 
@@ -57,30 +58,24 @@ const STYLE_ID = 'rttr-subtitle-interaction-styles';
 
 function injectSubtitleStyles() {
   if (document.getElementById(STYLE_ID)) return;
+  console.log('[RTTR Subtitle CSS] Injecting subtitle interaction stylesheet.');
   const style = document.createElement('style');
   style.id = STYLE_ID;
   style.textContent = `
     /* ─── RTTR 通用字幕交互样式 ─── */
 
-    /* 字幕容器链：必须允许 pointer-events (空背景允许穿透，只响应字体的 pointer-events) */
+    /* 字幕容器链一律不响应鼠标事件，允许完全穿透，避免干扰底层视频点击播放/暂停 */
     ${SUBTITLE_CONTAINER_SELECTORS.split(', ').join(',\n    ')} {
       pointer-events: none !important;
     }
 
-    /* 显式为具体容器下的所有子孙元素开启 pointer-events */
-    #ytp-caption-window-container *,
-    .ytp-caption-window-container *,
-    .caption-window *,
-    .imt-caption-window * {
+    /* 只有字幕文本节点本身及子孙节点才响应鼠标事件，并允许选词与 I 型文本光标 */
+    ${SUBTITLE_TEXT_SELECTORS.split(', ').join(',\n    ')},
+    ${SUBTITLE_TEXT_SELECTORS.split(', ').map(s => s + ' *').join(',\n    ')} {
       pointer-events: auto !important;
-    }
-
-    /* 字幕文本区：I 型光标，允许选词，启用鼠标事件 */
-    ${SUBTITLE_TEXT_SELECTORS.split(', ').join(',\n    ')} {
       cursor: text !important;
       user-select: text !important;
       -webkit-user-select: text !important;
-      pointer-events: auto !important;
     }
 
     /* 针对 YouTube 和沉浸式翻译特殊的高优先级覆盖，防止其他样式重置 pointer-events */
@@ -89,7 +84,11 @@ function injectSubtitleStyles() {
     .caption-window .ytp-caption-segment,
     .imt-caption-window .source-cue,
     .imt-caption-window .imt-cue,
-    .imt-caption-window .target-cue {
+    .imt-caption-window .target-cue,
+    #ytp-caption-window-container .ytp-caption-segment *,
+    .imt-caption-window .source-cue *,
+    .imt-caption-window .imt-cue *,
+    .imt-caption-window .target-cue * {
       pointer-events: auto !important;
       cursor: text !important;
       user-select: text !important;
@@ -119,6 +118,95 @@ function injectSubtitleStyles() {
     }
   `;
   document.head.appendChild(style);
+  console.log('[RTTR Subtitle CSS] Stylesheet injected successfully.');
+}
+
+/** 针对 Shadow DOM 动态注入高亮样式与 pointer-events 启用样式 */
+function injectStylesIntoShadowRoot(root: ShadowRoot) {
+  if (root.getElementById(STYLE_ID)) return;
+  console.log('[RTTR Subtitle CSS] Injecting styles into ShadowRoot:', root);
+  const style = document.createElement('style');
+  style.id = STYLE_ID;
+  style.textContent = `
+    /* Enable mouse pointer events on subtitle elements inside shadow root */
+    ${SUBTITLE_TEXT_SELECTORS.split(', ').join(',\n    ')},
+    ${SUBTITLE_TEXT_SELECTORS.split(', ').map(s => s + ' *').join(',\n    ')} {
+      pointer-events: auto !important;
+      cursor: text !important;
+      user-select: text !important;
+      -webkit-user-select: text !important;
+    }
+    
+    /* Word highlight inside Shadow DOM */
+    .rttr-word-highlight {
+      color: #00aeec !important;
+      text-shadow: 0 0 8px rgba(0, 174, 236, 0.4) !important;
+      transition: color 0.2s ease, text-shadow 0.2s ease !important;
+      border-radius: 2px;
+      pointer-events: auto !important;
+    }
+    .rttr-word-highlight.fading {
+      color: inherit !important;
+      text-shadow: none !important;
+    }
+  `;
+  root.appendChild(style);
+}
+
+/** 动态监听并为所有 Shadow DOM 注入高亮样式与 pointer-events 启用样式 */
+function observeAndStyleShadowRoots() {
+  const styledShadowRoots = new WeakSet<ShadowRoot>();
+
+  const scan = (node: Node) => {
+    if (node instanceof Element) {
+      if (node.shadowRoot) {
+        if (!styledShadowRoots.has(node.shadowRoot)) {
+          styledShadowRoots.add(node.shadowRoot);
+          injectStylesIntoShadowRoot(node.shadowRoot);
+        }
+        scan(node.shadowRoot);
+      }
+      let child = node.firstElementChild;
+      while (child) {
+        scan(child);
+        child = child.nextElementSibling;
+      }
+    } else if (node instanceof Document || node instanceof ShadowRoot) {
+      let child = node.firstElementChild;
+      while (child) {
+        scan(child);
+        child = child.nextElementSibling;
+      }
+    }
+  };
+
+  // Run initial scan
+  scan(document);
+
+  // Monitor document mutations to pierce newly created shadow roots
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const addedNode of mutation.addedNodes) {
+        if (addedNode instanceof Element) {
+          scan(addedNode);
+        }
+      }
+    }
+  });
+
+  observer.observe(document.body, { childList: true, subtree: true });
+
+  // Lightweight interval as a bulletproof backup
+  const intervalId = setInterval(() => {
+    scan(document);
+  }, 1000);
+
+  return {
+    destroy() {
+      observer.disconnect();
+      clearInterval(intervalId);
+    }
+  };
 }
 
 // ─── 工具函数 ───────────────────────────────────────────────
@@ -145,8 +233,19 @@ function findNearestVideo(el: Element): HTMLVideoElement | null {
   return document.querySelector('video, bwp-video') as HTMLVideoElement;
 }
 
-/** 从事件目标向上查找字幕文本元素 */
-function findSubtitleElement(target: EventTarget | null): Element | null {
+/** 从事件目标及事件路径向上查找字幕文本元素 (支持 Shadow DOM) */
+function findSubtitleElement(target: EventTarget | null, e?: Event): Element | null {
+  if (e && typeof e.composedPath === 'function') {
+    const path = e.composedPath();
+    for (const node of path) {
+      if (node instanceof Element) {
+        if (node.matches(SUBTITLE_TEXT_SELECTORS)) {
+          return node;
+        }
+      }
+    }
+  }
+
   if (!target || !(target instanceof Element)) return null;
   return target.closest(SUBTITLE_TEXT_SELECTORS);
 }
@@ -165,10 +264,15 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
   // 注入 CSS
   injectSubtitleStyles();
 
+  // 动态扫描并为所有 Shadow DOM 注入 pointer-events 开启及高亮样式
+  const shadowObserver = observeAndStyleShadowRoots();
+
   let currentMode: 'off' | 'hover' | 'click' = 'hover';
-  let hoverPausedByUs = false;
-  let hoverDebounce: ReturnType<typeof setTimeout> | null = null;
   let currentHoverSubtitle: Element | null = null;
+  let hoverDebounce: any = null;
+  let hoverPausedByUs = false;
+
+  console.log('[RTTR Subtitle] initSubtitleInteraction() called. Current mode:', currentMode);
 
   // 从设置中读取初始模式（兼容旧版 boolean 值）
   settingsStorage.getValue().then(s => {
@@ -177,6 +281,7 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
     else if (val === 'click') currentMode = 'click';
     else if (val === false || val === 'off') currentMode = 'off';
     else currentMode = 'hover';
+    console.log('[RTTR Subtitle] Loaded mode from settings:', currentMode);
   });
 
   // 监听设置变化
@@ -186,6 +291,7 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
     if (val === true || val === 'hover') currentMode = 'hover';
     else if (val === 'click') currentMode = 'click';
     else currentMode = 'off';
+    console.log('[RTTR Subtitle] Subtitle interaction mode updated via settings watch:', currentMode);
   });
 
   // ─── 事件委托处理 ───
@@ -195,8 +301,10 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
    */
   const onMouseOver = (e: MouseEvent) => {
     if (currentMode === 'off') return;
-    const subtitleEl = findSubtitleElement(e.target);
+    const subtitleEl = findSubtitleElement(e.target, e);
     if (!subtitleEl) return;
+
+    console.log('[RTTR Subtitle] onMouseOver triggered on:', e.target, 'SubtitleEl:', subtitleEl);
 
     // 避免在同一个字幕元素内重复触发
     if (subtitleEl === currentHoverSubtitle) return;
@@ -208,9 +316,11 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
     if (hoverDebounce) clearTimeout(hoverDebounce);
     hoverDebounce = setTimeout(() => {
       const video = findNearestVideo(subtitleEl);
+      console.log('[RTTR Subtitle] Hover pause executing. Video element:', video);
       if (video && !video.paused) {
         video.pause();
         hoverPausedByUs = true;
+        console.log('[RTTR Subtitle] Video paused successfully by hover.');
       }
     }, 120);
   };
@@ -219,13 +329,16 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
    * mouseout (冒泡版 mouseleave)：鼠标离开字幕文本时
    */
   const onMouseOut = (e: MouseEvent) => {
-    const subtitleEl = findSubtitleElement(e.target);
+    const subtitleEl = findSubtitleElement(e.target, e);
     if (!subtitleEl) return;
+
+    console.log('[RTTR Subtitle] onMouseOut triggered from element:', e.target);
 
     // 检查是否真的离开了字幕区域（而不是移到子元素）
     const relatedTarget = e.relatedTarget as Element | null;
     if (relatedTarget && subtitleEl.contains(relatedTarget)) return;
 
+    console.log('[RTTR Subtitle] Mouse actually left subtitle element:', subtitleEl);
     currentHoverSubtitle = null;
 
     // 取消防抖计时器
@@ -237,8 +350,10 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
     // 仅当是我们触发的暂停时才恢复播放
     if (hoverPausedByUs) {
       const video = findNearestVideo(subtitleEl);
+      console.log('[RTTR Subtitle] Hover play executing. Video element:', video);
       if (video && video.paused) {
         video.play();
+        console.log('[RTTR Subtitle] Video resumed successfully.');
       }
       hoverPausedByUs = false;
     }
@@ -249,8 +364,13 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
    */
   const onClick = (e: MouseEvent) => {
     if (currentMode === 'off') return;
-    const subtitleEl = findSubtitleElement(e.target);
+    const subtitleEl = findSubtitleElement(e.target, e);
     if (!subtitleEl) return;
+
+    console.log('[RTTR Subtitle] onClick triggered. Target:', e.target, 'SubtitleEl:', subtitleEl);
+
+    // 阻止事件继续向下传递或向上冒泡给底层视频播放器（防止 YouTube 触发播放/暂停）
+    e.stopPropagation();
 
     // 清除之前的高亮
     subtitleEl.querySelectorAll('.rttr-word-highlight').forEach(span => {
@@ -262,7 +382,7 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
     });
 
     // 使用 caretRangeFromPoint 精准定位到点击位置的文本
-    const range = document.caretRangeFromPoint?.(e.clientX, e.clientY);
+    const range = getDeepCaretRangeFromPoint(e.clientX, e.clientY);
     if (!range || !range.startContainer || range.startContainer.nodeType !== Node.TEXT_NODE) return;
 
     const textNode = range.startContainer as Text;
@@ -282,14 +402,21 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
     // 「点击暂停」模式：点击单词时才暂停视频
     if (currentMode === 'click' && !hoverPausedByUs) {
       const video = findNearestVideo(subtitleEl);
+      console.log('[RTTR Subtitle] Click pause executing. Video element:', video);
       if (video && !video.paused) {
         video.pause();
         hoverPausedByUs = true;
+        console.log('[RTTR Subtitle] Video paused successfully by click.');
       }
     }
 
     // 用带颜色的 span 包裹目标单词
     try {
+      const root = subtitleEl.getRootNode();
+      if (root instanceof ShadowRoot) {
+        injectStylesIntoShadowRoot(root);
+      }
+
       const wordRange = document.createRange();
       wordRange.setStart(textNode, start);
       wordRange.setEnd(textNode, end);
@@ -314,11 +441,26 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
     }
   };
 
+  // ─── 拦截并阻止底层视频播放器捕获字幕区域的鼠标/指针事件（防止 drag/play/pause 等干扰行为） ───
+  const handleSubtitleEvents = (e: Event) => {
+    if (currentMode === 'off') return;
+    const subtitleEl = findSubtitleElement(e.target, e);
+    if (!subtitleEl) return;
+
+    // 阻止事件传递，防止底层 YouTube 播放器接收并拦截它
+    console.log(`[RTTR Subtitle Interceptor] Intercepted and stopped event "${e.type}" on:`, e.target);
+    e.stopPropagation();
+  };
+
   // ─── 注册事件委托（在 document 级别监听，冒泡捕获） ───
 
   document.addEventListener('mouseover', onMouseOver, true);
   document.addEventListener('mouseout', onMouseOut, true);
   document.addEventListener('click', onClick, true);
+  document.addEventListener('mousedown', handleSubtitleEvents, true);
+  document.addEventListener('mouseup', handleSubtitleEvents, true);
+  document.addEventListener('pointerdown', handleSubtitleEvents, true);
+  document.addEventListener('pointerup', handleSubtitleEvents, true);
 
   // ─── 返回清理函数 ───
 
@@ -327,8 +469,13 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
       document.removeEventListener('mouseover', onMouseOver, true);
       document.removeEventListener('mouseout', onMouseOut, true);
       document.removeEventListener('click', onClick, true);
+      document.removeEventListener('mousedown', handleSubtitleEvents, true);
+      document.removeEventListener('mouseup', handleSubtitleEvents, true);
+      document.removeEventListener('pointerdown', handleSubtitleEvents, true);
+      document.removeEventListener('pointerup', handleSubtitleEvents, true);
       if (hoverDebounce) clearTimeout(hoverDebounce);
       unwatchSettings();
+      shadowObserver.destroy();
       const styleEl = document.getElementById(STYLE_ID);
       if (styleEl) styleEl.remove();
     }

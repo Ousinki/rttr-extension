@@ -6,7 +6,10 @@ import {
   applyAnnotations,
   findParagraph,
   getSentenceAroundNode,
-  clearAnnotations
+  clearAnnotations,
+  getDeepElementFromPoint,
+  containsShadowAware,
+  getDeepCaretRangeFromPoint
 } from '@/utils/content-dom';
 import { safeSendMessage } from '@/utils/content-messaging';
 import { recognizeImageWord } from '@/utils/content-ocr';
@@ -670,7 +673,7 @@ export default defineContentScript({
         }
       }
       selClickInfo = null;
-    });
+    }, { capture: true });
 
     // Selection auto features (auto-pronounce / auto-translate) on pointerup
     document.addEventListener('pointerup', (e) => {
@@ -790,7 +793,7 @@ export default defineContentScript({
           });
         }
       }, 50);
-    });
+    }, { capture: true });
     // Hover logic for Badges (moving away hides them)
     document.addEventListener('mousemove', (e) => {
       if (!currentSettings?.enabled) return;
@@ -960,7 +963,7 @@ export default defineContentScript({
         });
         uiActions.popLongPressRing();
       }, 500);
-    });
+    }, { capture: true });
 
     document.addEventListener('pointerup', () => {
       if (ringDelayTimer) {
@@ -972,7 +975,7 @@ export default defineContentScript({
         longPressTimer = null;
       }
       if (!isLongPressFired) uiActions.hideLongPressRing();
-    });
+    }, { capture: true });
 
     document.addEventListener('pointermove', (e) => {
       if (longPressEvent && longPressTimer) {
@@ -987,7 +990,7 @@ export default defineContentScript({
           uiActions.hideLongPressRing();
         }
       }
-    });
+    }, { capture: true });
 
 
 
@@ -1242,29 +1245,17 @@ function getWordAtClick(e: MouseEvent): { word: string; range: Range } | null {
   const x = e.clientX;
   const y = e.clientY;
 
-  const elAtPoint = document.elementFromPoint(x, y) as HTMLElement | null;
+  const elAtPoint = getDeepElementFromPoint(x, y) as HTMLElement | null;
   if (!elAtPoint) return null;
 
-  let range: Range | null = null;
-  if (document.caretRangeFromPoint) {
-    range = document.caretRangeFromPoint(x, y);
-  } else if ((document as any).caretPositionFromPoint) {
-    const pos = (document as any).caretPositionFromPoint(x, y);
-    if (!pos) return null;
-    range = document.createRange();
-    range.setStart(pos.offsetNode, pos.offset);
-    range.collapse(true);
-  } else {
-    return null;
-  }
-
+  const range = getDeepCaretRangeFromPoint(x, y);
   if (!range) return null;
   const textNode = range.startContainer;
   if (textNode.nodeType !== Node.TEXT_NODE) return null;
 
   const textParent = textNode.parentElement;
   if (!textParent) return null;
-  if (elAtPoint !== textParent && !textParent.contains(elAtPoint)) {
+  if (elAtPoint !== textParent && !containsShadowAware(textParent, elAtPoint)) {
     return null;
   }
 
