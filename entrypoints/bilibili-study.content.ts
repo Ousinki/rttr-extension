@@ -32,24 +32,12 @@ export default defineContentScript({
     let ui: any = null;
     let mountCheckInterval: ReturnType<typeof setInterval> | null = null;
 
-    // 1. 注入全局样式，强力屏蔽 B 站自带字幕并定义自定义精读控制按钮样式
-    const injectGlobalSubtitleHider = () => {
-      if (document.getElementById('rttr-bili-subtitle-hider')) return;
+    // 1. 注入全局样式，定义自定义精读控制按钮样式
+    const injectGlobalStyles = () => {
+      if (document.getElementById('rttr-bili-study-styles')) return;
       const style = document.createElement('style');
-      style.id = 'rttr-bili-subtitle-hider';
+      style.id = 'rttr-bili-study-styles';
       style.textContent = `
-        /* 屏蔽B站播放器自带的简陋/原生字幕区域 */
-        .bilibili-player-video-subtitle,
-        .bili-video-subtitle,
-        .subtitle-position,
-        .bili-subtitle-wrap,
-        .bili-video-player-video-subtitle {
-          display: none !important;
-          opacity: 0 !important;
-          visibility: hidden !important;
-          pointer-events: none !important;
-        }
-
         /* RTTR 精读自定义按钮默认状态：灰色、带透明度 */
         .rttr-bili-study-btn {
           opacity: 0.65 !important;
@@ -94,117 +82,148 @@ export default defineContentScript({
           opacity: 0.95 !important;
           color: #ffffff !important;
         }
-        .rttr-bili-study-btn:hover svg {
+        #rttr-bili-study-trigger:hover svg {
           transform: translateY(-4px) scale(1.05) !important; /* 悬停时向上微浮，展现立体感 */
         }
 
         /* 开启（激活）状态：完全不透明且应用金属渐变和精致重叠描边 */
         .rttr-bili-study-btn.active {
           opacity: 1 !important;
+          color: #ffffff !important;
         }
-        .rttr-bili-study-btn.active .rttr-letter {
+
+        #rttr-bili-study-trigger.active .rttr-letter {
           stroke: #020617 !important;
           stroke-width: 12px !important;
           stroke-linejoin: round !important;
         }
-        .rttr-bili-study-btn.active .rttr-r1 {
+        #rttr-bili-study-trigger.active .rttr-r1 {
           fill: url(#rttr-grad1) !important;
         }
-        .rttr-bili-study-btn.active .rttr-t1 {
+        #rttr-bili-study-trigger.active .rttr-t1 {
           fill: url(#rttr-grad2) !important;
         }
-        .rttr-bili-study-btn.active .rttr-t2 {
+        #rttr-bili-study-trigger.active .rttr-t2 {
           fill: url(#rttr-grad3) !important;
         }
-        .rttr-bili-study-btn.active .rttr-r2 {
+        #rttr-bili-study-trigger.active .rttr-r2 {
           fill: url(#rttr-grad4) !important;
         }
       `;
       document.head.appendChild(style);
     };
 
+    // 动态控制隐藏原生字幕的样式
+    const updateSubtitleHider = () => {
+      let hider = document.getElementById('rttr-bili-subtitle-hider');
+      if (!hider) {
+        hider = document.createElement('style');
+        hider.id = 'rttr-bili-subtitle-hider';
+        document.head.appendChild(hider);
+      }
+
+      if (biliState.studyActive && biliState.customSubtitlesEnabled) {
+        hider.textContent = `
+          /* 屏蔽B站播放器自带的简陋/原生字幕区域 */
+          .bilibili-player-video-subtitle,
+          .bili-video-subtitle,
+          .subtitle-position,
+          .bili-subtitle-wrap,
+          .bili-video-player-video-subtitle {
+            display: none !important;
+            opacity: 0 !important;
+            visibility: hidden !important;
+            pointer-events: none !important;
+          }
+        `;
+      } else {
+        hider.textContent = '';
+      }
+    };
+
     // 1.5 注入并管理 B 站原生控制栏中的“精读”按钮
     const injectControlButton = () => {
-      const controlsWrap = document.querySelector('.bpx-player-control-bottom-right, .bilibili-player-video-control-bottom-right');
+      const controlsWrap = document.querySelector('.bpx-player-control-bottom-right, .bilibili-player-video-control-bottom-right') as HTMLElement;
       if (!controlsWrap) return;
 
-      // 避免重复创建
-      let btn = document.getElementById('rttr-bili-study-trigger');
-      if (btn) {
-        if (biliState.studyActive) {
-          btn.classList.add('active');
+      // 强力防脱落守卫 1：确保控制条真的渲染出来了且高度正常（如果高度为0，说明只是个没就绪的占位符，不进行注入）
+      if (controlsWrap.offsetHeight === 0) return;
+
+      // 1. RTTR 精读主开关按钮
+      let studyBtn = controlsWrap.querySelector('#rttr-bili-study-trigger') as HTMLElement;
+      if (!studyBtn) {
+        console.log('[RTTR BiliStudy] 找到播放器控制条，注入精读控制按钮...');
+        studyBtn = document.createElement('div');
+        studyBtn.id = 'rttr-bili-study-trigger';
+        studyBtn.className = 'bpx-player-ctrl-btn rttr-bili-study-btn';
+        studyBtn.setAttribute('role', 'button');
+        studyBtn.setAttribute('aria-label', '双语精读');
+        studyBtn.setAttribute('tabindex', '0');
+        studyBtn.setAttribute('title', '开启/关闭 RTTR 双语精读学习助手');
+        
+        studyBtn.style.width = '36px';
+        studyBtn.style.height = '100%';
+        studyBtn.style.cursor = 'pointer';
+        studyBtn.style.userSelect = 'none';
+        studyBtn.style.position = 'relative';
+        studyBtn.style.margin = '0 4px';
+        studyBtn.style.transition = 'all 0.2s ease';
+
+        studyBtn.innerHTML = `
+          <div class="bpx-player-ctrl-btn-icon" style="display: flex; align-items: center; justify-content: center; height: 100%; width: 100%;">
+            <svg viewBox="0 0 700 300" style="width: 28px; height: 12px; transition: all 0.2s ease;">
+              <defs>
+                <linearGradient id="rttr-grad1" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stop-color="#94a3b8" />
+                  <stop offset="100%" stop-color="#475569" />
+                </linearGradient>
+                <linearGradient id="rttr-grad2" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stop-color="#cbd5e1" />
+                  <stop offset="100%" stop-color="#64748b" />
+                </linearGradient>
+                <linearGradient id="rttr-grad3" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stop-color="#e2e8f0" />
+                  <stop offset="100%" stop-color="#94a3b8" />
+                </linearGradient>
+                <linearGradient id="rttr-grad4" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stop-color="#ffffff" />
+                  <stop offset="100%" stop-color="#cbd5e1" />
+                </linearGradient>
+              </defs>
+              <!-- 第一层：R1 -->
+              <path class="rttr-letter rttr-r1" d="M 0 0 h 140 c 44 0 80 36 80 80 v 20 c 0 32 -18 60 -45 72 l 75 128 h -70 l -65 -115 h -55 v 115 h -60 z M 60 60 v 65 h 70 c 14 0 25 -11 25 -25 v -15 c 0 -14 -11 -25 -25 -25 h -70 z" fill-rule="evenodd" />
+              <!-- 第二层：T1 (覆盖 R1) -->
+              <path class="rttr-letter rttr-t1" d="M 160 0 h 200 v 60 h -70 v 240 h -60 v -240 h -70 z" />
+              <!-- 第三层：T2 (覆盖 T1) -->
+              <path class="rttr-letter rttr-t2" d="M 320 0 h 200 v 60 h -70 v 240 h -60 v -240 h -70 z" />
+              <!-- 第四层：R2 (最高层，覆盖 T2) -->
+              <path class="rttr-letter rttr-r2" d="M 480 0 h 140 c 44 0 80 36 80 80 v 20 c 0 32 -18 60 -45 72 l 75 128 h -70 l -65 -115 h -55 v 115 h -60 z M 540 60 v 65 h 70 c 14 0 25 -11 25 -25 v -15 c 0 -14 -11 -25 -25 -25 h -70 z" fill-rule="evenodd" />
+            </svg>
+          </div>
+        `;
+
+        studyBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          const nextActive = !biliState.studyActive;
+          biliActions.setStudyActive(nextActive);
+          // 一键联动：开启精读时，也直接开启双语字幕；关闭精读时，关闭双语字幕并释放原生字幕
+          biliActions.setCustomSubtitlesEnabled(nextActive);
+        });
+
+        // 自动插入到控制栏最前端（清晰度左侧附近）
+        if (controlsWrap.firstChild) {
+          controlsWrap.insertBefore(studyBtn, controlsWrap.firstChild);
         } else {
-          btn.classList.remove('active');
+          controlsWrap.appendChild(studyBtn);
         }
-        return;
       }
 
-      console.log('[RTTR BiliStudy] 找到播放器控制条，注入精读控制按钮...');
-
-      btn = document.createElement('div');
-      btn.id = 'rttr-bili-study-trigger';
-      btn.className = 'bpx-player-ctrl-btn rttr-bili-study-btn';
+      // 更新 studyBtn 激活样式
       if (biliState.studyActive) {
-        btn.classList.add('active');
-      }
-      btn.setAttribute('role', 'button');
-      btn.setAttribute('aria-label', '双语精读');
-      btn.setAttribute('tabindex', '0');
-      btn.setAttribute('title', '开启/关闭 RTTR 双语精读学习助手');
-      
-      // 使用内联样式，精准适配B站各种分辨率和原生按钮结构
-      btn.style.width = '36px';
-      btn.style.height = '100%';
-      btn.style.cursor = 'pointer';
-      btn.style.userSelect = 'none';
-      btn.style.position = 'relative';
-      btn.style.margin = '0 4px';
-      btn.style.transition = 'all 0.2s ease';
-
-      btn.innerHTML = `
-        <div class="bpx-player-ctrl-btn-icon" style="display: flex; align-items: center; justify-content: center; height: 100%; width: 100%;">
-          <svg viewBox="0 0 700 300" style="width: 28px; height: 12px; transition: all 0.2s ease;">
-            <defs>
-              <linearGradient id="rttr-grad1" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stop-color="#94a3b8" />
-                <stop offset="100%" stop-color="#475569" />
-              </linearGradient>
-              <linearGradient id="rttr-grad2" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stop-color="#cbd5e1" />
-                <stop offset="100%" stop-color="#64748b" />
-              </linearGradient>
-              <linearGradient id="rttr-grad3" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stop-color="#e2e8f0" />
-                <stop offset="100%" stop-color="#94a3b8" />
-              </linearGradient>
-              <linearGradient id="rttr-grad4" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stop-color="#ffffff" />
-                <stop offset="100%" stop-color="#cbd5e1" />
-              </linearGradient>
-            </defs>
-            <!-- 第一层：R1 -->
-            <path class="rttr-letter rttr-r1" d="M 0 0 h 140 c 44 0 80 36 80 80 v 20 c 0 32 -18 60 -45 72 l 75 128 h -70 l -65 -115 h -55 v 115 h -60 z M 60 60 v 65 h 70 c 14 0 25 -11 25 -25 v -15 c 0 -14 -11 -25 -25 -25 h -70 z" fill-rule="evenodd" />
-            <!-- 第二层：T1 (覆盖 R1) -->
-            <path class="rttr-letter rttr-t1" d="M 160 0 h 200 v 60 h -70 v 240 h -60 v -240 h -70 z" />
-            <!-- 第三层：T2 (覆盖 T1) -->
-            <path class="rttr-letter rttr-t2" d="M 320 0 h 200 v 60 h -70 v 240 h -60 v -240 h -70 z" />
-            <!-- 第四层：R2 (最高层，覆盖 T2) -->
-            <path class="rttr-letter rttr-r2" d="M 480 0 h 140 c 44 0 80 36 80 80 v 20 c 0 32 -18 60 -45 72 l 75 128 h -70 l -65 -115 h -55 v 115 h -60 z M 540 60 v 65 h 70 c 14 0 25 -11 25 -25 v -15 c 0 -14 -11 -25 -25 -25 h -70 z" fill-rule="evenodd" />
-          </svg>
-        </div>
-      `;
-
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        biliActions.setStudyActive(!biliState.studyActive);
-      });
-
-      // 自动插入到控制栏最前端（清晰度左侧附近）
-      if (controlsWrap.firstChild) {
-        controlsWrap.insertBefore(btn, controlsWrap.firstChild);
+        studyBtn.classList.add('active');
       } else {
-        controlsWrap.appendChild(btn);
+        studyBtn.classList.remove('active');
       }
     };
 
@@ -231,7 +250,8 @@ export default defineContentScript({
       }
 
       console.log('[RTTR BiliStudy] 找到播放器容器，开始挂载 Vue 精读 UI...');
-      injectGlobalSubtitleHider();
+      injectGlobalStyles();
+      updateSubtitleHider();
       injectControlButton();
 
       try {
@@ -273,6 +293,15 @@ export default defineContentScript({
     // 3. 轮询挂载，兼容 SPA 页面无缝切换视频
     mountCheckInterval = setInterval(mountStudyUI, 1500);
     mountStudyUI(); // 立即尝试挂载
+
+    // 3.5 全屏切换事件监听：实现进入/退出全屏时 50ms 内瞬间重置并注入控制条，消除 1.5s 轮询带来的视觉迟滞
+    const instantUpdate = () => {
+      setTimeout(() => {
+        mountStudyUI();
+      }, 50);
+    };
+    document.addEventListener('fullscreenchange', instantUpdate);
+    document.addEventListener('webkitfullscreenchange', instantUpdate);
 
     // 4. 监听字幕中单词点击触发的 rttr-lookup-word 事件，桥接核心翻译和发音引擎
     const handleWordLookup = async (e: Event) => {
@@ -344,16 +373,25 @@ export default defineContentScript({
 
     window.addEventListener('rttr-lookup-word', handleWordLookup);
 
-    // 4.5 监听 studyActive 状态，实时反馈到原生按钮样式上
+    // 4.5 监听 studyActive 状态，实时反馈到原生按钮样式上，并更新字幕隐藏器
     const unwatchStudyActive = watch(() => biliState.studyActive, (active) => {
-      const btn = document.getElementById('rttr-bili-study-trigger');
-      if (btn) {
-        if (active) {
-          btn.classList.add('active');
-        } else {
-          btn.classList.remove('active');
+      const controlsWrap = document.querySelector('.bpx-player-control-bottom-right, .bilibili-player-video-control-bottom-right');
+      if (controlsWrap) {
+        const studyBtn = controlsWrap.querySelector('#rttr-bili-study-trigger');
+        if (studyBtn) {
+          if (active) {
+            studyBtn.classList.add('active');
+          } else {
+            studyBtn.classList.remove('active');
+          }
         }
       }
+      updateSubtitleHider();
+    });
+
+    // 4.55 监听 packageLoaded 状态，同步更新字幕隐藏器
+    const unwatchPackageLoaded = watch(() => biliState.packageLoaded, () => {
+      updateSubtitleHider();
     });
 
     // 4.6 监听 settingsStorage 的变化，实时同步全局设置到播放器状态
@@ -378,13 +416,20 @@ export default defineContentScript({
       }
       window.removeEventListener('rttr-lookup-word', handleWordLookup);
       
+      document.removeEventListener('fullscreenchange', instantUpdate);
+      document.removeEventListener('webkitfullscreenchange', instantUpdate);
+
       const hider = document.getElementById('rttr-bili-subtitle-hider');
       if (hider) hider.remove();
 
-      const btn = document.getElementById('rttr-bili-study-trigger');
-      if (btn) btn.remove();
+      const styles = document.getElementById('rttr-bili-study-styles');
+      if (styles) styles.remove();
+
+      const studyBtn = document.getElementById('rttr-bili-study-trigger');
+      if (studyBtn) studyBtn.remove();
 
       unwatchStudyActive();
+      unwatchPackageLoaded();
       unwatchSettings();
     });
   }
