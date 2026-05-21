@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="badgeEl"
     class="rttr-translation-tooltip"
     :class="[
       { 'rttr-visible': uiState.translationBadge.visible },
@@ -20,9 +21,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import { uiState } from '@/utils/content-state';
+import { checkFullscreen } from '@/utils/bilibili-state';
 
+const badgeEl = ref<HTMLElement | null>(null);
+const hostEl = ref<HTMLElement | null>(null);
+
+onMounted(() => {
+  if (badgeEl.value) {
+    const rootNode = badgeEl.value.getRootNode();
+    if (rootNode instanceof ShadowRoot) {
+      hostEl.value = rootNode.host as HTMLElement;
+    }
+  }
+});
 
 const safeEngine = computed(() => {
   const engine = uiState.translationBadge.engine;
@@ -57,11 +70,12 @@ const actualPosition = computed(() => {
 const badgeStyle = computed(() => {
   const targetRect = uiState.translationBadge.rect;
   if (!targetRect) return {};
-  // Use document-relative coordinates (position: absolute)
-  const x = targetRect.left + targetRect.scrollX + targetRect.width / 2;
+  
+  const host = hostEl.value;
+  const isGlobalUi = !host || host.tagName === 'RTTR-UI-ROOT';
+  
+  let x: number;
   let y: number;
-
-  const pos = actualPosition.value;
 
   // Determine if PronounceBadge is visible and where it is
   let pronouncePos = 'none';
@@ -72,18 +86,59 @@ const badgeStyle = computed(() => {
     pronounceExtraHeight = uiState.pronounceBadge.sylWord ? 20 : 0;
   }
 
-  if (pos === 'top') {
-    y = targetRect.top + targetRect.scrollY - 12;
-    // Only shift up if PronounceBadge is also on the top
-    if (pronouncePos === 'top') {
-      y -= (26 + pronounceExtraHeight);
+  const pos = actualPosition.value;
+
+  if (isGlobalUi) {
+    // 全局 UI 直接采用文档绝对定位
+    // 在全屏模式下，全局 UI 被移入全屏元素内，此时不需要加 scrollX/scrollY
+    const isFullscreen = checkFullscreen();
+    const scrollX = isFullscreen ? 0 : window.scrollX;
+    const scrollY = isFullscreen ? 0 : window.scrollY;
+
+    x = targetRect.left + scrollX + targetRect.width / 2;
+    if (pos === 'top') {
+      y = targetRect.top + scrollY - 12;
+      if (pronouncePos === 'top') {
+        y -= (26 + pronounceExtraHeight);
+      }
+    } else {
+      y = targetRect.bottom + scrollY + 12;
+      if (pronouncePos === 'bottom') {
+        y += (26 + pronounceExtraHeight);
+      }
     }
+
+
   } else {
-    y = targetRect.bottom + targetRect.scrollY + 12;
-    // Only shift down if PronounceBadge is also on the bottom
-    if (pronouncePos === 'bottom') {
-      y += (26 + pronounceExtraHeight);
+    // B 站精读组件 (RTTR-BILI-STUDY-UI) 采用局部相对定位
+    let rootRect = host.getBoundingClientRect();
+    const hasFullscreen = checkFullscreen();
+    if (hasFullscreen) {
+      rootRect = {
+        left: 0,
+        top: 0,
+        right: window.innerWidth,
+        bottom: window.innerHeight,
+        width: window.innerWidth,
+        height: window.innerHeight
+      } as DOMRect;
     }
+    const rootTop = rootRect.top ?? (rootRect as any).y ?? 0;
+
+    x = targetRect.left - rootRect.left + targetRect.width / 2;
+    if (pos === 'top') {
+      y = targetRect.top - rootTop - 12;
+      if (pronouncePos === 'top') {
+        y -= (26 + pronounceExtraHeight);
+      }
+    } else {
+      y = targetRect.bottom - rootTop + 12;
+      if (pronouncePos === 'bottom') {
+        y += (26 + pronounceExtraHeight);
+      }
+    }
+
+
   }
 
   return {
@@ -91,6 +146,7 @@ const badgeStyle = computed(() => {
     top: `${y}px`,
   };
 });
+
 </script>
 
 <style scoped>

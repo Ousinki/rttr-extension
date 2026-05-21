@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="badgeEl"
     id="rttr-pronounce-badge"
     :class="[
       { 'rttr-badge-visible': uiState.pronounceBadge.visible },
@@ -21,8 +22,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import { uiState } from '@/utils/content-state';
+import { checkFullscreen } from '@/utils/bilibili-state';
+
+const badgeEl = ref<HTMLElement | null>(null);
+const hostEl = ref<HTMLElement | null>(null);
+
+onMounted(() => {
+  if (badgeEl.value) {
+    const rootNode = badgeEl.value.getRootNode();
+    if (rootNode instanceof ShadowRoot) {
+      hostEl.value = rootNode.host as HTMLElement;
+    }
+  }
+});
 
 const isBottom = computed(() => {
   if (!uiState.pronounceBadge.rect) return false;
@@ -34,14 +48,51 @@ const badgeStyle = computed(() => {
   if (!uiState.pronounceBadge.rect) return {};
   const rect = uiState.pronounceBadge.rect;
   
-  // Use document-relative coordinates (position: absolute)
-  const x = rect.left + rect.scrollX + rect.width / 2;
+  const host = hostEl.value;
+  const isGlobalUi = !host || host.tagName === 'RTTR-UI-ROOT';
+  
+  let x: number;
   let y: number;
 
-  if (isBottom.value) {
-    y = rect.bottom + rect.scrollY + 6;
+  if (isGlobalUi) {
+    // 全局 UI 挂载在 body 底部，直接使用绝对文档坐标
+    // 在全屏模式下，全局 UI 被移入全屏元素内，此时不需要加 scrollX/scrollY
+    const isFullscreen = checkFullscreen();
+    const scrollX = isFullscreen ? 0 : window.scrollX;
+    const scrollY = isFullscreen ? 0 : window.scrollY;
+
+    x = rect.left + scrollX + rect.width / 2;
+    if (isBottom.value) {
+      y = rect.bottom + scrollY + 6;
+    } else {
+      y = rect.top + scrollY - 6;
+    }
+
+
   } else {
-    y = rect.top + rect.scrollY - 6;
+    // B 站精读 UI (RTTR-BILI-STUDY-UI) 挂载在播放器内部，需要使用相对于播放器容器的局部坐标
+    let rootRect = host.getBoundingClientRect();
+    const hasFullscreen = checkFullscreen();
+    if (hasFullscreen) {
+      rootRect = {
+        left: 0,
+        top: 0,
+        right: window.innerWidth,
+        bottom: window.innerHeight,
+        width: window.innerWidth,
+        height: window.innerHeight
+      } as DOMRect;
+    }
+    const rootTop = rootRect.top ?? (rootRect as any).y ?? 0;
+    
+    x = rect.left - rootRect.left + rect.width / 2;
+    if (isBottom.value) {
+      y = rect.bottom - rootTop + 6;
+    } else {
+      y = rect.top - rootTop - 6;
+    }
+
+
   }
 
   return {
@@ -49,6 +100,7 @@ const badgeStyle = computed(() => {
     top: `${y}px`,
   };
 });
+
 </script>
 
 <style scoped>

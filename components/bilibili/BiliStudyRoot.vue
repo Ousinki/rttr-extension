@@ -6,6 +6,12 @@
     <!-- 2. Draggable 磨砂玻璃态 HUD 讲义卡片 -->
     <BiliStudyHUD />
 
+    <!-- 2.5. Floating components for word lookup within the player context (safe for fullscreen) -->
+    <PronounceBadge />
+    <TranslationBadge />
+    <ExplainPanel />
+    <SyllableOverlay />
+
     <!-- 3. 全局拖拽文件导入玻璃遮罩层 -->
     <div 
       v-if="isDraggingFile" 
@@ -43,6 +49,10 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 import BiliSubtitleOverlay from './BiliSubtitleOverlay.vue';
 import BiliStudyHUD from './BiliStudyHUD.vue';
+import PronounceBadge from '@/components/content/PronounceBadge.vue';
+import TranslationBadge from '@/components/content/TranslationBadge.vue';
+import ExplainPanel from '@/components/content/ExplainPanel.vue';
+import SyllableOverlay from '@/components/content/SyllableOverlay.vue';
 import { biliState, biliActions } from '@/utils/bilibili-state';
 import { getBiliPackage, saveBiliPackage } from '@/utils/bilibili-storage';
 import { parseSrt, parseMdx } from '@/utils/bilibili-parser';
@@ -254,7 +264,7 @@ onUnmounted(() => {
   pointer-events: none; /* 穿透，避免遮挡原生视频控制栏 */
   z-index: 9999;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  overflow: hidden;
+  overflow: visible !important;
 }
 
 /* 📂 拖拽遮罩层样式 */

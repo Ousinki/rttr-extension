@@ -251,7 +251,8 @@ export default defineContentScript({
               host.style.width = '100%';
               host.style.height = '100%';
               host.style.pointerEvents = 'none';
-              host.style.zIndex = '99999';
+              host.style.zIndex = '2147483647';
+              host.style.overflow = 'visible';
             }
 
             const app = createApp(BiliStudyRoot);
@@ -279,7 +280,11 @@ export default defineContentScript({
       const { word, rect } = customEvent.detail;
 
       if (!word) return;
-      console.log('[RTTR BiliStudy] 接收到字幕单词点击事件:', word);
+
+      const isFullscreen = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
+      if (isFullscreen) {
+        console.log(`[RTTR Fullscreen Click] Clicked word "${word}" in physical fullscreen mode.`);
+      }
 
       // 获取用户偏好设置
       let settings: any;
@@ -310,6 +315,9 @@ export default defineContentScript({
           const ipa = resp?.ipa || null;
           if (ipa) {
             uiActions.showPronounceBadge(ipa, rect, false, word);
+            if (isFullscreen) {
+              console.log(`[RTTR Fullscreen Click] Loaded IPA for "${word}": ${ipa}`);
+            }
           }
         });
       }
@@ -326,6 +334,9 @@ export default defineContentScript({
         }).then((resp: any) => {
           if (resp && resp.targetText) {
             uiActions.updatePronounceBadgeTranslation(resp.targetText);
+            if (isFullscreen) {
+              console.log(`[RTTR Fullscreen Click] Loaded translation for "${word}": ${resp.targetText}`);
+            }
           }
         });
       }

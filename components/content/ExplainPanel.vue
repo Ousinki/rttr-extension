@@ -32,14 +32,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { uiState, uiActions } from '@/utils/content-state';
 import { speakText } from '@/utils/tts';
 import { settingsStorage } from '@/utils/storage';
+import { checkFullscreen } from '@/utils/bilibili-state';
 
 const panelRef = ref<HTMLElement | null>(null);
+const hostEl = ref<HTMLElement | null>(null);
 const panelStyle = ref({ top: '0px', left: '0px' });
 const isBottom = ref(false);
+
+onMounted(() => {
+  if (panelRef.value) {
+    const rootNode = panelRef.value.getRootNode();
+    if (rootNode instanceof ShadowRoot) {
+      hostEl.value = rootNode.host as HTMLElement;
+    }
+  }
+});
 
 const formattedExplanation = computed(() => {
   if (!uiState.explainPanel.explanation) return '';
@@ -58,26 +69,82 @@ const onSpeak = async () => {
 watch(() => [uiState.explainPanel.visible, uiState.explainPanel.loading], async ([visible]) => {
   if (visible && uiState.explainPanel.rect) {
     await nextTick();
-    if (!panelRef.value) return;
+    if (!panelRef.value) {
+      return;
+    }
     
     const rect = uiState.explainPanel.rect;
     const panelRect = panelRef.value.getBoundingClientRect();
     const padding = 12;
     
-    let top = rect.top + rect.scrollY - panelRect.height - padding;
-    let left = rect.left + rect.scrollX + (rect.width / 2) - (panelRect.width / 2);
+    const host = hostEl.value;
+    const isGlobalUi = !host || host.tagName === 'RTTR-UI-ROOT';
 
-    // If there's not enough space above, place it below the text
-    if (top < rect.scrollY + padding) {
-      top = rect.bottom + rect.scrollY + padding;
-      isBottom.value = true;
+    let top: number;
+    let left: number;
+
+    if (isGlobalUi) {
+      // 全局 UI 采用文档绝对坐标定位
+      const isFullscreen = checkFullscreen();
+      const scrollX = isFullscreen ? 0 : window.scrollX;
+      const scrollY = isFullscreen ? 0 : window.scrollY;
+
+      top = rect.top + scrollY - panelRect.height - padding;
+      left = rect.left + scrollX + (rect.width / 2) - (panelRect.width / 2);
+
+      const viewportTopBound = scrollY + padding;
+      if (top < viewportTopBound) {
+        top = rect.bottom + scrollY + padding;
+        isBottom.value = true;
+      } else {
+        isBottom.value = false;
+      }
+
+      const viewportLeftBound = scrollX + padding;
+      const viewportRightBound = scrollX + window.innerWidth - padding;
+
+      if (left < viewportLeftBound) left = viewportLeftBound;
+      if (left + panelRect.width > viewportRightBound) {
+        left = viewportRightBound - panelRect.width;
+      }
+
+
     } else {
-      isBottom.value = false;
-    }
+      // B 站精读组件采用相对局部定位
+      let rootRect = host.getBoundingClientRect();
+      const hasFullscreen = checkFullscreen();
+      if (hasFullscreen) {
+        rootRect = {
+          left: 0,
+          top: 0,
+          right: window.innerWidth,
+          bottom: window.innerHeight,
+          width: window.innerWidth,
+          height: window.innerHeight
+        } as DOMRect;
+      }
+      const rootTop = rootRect.top ?? (rootRect as any).y ?? 0;
 
-    if (left < rect.scrollX + padding) left = rect.scrollX + padding;
-    if (left + panelRect.width > rect.scrollX + window.innerWidth - padding) {
-      left = rect.scrollX + window.innerWidth - panelRect.width - padding;
+      top = rect.top - rootTop - panelRect.height - padding;
+      left = rect.left - rootRect.left + (rect.width / 2) - (panelRect.width / 2);
+
+      const viewportTopBound = -rootTop + padding;
+      if (top < viewportTopBound) {
+        top = rect.bottom - rootTop + padding;
+        isBottom.value = true;
+      } else {
+        isBottom.value = false;
+      }
+
+      const viewportLeftBound = -rootRect.left + padding;
+      const viewportRightBound = -rootRect.left + window.innerWidth - padding;
+
+      if (left < viewportLeftBound) left = viewportLeftBound;
+      if (left + panelRect.width > viewportRightBound) {
+        left = viewportRightBound - panelRect.width;
+      }
+
+
     }
 
     panelStyle.value = {
@@ -86,6 +153,7 @@ watch(() => [uiState.explainPanel.visible, uiState.explainPanel.loading], async 
     };
   }
 });
+
 </script>
 
 <style scoped>

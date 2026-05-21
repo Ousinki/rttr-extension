@@ -50,7 +50,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { biliState, biliActions } from '@/utils/bilibili-state';
+import { biliState, biliActions, checkFullscreen } from '@/utils/bilibili-state';
+import { setLastInteractionY } from '@/utils/content-state';
 
 // 属性控制
 const enabled = computed(() => biliState.studyActive && biliState.customSubtitlesEnabled && biliState.packageLoaded);
@@ -93,10 +94,30 @@ const handleWordClick = (event: MouseEvent, word: string) => {
   event.preventDefault();
   event.stopPropagation();
   
+  // 记录点击 Y 坐标以辅助 nearestLineRect 计算
+  setLastInteractionY(event.clientY);
+  
   // 寻找全局 RTTR 的单击发音/查词逻辑
   // 单词的 rect 可以通过触发事件的 target 元素计算出来
   const target = event.target as HTMLElement;
-  const rect = target.getBoundingClientRect();
+  let rect = target.getBoundingClientRect();
+
+  // 保护：如果全屏或坐标异常，以鼠标点击坐标为准
+  if (checkFullscreen() || rect.top < 0) {
+    const clickX = event.clientX;
+    const clickY = event.clientY;
+    rect = {
+      left: clickX - 5,
+      top: clickY - 5,
+      right: clickX + 5,
+      bottom: clickY + 5,
+      width: 10,
+      height: 10,
+      x: clickX - 5,
+      y: clickY - 5,
+      toJSON() { return this; }
+    } as DOMRect;
+  }
   
   // 向外抛出查词事件，或者直接模拟核心 extension 的点击处理
   const clickEvent = new CustomEvent('rttr-lookup-word', {

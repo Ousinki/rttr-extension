@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div ref="badgeEl">
     <div
       v-for="(line, index) in uiState.overlaySyllable.lines"
       :key="index"
@@ -13,12 +13,61 @@
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted } from 'vue';
 import { uiState } from '@/utils/content-state';
+import { checkFullscreen } from '@/utils/bilibili-state';
+
+const badgeEl = ref<HTMLElement | null>(null);
+const hostEl = ref<HTMLElement | null>(null);
+
+onMounted(() => {
+  if (badgeEl.value) {
+    const rootNode = badgeEl.value.getRootNode();
+    if (rootNode instanceof ShadowRoot) {
+      hostEl.value = rootNode.host as HTMLElement;
+    }
+  }
+});
 
 function getLineStyle(rect: DOMRect | null | any) {
   if (!rect) return {};
-  const x = rect.left + rect.scrollX + rect.width / 2;
-  const y = rect.top + rect.scrollY + rect.height / 2;
+  
+  const host = hostEl.value;
+  const isGlobalUi = !host || host.tagName === 'RTTR-UI-ROOT';
+  
+  let x: number;
+  let y: number;
+
+  if (isGlobalUi) {
+    const isFullscreen = checkFullscreen();
+    const scrollX = isFullscreen ? 0 : window.scrollX;
+    const scrollY = isFullscreen ? 0 : window.scrollY;
+
+    x = rect.left + scrollX + rect.width / 2;
+    y = rect.top + scrollY + rect.height / 2;
+
+
+  } else {
+    let rootRect = host.getBoundingClientRect();
+    const hasFullscreen = checkFullscreen();
+    if (hasFullscreen) {
+      rootRect = {
+        left: 0,
+        top: 0,
+        right: window.innerWidth,
+        bottom: window.innerHeight,
+        width: window.innerWidth,
+        height: window.innerHeight
+      } as DOMRect;
+    }
+    const rootTop = rootRect.top ?? (rootRect as any).y ?? 0;
+
+    x = rect.left - rootRect.left + rect.width / 2;
+    y = rect.top - rootTop + rect.height / 2;
+
+
+  }
+
   return {
     left: `${x}px`,
     top: `${y}px`,
@@ -30,6 +79,7 @@ function getLineStyle(rect: DOMRect | null | any) {
     fontStyle: uiState.overlaySyllable.fontStyle,
   };
 }
+
 </script>
 
 <style scoped>

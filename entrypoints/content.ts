@@ -18,6 +18,7 @@ import { getNumberReading, isNumberLikeText } from '@/utils/number-reading';
 import { syllabifyText } from '@/utils/syllables';
 import { initSentenceFocus, splitBlock, splitAndFocusAtNode, handleSeparatorClick, isFocused, focusNext, focusPrev, focusSentenceAtNode, unfocusSentence, getFocusedSentenceText, getFocusedSentenceRect, isSplitActive } from "@/utils/sentence-focus";
 import { initSubtitleInteraction } from '@/utils/subtitle-interaction';
+import { checkFullscreen } from '@/utils/bilibili-state';
 
 function shouldFallbackToPronounceBadge(text: string, settings: any): boolean {
   if (uiState.translationBadge.pinned) return true;
@@ -203,11 +204,47 @@ export default defineContentScript({
       return;
     }
 
+    // Keep global UI visible in HTML5 physical fullscreen by appending it inside the fullscreen element
+    const handleFullscreenChange = () => {
+      const host = document.querySelector('rttr-ui-root') as HTMLElement;
+      if (!host) return;
+
+      const fsEl = document.fullscreenElement || (document as any).webkitFullscreenElement || (document as any).mozFullScreenElement || (document as any).msFullscreenElement;
+      if (fsEl) {
+        console.log('[RTTR Fullscreen] Physical fullscreen detected. Moving rttr-ui-root inside fullscreen element:', fsEl.tagName);
+        if (host.parentElement !== fsEl) {
+          fsEl.appendChild(host);
+        }
+        host.style.width = '100%';
+        host.style.height = '100%';
+      } else {
+        console.log('[RTTR Fullscreen] Exited physical fullscreen. Moving rttr-ui-root back to body.');
+        if (host.parentElement !== document.body) {
+          document.body.appendChild(host);
+        }
+        host.style.width = '0';
+        host.style.height = '0';
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
     // Auto-update popup coordinates when window is resized and text reflows
     const resizeObserver = new ResizeObserver(() => {
       uiActions.updateActiveRects();
     });
     resizeObserver.observe(document.body);
+
+    ctx.onInvalidated(() => {
+      resizeObserver.disconnect();
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+    });
 
     // -- Event State --
 
@@ -357,7 +394,7 @@ export default defineContentScript({
         return;
       }
       const target = e.target as HTMLElement;
-      const isInsideUi = !!target.closest('rttr-ui-root') || !!target.closest('.rttr-word') || !!target.closest('#rttr-ui-root') || !!target.closest('div[style*="2147483647"]');
+      const isInsideUi = !!target.closest('rttr-ui-root') || !!target.closest('rttr-bili-study-ui') || !!target.closest('.rttr-word') || !!target.closest('#rttr-ui-root') || !!target.closest('div[style*="2147483647"]');
       
       if (!isInsideUi) {
         uiActions.hideContextMenu();
@@ -379,7 +416,20 @@ export default defineContentScript({
             const word = result.word.trim();
             const clickX = (e as MouseEvent).clientX;
             const clickY = (e as MouseEvent).clientY;
-            const rect = getClosestRect(result.range, clickX, clickY);
+            let rect = getClosestRect(result.range, clickX, clickY);
+            if (document.fullscreenElement || rect.top < 0) {
+              rect = {
+                left: clickX - 5,
+                top: clickY - 5,
+                right: clickX + 5,
+                bottom: clickY + 5,
+                width: 10,
+                height: 10,
+                x: clickX - 5,
+                y: clickY - 5,
+                toJSON() { return this; }
+              } as DOMRect;
+            }
             const sentence = getSentenceAroundNode(result.range.startContainer);
             if (isNumberLikeText(word)) {
               const numberPhrase = expandNumberWithUnit(result.range);
@@ -681,7 +731,7 @@ export default defineContentScript({
       if (e.button !== 0) return;
       if (isLongPressFired) return;
       const target = e.target as HTMLElement;
-      if (target.closest('rttr-ui-root') || target.closest('.rttr-word')) return;
+      if (target.closest('rttr-ui-root') || target.closest('rttr-bili-study-ui') || target.closest('.rttr-word')) return;
 
       // If clicking on existing selection → click features
       if (selClickInfo) {
@@ -801,7 +851,8 @@ export default defineContentScript({
 
       if (uiState.translationBadge.visible && uiState.translationBadge.rect && !uiState.translationBadge.pinned) {
         const rect = uiState.translationBadge.rect;
-        const PAD = 30;
+        const isFullscreen = checkFullscreen();
+        const PAD = isFullscreen ? 120 : 30;
         const inX = e.clientX >= rect.left - PAD && e.clientX <= rect.right + PAD;
         const inY = e.clientY >= rect.top - PAD && e.clientY <= rect.bottom + PAD;
         if (!inX || !inY) {
@@ -811,7 +862,8 @@ export default defineContentScript({
       
       if (uiState.pronounceBadge.visible && uiState.pronounceBadge.rect && !uiState.pronounceBadge.pinned) {
         const rect = uiState.pronounceBadge.rect;
-        const PAD = 30;
+        const isFullscreen = checkFullscreen();
+        const PAD = isFullscreen ? 120 : 30;
         const inX = e.clientX >= rect.left - PAD && e.clientX <= rect.right + PAD;
         const inY = e.clientY >= rect.top - PAD && e.clientY <= rect.bottom + PAD;
         if (!inX || !inY) {
@@ -1170,8 +1222,6 @@ export default defineContentScript({
 
       let text = paragraph.textContent || '';
       text = text.replace(/◯/g, ' '); // Prevent AI from seeing/translating the separator symbol while preserving offsets
-      console.log('[RTTR TRANSLATE] paragraph.innerHTML:', paragraph.innerHTML);
-      console.log('[RTTR TRANSLATE] paragraph.textContent sent to AI:', JSON.stringify(text));
       if (!text.trim()) return;
 
       paragraphAbortControllers.get(paragraph)?.abort();
@@ -1190,15 +1240,6 @@ export default defineContentScript({
         setParagraphLoading(paragraph, false);
 
         if (response?.success && response.results) {
-          console.log('[RTTR TRANSLATE] AI results:', response.results.map((r: any) => ({
-            text: r.text,
-            start: r.start,
-            end: r.end,
-            kind: r.kind,
-            ipa: r.ipa,
-            pronunciation: r.pronunciation,
-            substringAtRange: text.slice(r.start, r.end),
-          })));
           applyAnnotations(paragraph, response.results, currentSettings, () => isLongPressFired);
         }
         paragraphAbortControllers.delete(paragraph);

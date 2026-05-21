@@ -241,3 +241,33 @@ export const biliActions = {
     });
   }
 };
+
+/**
+ * 高精度判定当前是否处于 B 站物理全屏或网页全屏状态
+ */
+export const checkFullscreen = (): boolean => {
+  if (typeof document === 'undefined') return false;
+  // 1. 标准 HTML5 物理真全屏
+  if (document.fullscreenElement) return true;
+  // 2. 检测 B 站播放器容器网页全屏或真全屏类名
+  const playerContainer = document.querySelector('.bpx-player-container, .bili-video-player');
+  if (playerContainer) {
+    if (
+      playerContainer.classList.contains('bpx-state-web-fullscreen') ||
+      playerContainer.classList.contains('bpx-state-fullscreen') ||
+      playerContainer.classList.contains('player-fullscreen') ||
+      playerContainer.classList.contains('webfullscreen')
+    ) {
+      return true;
+    }
+  }
+  // 3. 物理占比兜底检测（如果容器的物理尺寸与可视区域完全匹配，说明是事实上的全屏）
+  if (playerContainer) {
+    const rect = playerContainer.getBoundingClientRect();
+    if (Math.abs(rect.width - window.innerWidth) < 5 && Math.abs(rect.height - window.innerHeight) < 5) {
+      return true;
+    }
+  }
+  return false;
+};
+

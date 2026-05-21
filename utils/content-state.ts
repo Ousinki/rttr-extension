@@ -167,6 +167,27 @@ export const uiState = reactive({
   },
 });
 
+function toPlainRect(rect: DOMRect | null | any) {
+  if (!rect) return null;
+  return {
+    left: rect.left,
+    top: rect.top,
+    right: rect.right,
+    bottom: rect.bottom,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+function syncAction(actionName: string, ...args: any[]) {
+  if (typeof window !== 'undefined') {
+    const event = new CustomEvent('rttr-sync-ui', {
+      detail: { action: actionName, args }
+    });
+    window.dispatchEvent(event);
+  }
+}
+
 export const uiActions = {
   // Tooltip
   showTooltip(text: string, rect: DOMRect) {
@@ -179,11 +200,9 @@ export const uiActions = {
   },
 
   // Pronounce Badge
-  showPronounceBadge(content: string, rect: DOMRect, isHTML = false, word: string | null = null, sylWord: string | null = null, translation: string | null = null, exactRect = false, updater: (() => DOMRect | null) | null = null) {
+  showPronounceBadge(content: string, rect: DOMRect, isHTML = false, word: string | null = null, sylWord: string | null = null, translation: string | null = null, exactRect = false, updater: (() => DOMRect | null) | null = null, isSync = false) {
     const b = uiState.pronounceBadge;
     const newRect = toRect(rect, exactRect);
-
-    console.log('[RTTR-DEBUG] showPronounceBadge called', { word, sylWord, content, isHTML, currentVisible: b.visible });
 
     // Skip redundant updates on repeated clicks of the same word so Vue
     // doesn't re-run style/transition effects and cause a flicker.
@@ -200,7 +219,6 @@ export const uiActions = {
       b.rect.width === newRect.width &&
       b.rect.height === newRect.height
     ) {
-      console.log('[RTTR-DEBUG] showPronounceBadge skipped (redundant)');
       return;
     }
     b.word = word;
@@ -212,18 +230,28 @@ export const uiActions = {
     b.updater = updater;
     if (translation !== null) b.translation = translation;
     b.visible = true;
+
+    if (!isSync) {
+      syncAction('showPronounceBadge', content, toPlainRect(rect), isHTML, word, sylWord, translation, exactRect, null);
+    }
   },
-  updatePronounceBadgeTranslation(translation: string) {
+  updatePronounceBadgeTranslation(translation: string, isSync = false) {
     if (uiState.pronounceBadge.visible) {
       uiState.pronounceBadge.translation = translation;
     }
+    if (!isSync) {
+      syncAction('updatePronounceBadgeTranslation', translation);
+    }
   },
-  hidePronounceBadge() {
+  hidePronounceBadge(isSync = false) {
     uiState.pronounceBadge.visible = false;
     uiState.pronounceBadge.pinned = false;
     uiState.pronounceBadge.word = null;
     uiState.pronounceBadge.sylWord = null;
     uiState.pronounceBadge.translation = null;
+    if (!isSync) {
+      syncAction('hidePronounceBadge');
+    }
   },
   // Overlay Syllable
   showOverlaySyllable(
@@ -233,7 +261,8 @@ export const uiActions = {
     fontFamily: string,
     color: string,
     letterSpacing: string,
-    fontStyle: string
+    fontStyle: string,
+    isSync = false
   ) {
     uiState.overlaySyllable.lines = lines.map(line => ({ text: line.text, rect: toRect(line.rect) }));
     uiState.overlaySyllable.fontSize = fontSize;
@@ -243,13 +272,21 @@ export const uiActions = {
     uiState.overlaySyllable.letterSpacing = letterSpacing;
     uiState.overlaySyllable.fontStyle = fontStyle;
     uiState.overlaySyllable.visible = true;
+
+    if (!isSync) {
+      const plainLines = lines.map(l => ({ text: l.text, rect: toPlainRect(l.rect) }));
+      syncAction('showOverlaySyllable', plainLines, fontSize, fontWeight, fontFamily, color, letterSpacing, fontStyle);
+    }
   },
-  hideOverlaySyllable() {
+  hideOverlaySyllable(isSync = false) {
     uiState.overlaySyllable.visible = false;
+    if (!isSync) {
+      syncAction('hideOverlaySyllable');
+    }
   },
 
   // Translation Badge
-  showTranslationBadge(text: string, engine: string, targetRect: DOMRect, isAnnotated: boolean, position: 'top' | 'bottom' = 'bottom', showEngine = true, exactRect = false, updater: (() => DOMRect | null) | null = null) {
+  showTranslationBadge(text: string, engine: string, targetRect: DOMRect, isAnnotated: boolean, position: 'top' | 'bottom' = 'bottom', showEngine = true, exactRect = false, updater: (() => DOMRect | null) | null = null, isSync = false) {
     uiState.translationBadge.text = text;
     uiState.translationBadge.engine = engine;
     uiState.translationBadge.translationType = engine === 'AI' ? 'ai' : 'api';
@@ -260,20 +297,31 @@ export const uiActions = {
     uiState.translationBadge.position = position;
     uiState.translationBadge.showEngine = showEngine;
     uiState.translationBadge.visible = true;
+
+    if (!isSync) {
+      syncAction('showTranslationBadge', text, engine, toPlainRect(targetRect), isAnnotated, position, showEngine, exactRect, null);
+    }
   },
-  hideTranslationBadge() {
+  hideTranslationBadge(isSync = false) {
     uiState.translationBadge.visible = false;
     uiState.translationBadge.pinned = false;
+    if (!isSync) {
+      syncAction('hideTranslationBadge');
+    }
   },
 
   // Explain Panel
-  showExplainPanelLoading(word: string, rect: DOMRect) {
+  showExplainPanelLoading(word: string, rect: DOMRect, isSync = false) {
     uiState.explainPanel.word = word;
     uiState.explainPanel.rect = toRect(rect);
     uiState.explainPanel.loading = true;
     uiState.explainPanel.visible = true;
+
+    if (!isSync) {
+      syncAction('showExplainPanelLoading', word, toPlainRect(rect));
+    }
   },
-  showExplainPanel(word: string, ipa: string | null, explanation: string, rect: DOMRect, isBottom = false, updater: (() => DOMRect | null) | null = null) {
+  showExplainPanel(word: string, ipa: string | null, explanation: string, rect: DOMRect, isBottom = false, updater: (() => DOMRect | null) | null = null, isSync = false) {
     uiState.explainPanel.word = word;
     uiState.explainPanel.ipa = ipa;
     uiState.explainPanel.explanation = explanation;
@@ -282,9 +330,16 @@ export const uiActions = {
     uiState.explainPanel.updater = updater;
     uiState.explainPanel.loading = false;
     uiState.explainPanel.visible = true;
+
+    if (!isSync) {
+      syncAction('showExplainPanel', word, ipa, explanation, toPlainRect(rect), isBottom, null);
+    }
   },
-  hideExplainPanel() {
+  hideExplainPanel(isSync = false) {
     uiState.explainPanel.visible = false;
+    if (!isSync) {
+      syncAction('hideExplainPanel');
+    }
   },
 
   // Context Menu
@@ -337,3 +392,20 @@ export const uiActions = {
     }
   }
 };
+
+// Global cross-context sync listener
+if (typeof window !== 'undefined') {
+  window.addEventListener('rttr-sync-ui', (e: Event) => {
+    const customEvent = e as CustomEvent<{ action: string; args: any[] }>;
+    const { action, args } = customEvent.detail;
+    const method = (uiActions as any)[action];
+    if (typeof method === 'function') {
+      try {
+        method(...args, true);
+      } catch (err) {
+        console.error('[RTTR-DEBUG] Sync action execution failed:', action, err);
+      }
+    }
+  });
+}
+

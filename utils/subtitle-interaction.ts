@@ -58,7 +58,6 @@ const STYLE_ID = 'rttr-subtitle-interaction-styles';
 
 function injectSubtitleStyles() {
   if (document.getElementById(STYLE_ID)) return;
-  console.log('[RTTR Subtitle CSS] Injecting subtitle interaction stylesheet.');
   const style = document.createElement('style');
   style.id = STYLE_ID;
   style.textContent = `
@@ -118,13 +117,11 @@ function injectSubtitleStyles() {
     }
   `;
   document.head.appendChild(style);
-  console.log('[RTTR Subtitle CSS] Stylesheet injected successfully.');
 }
 
 /** 针对 Shadow DOM 动态注入高亮样式与 pointer-events 启用样式 */
 function injectStylesIntoShadowRoot(root: ShadowRoot) {
   if (root.getElementById(STYLE_ID)) return;
-  console.log('[RTTR Subtitle CSS] Injecting styles into ShadowRoot:', root);
   const style = document.createElement('style');
   style.id = STYLE_ID;
   style.textContent = `
@@ -272,8 +269,6 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
   let hoverDebounce: any = null;
   let hoverPausedByUs = false;
 
-  console.log('[RTTR Subtitle] initSubtitleInteraction() called. Current mode:', currentMode);
-
   // 从设置中读取初始模式（兼容旧版 boolean 值）
   settingsStorage.getValue().then(s => {
     const val = s.biliSubtitleHoverPause as any;
@@ -281,7 +276,6 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
     else if (val === 'click') currentMode = 'click';
     else if (val === false || val === 'off') currentMode = 'off';
     else currentMode = 'hover';
-    console.log('[RTTR Subtitle] Loaded mode from settings:', currentMode);
   });
 
   // 监听设置变化
@@ -291,7 +285,6 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
     if (val === true || val === 'hover') currentMode = 'hover';
     else if (val === 'click') currentMode = 'click';
     else currentMode = 'off';
-    console.log('[RTTR Subtitle] Subtitle interaction mode updated via settings watch:', currentMode);
   });
 
   // ─── 事件委托处理 ───
@@ -304,8 +297,6 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
     const subtitleEl = findSubtitleElement(e.target, e);
     if (!subtitleEl) return;
 
-    console.log('[RTTR Subtitle] onMouseOver triggered on:', e.target, 'SubtitleEl:', subtitleEl);
-
     // 避免在同一个字幕元素内重复触发
     if (subtitleEl === currentHoverSubtitle) return;
     currentHoverSubtitle = subtitleEl;
@@ -316,11 +307,9 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
     if (hoverDebounce) clearTimeout(hoverDebounce);
     hoverDebounce = setTimeout(() => {
       const video = findNearestVideo(subtitleEl);
-      console.log('[RTTR Subtitle] Hover pause executing. Video element:', video);
       if (video && !video.paused) {
         video.pause();
         hoverPausedByUs = true;
-        console.log('[RTTR Subtitle] Video paused successfully by hover.');
       }
     }, 120);
   };
@@ -332,13 +321,10 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
     const subtitleEl = findSubtitleElement(e.target, e);
     if (!subtitleEl) return;
 
-    console.log('[RTTR Subtitle] onMouseOut triggered from element:', e.target);
-
     // 检查是否真的离开了字幕区域（而不是移到子元素）
     const relatedTarget = e.relatedTarget as Element | null;
     if (relatedTarget && subtitleEl.contains(relatedTarget)) return;
 
-    console.log('[RTTR Subtitle] Mouse actually left subtitle element:', subtitleEl);
     currentHoverSubtitle = null;
 
     // 取消防抖计时器
@@ -350,10 +336,8 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
     // 仅当是我们触发的暂停时才恢复播放
     if (hoverPausedByUs) {
       const video = findNearestVideo(subtitleEl);
-      console.log('[RTTR Subtitle] Hover play executing. Video element:', video);
       if (video && video.paused) {
         video.play();
-        console.log('[RTTR Subtitle] Video resumed successfully.');
       }
       hoverPausedByUs = false;
     }
@@ -366,8 +350,6 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
     if (currentMode === 'off') return;
     const subtitleEl = findSubtitleElement(e.target, e);
     if (!subtitleEl) return;
-
-    console.log('[RTTR Subtitle] onClick triggered. Target:', e.target, 'SubtitleEl:', subtitleEl);
 
     // 阻止事件继续向下传递或向上冒泡给底层视频播放器（防止 YouTube 触发播放/暂停）
     e.stopPropagation();
@@ -402,11 +384,9 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
     // 「点击暂停」模式：点击单词时才暂停视频
     if (currentMode === 'click' && !hoverPausedByUs) {
       const video = findNearestVideo(subtitleEl);
-      console.log('[RTTR Subtitle] Click pause executing. Video element:', video);
       if (video && !video.paused) {
         video.pause();
         hoverPausedByUs = true;
-        console.log('[RTTR Subtitle] Video paused successfully by click.');
       }
     }
 
@@ -447,8 +427,6 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
     const subtitleEl = findSubtitleElement(e.target, e);
     if (!subtitleEl) return;
 
-    // 阻止事件传递，防止底层 YouTube 播放器接收并拦截它
-    console.log(`[RTTR Subtitle Interceptor] Intercepted and stopped event "${e.type}" on:`, e.target);
     e.stopPropagation();
   };
 
