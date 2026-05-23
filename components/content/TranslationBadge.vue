@@ -21,12 +21,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue';
+import { computed, ref, onMounted, watch, nextTick } from 'vue';
 import { uiState } from '@/utils/content-state';
 import { checkFullscreen } from '@/utils/bilibili-state';
 
 const badgeEl = ref<HTMLElement | null>(null);
 const hostEl = ref<HTMLElement | null>(null);
+const badgeWidth = ref(0);
 
 onMounted(() => {
   if (badgeEl.value) {
@@ -36,6 +37,21 @@ onMounted(() => {
     }
   }
 });
+
+watch(
+  () => [uiState.translationBadge.visible, uiState.translationBadge.text],
+  async () => {
+    if (uiState.translationBadge.visible) {
+      await nextTick();
+      if (badgeEl.value) {
+        badgeWidth.value = badgeEl.value.offsetWidth;
+      }
+    } else {
+      badgeWidth.value = 0;
+    }
+  },
+  { immediate: true }
+);
 
 const safeEngine = computed(() => {
   const engine = uiState.translationBadge.engine;
@@ -141,9 +157,25 @@ const badgeStyle = computed(() => {
 
   }
 
+  // Calculate shiftX to prevent overflow on left/right edges
+  const viewportCenterX = targetRect.left + targetRect.width / 2;
+  const screenWidth = window.innerWidth;
+  const halfWidth = badgeWidth.value / 2;
+  const padding = 16;
+  let shiftX = 0;
+
+  if (halfWidth > 0) {
+    if (viewportCenterX - halfWidth < padding) {
+      shiftX = padding - (viewportCenterX - halfWidth);
+    } else if (viewportCenterX + halfWidth > screenWidth - padding) {
+      shiftX = (screenWidth - padding) - (viewportCenterX + halfWidth);
+    }
+  }
+
   return {
     left: `${x}px`,
     top: `${y}px`,
+    '--shift-x': `${shiftX}px`,
   };
 });
 
@@ -181,17 +213,17 @@ const badgeStyle = computed(() => {
 }
 
 .rttr-translation-tooltip.pos-top {
-  transform: translate(-50%, calc(-100% + 8px));
+  transform: translate(calc(-50% + var(--shift-x, 0px)), calc(-100% + 8px));
 }
 .rttr-translation-tooltip.pos-top.rttr-visible {
-  transform: translate(-50%, -100%);
+  transform: translate(calc(-50% + var(--shift-x, 0px)), -100%);
 }
 
 .rttr-translation-tooltip.pos-bottom {
-  transform: translate(-50%, -8px);
+  transform: translate(calc(-50% + var(--shift-x, 0px)), -8px);
 }
 .rttr-translation-tooltip.pos-bottom.rttr-visible {
-  transform: translate(-50%, 0);
+  transform: translate(calc(-50% + var(--shift-x, 0px)), 0);
 }
 
 .rttr-translation-tooltip .engine-tag {
