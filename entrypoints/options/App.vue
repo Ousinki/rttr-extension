@@ -331,10 +331,10 @@ const uiDict: Record<string, Record<string, string>> = {
     "ja": "無効にすると右クリックはブラウザ標準メニューに戻ります",
     "en": "When disabled, right-click will show the browser's native context menu"
   },
-  "自定义右键菜单中的搜索快捷按钮。": {
-    "zh-TW": "自訂右鍵選單中的搜尋快捷按鈕。",
-    "ja": "右クリックカスタムメニューの検索ショートカットボタン。",
-    "en": "Search shortcuts in the custom right-click menu."
+  "自定义右键菜单中的搜索快捷按钮。右键可拦截链接跳转，适用于在链接文本上查词、发音或搜索。": {
+    "zh-TW": "自訂右鍵選單中的搜尋快捷按鈕。右鍵可攞截連結跳轉，適用於在連結文字上查詞、發音或搜尋。",
+    "ja": "右クリックカスタムメニューの検索ショートカット。右クリックでリンク遷移をブロックし、リンクテキスト上で単語検索・発音・検索が可能です。",
+    "en": "Search shortcuts in the custom right-click menu. Right-click intercepts link navigation, useful for looking up, pronouncing or searching link text."
   },
   "发音后显示音标与翻译": {
     "zh-TW": "發音後顯示音標與翻譯",
@@ -1661,7 +1661,7 @@ watch(settings, () => {
               <span class="switch-slider"></span>
             </label>
           </div>
-          <p class="section-desc" style="margin-top: 8px;">{{ t("自定义右键菜单中的搜索快捷按钮。") }}</p>
+          <p class="section-desc" style="margin-top: 8px;">{{ t("自定义右键菜单中的搜索快捷按钮。右键可拦截链接跳转，适用于在链接文本上查词、发音或搜索。") }}</p>
 
           <div v-if="settings.enableContextMenu" style="display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
             <div style="padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
