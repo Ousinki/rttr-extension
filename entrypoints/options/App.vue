@@ -331,6 +331,11 @@ const uiDict: Record<string, Record<string, string>> = {
     "ja": "無効にすると右クリックはブラウザ標準メニューに戻ります",
     "en": "When disabled, right-click will show the browser's native context menu"
   },
+  "自定义右键菜单中的搜索快捷按钮。": {
+    "zh-TW": "自訂右鍵選單中的搜尋快捷按鈕。",
+    "ja": "右クリックカスタムメニューの検索ショートカットボタン。",
+    "en": "Search shortcuts in the custom right-click menu."
+  },
   "X (Twitter) 搜索": {
     "zh-TW": "X (Twitter) 搜尋",
     "ja": "X（Twitter）検索",
@@ -1610,30 +1615,39 @@ watch(settings, () => {
             </div>
           </div>
 
-          <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
-            <input type="checkbox" v-model="settings.enableContextMenu" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
-            <div>
-              <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("右键自定义菜单") }}</div>
-              <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("关闭后右键将恢复浏览器原生菜单") }}</div>
+        </section>
+
+        <!-- Context Menu Settings -->
+        <section id="section-context-menu" class="settings-card">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2 style="margin: 0;">{{ t("右键自定义菜单") }}</h2>
+            <label class="switch-container" style="display: flex; align-items: center; cursor: pointer;">
+              <input type="checkbox" v-model="settings.enableContextMenu" class="switch-input" />
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+          <p class="section-desc" style="margin-top: 8px;">{{ t("自定义右键菜单中的搜索快捷按钮。") }}</p>
+
+          <div v-if="settings.enableContextMenu" style="display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
+            <div style="padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" v-model="settings.enableSearchX" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
+              <div>
+                <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("X (Twitter) 搜索") }}</div>
+                <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("在自定义右键菜单中显示 X (Twitter) 精准搜索按钮") }}</div>
+              </div>
+            </div>
+
+            <div style="padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" v-model="settings.enableSearchReddit" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
+              <div>
+                <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("Reddit 搜索") }}</div>
+                <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("在自定义右键菜单中显示 Reddit 搜索按钮") }}</div>
+              </div>
             </div>
           </div>
+        </section>
 
-          <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;" :style="{ opacity: settings.enableContextMenu ? 1 : 0.5, pointerEvents: settings.enableContextMenu ? 'auto' : 'none' }">
-            <input type="checkbox" v-model="settings.enableSearchX" :disabled="!settings.enableContextMenu" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
-            <div>
-              <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("X (Twitter) 搜索") }}</div>
-              <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("在自定义右键菜单中显示 X (Twitter) 精准搜索按钮") }}</div>
-            </div>
-          </div>
-
-          <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;" :style="{ opacity: settings.enableContextMenu ? 1 : 0.5, pointerEvents: settings.enableContextMenu ? 'auto' : 'none' }">
-            <input type="checkbox" v-model="settings.enableSearchReddit" :disabled="!settings.enableContextMenu" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
-            <div>
-              <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("Reddit 搜索") }}</div>
-              <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("在自定义右键菜单中显示 Reddit 搜索按钮") }}</div>
-            </div>
-          </div>
-
+        <section id="section-other-continued" class="settings-card">
           <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; flex-direction: column; gap: 12px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <input type="checkbox" v-model="settings.enableInlineSyllableRuby" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
