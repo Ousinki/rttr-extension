@@ -336,6 +336,16 @@ const uiDict: Record<string, Record<string, string>> = {
     "ja": "右クリックカスタムメニューの検索ショートカットボタン。",
     "en": "Search shortcuts in the custom right-click menu."
   },
+  "发音后显示音标与翻译": {
+    "zh-TW": "發音後顯示音標與翻譯",
+    "ja": "発音後に発音記号と翻訳を表示",
+    "en": "Show IPA & Translation After Speaking"
+  },
+  "点击菜单栏发音按钮后，自动显示音标、机器翻译和 AI 语境翻译": {
+    "zh-TW": "點擊選單列發音按鈕後，自動顯示音標、機器翻譯和 AI 語境翻譯",
+    "ja": "メニューバーの発音ボタンをクリックすると、発音記号・機械翻訳・AI文脈翻訳を自動表示",
+    "en": "After clicking the speak button in the menu, automatically show IPA, machine translation and AI contextual translation"
+  },
   "X (Twitter) 搜索": {
     "zh-TW": "X (Twitter) 搜尋",
     "ja": "X（Twitter）検索",
@@ -646,6 +656,7 @@ const settings = ref<RTTRSettings>({
   enableSearchReddit: false,
   enableSearchGoogle: true,
   customSearchEngines: [],
+  enableContextMenuInfo: true,
   enableInlineSyllableRuby: true,
   syllableDisplayMode: 'badge',
   autoTranslateFocus: false,
@@ -1653,6 +1664,14 @@ watch(settings, () => {
           <p class="section-desc" style="margin-top: 8px;">{{ t("自定义右键菜单中的搜索快捷按钮。") }}</p>
 
           <div v-if="settings.enableContextMenu" style="display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
+            <div style="padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" v-model="settings.enableContextMenuInfo" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
+              <div>
+                <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("发音后显示音标与翻译") }}</div>
+                <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("点击菜单栏发音按钮后，自动显示音标、机器翻译和 AI 语境翻译") }}</div>
+              </div>
+            </div>
+
             <div style="padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
               <input type="checkbox" v-model="settings.enableSearchGoogle" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
               <div>

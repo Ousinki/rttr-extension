@@ -1329,6 +1329,7 @@ export default defineContentScript({
             menuItems.push({ type: 'header', label: targetText, onSpeakClick: () => {
               speakText(targetText, currentSettings);
 
+              if (!currentSettings?.enableContextMenuInfo) return;
               if (infoMode) return;
               infoMode = true;
 

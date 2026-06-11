@@ -43,6 +43,7 @@ export interface RTTRSettings {
   enableSearchReddit: boolean;                        // 右键搜索 Reddit
   enableSearchGoogle: boolean;                        // 右键搜索 Google
   customSearchEngines: CustomSearchEngine[];           // 用户自定义搜索引擎
+  enableContextMenuInfo: boolean;                      // 右键菜单发音后显示音标/翻译
   enableInlineSyllableRuby: boolean;                  // 单击单词时断音节 (Syllabification)
   syllableDisplayMode: 'inline' | 'badge' | 'overlay'; // 音节展示模式
   autoTranslateFocus: boolean;                        // 聚焦句子时自动翻译
@@ -91,6 +92,7 @@ const DEFAULT_SETTINGS: RTTRSettings = {
   enableSearchReddit: false,
   enableSearchGoogle: true,
   customSearchEngines: [],
+  enableContextMenuInfo: true,
   enableInlineSyllableRuby: true,
   syllableDisplayMode: 'badge',
   autoTranslateFocus: false,
