@@ -185,6 +185,11 @@ const uiDict: Record<string, Record<string, string>> = {
     "ja": "ショートカットページを開く",
     "en": "Open Shortcuts Page"
   },
+  "这是一段翻译结果的演示...": {
+    "zh-TW": "這是一段翻譯結果的展示...",
+    "ja": "これは翻訳結果のデモです...",
+    "en": "This is a demo of the translation result..."
+  },
   "沉浸式 Ruby 注音效果演示": {
     "zh-TW": "沉浸式 Ruby 注音效果展示",
     "ja": "没入型ルビ効果のデモ",
@@ -750,6 +755,24 @@ const getDemoSpanStyle = (index: number) => {
   }
 
   return baseStyle;
+};
+
+const getDemoPopupStyle = () => {
+  const step = demoState.value.step;
+  let top = '60px';
+  let left = '28px';
+
+  if (step >= 5 && step < 6) { top = '65px'; left = '28px'; } 
+  else if (step >= 6 && step < 8) { top = '65px'; left = '260px'; } 
+  else if (step >= 8 && step < 10) { top = '95px'; left = '28px'; } 
+  else if (step >= 10) { top = '95px'; left = '210px'; }
+
+  return {
+    top,
+    left,
+    position: 'absolute',
+    transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)'
+  };
 };
 
 const loadVoices = () => {
@@ -1540,6 +1563,12 @@ watch(settings, () => {
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/></svg>
                     {{ t("聚焦此句") }}
                   </div>
+                </div>
+
+                <!-- Mock Translation Popup -->
+                <div class="demo-trans-popup" :class="{ 'popup-visible': settings.autoTranslateFocus && demoState.step >= 5 }" :style="getDemoPopupStyle()">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; color: #6b7280; flex-shrink: 0;"><path d="M5 15l7-7 7 7"/></svg>
+                  <span style="font-size: 13px; color: #374151; font-weight: 500;">{{ t("这是一段翻译结果的演示...") }}</span>
                 </div>
 
                 <!-- Ripple -->
@@ -3366,6 +3395,26 @@ body {
   z-index: 10;
 }
 .demo-menu-visible {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+
+.demo-trans-popup {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  padding: 4px 8px;
+  opacity: 0;
+  transform: scale(0.92) translateY(-4px);
+  transform-origin: top left;
+  pointer-events: none;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.demo-trans-popup.popup-visible {
   opacity: 1;
   transform: scale(1) translateY(0);
 }
