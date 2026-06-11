@@ -34,6 +34,7 @@ export interface RTTRSettings {
   enableNumberConversion: boolean;                   // 数字单位转换 (100 million → 1亿)
   enableContextMenu: boolean;                         // 右键自定义菜单
   enableSearchX: boolean;                             // 右键搜索 X (Twitter)
+  enableSearchReddit: boolean;                        // 右键搜索 Reddit
   enableInlineSyllableRuby: boolean;                  // 单击单词时断音节 (Syllabification)
   syllableDisplayMode: 'inline' | 'badge' | 'overlay'; // 音节展示模式
   autoTranslateFocus: boolean;                        // 聚焦句子时自动翻译
@@ -79,6 +80,7 @@ const DEFAULT_SETTINGS: RTTRSettings = {
   enableNumberConversion: true,
   enableContextMenu: true,
   enableSearchX: true,
+  enableSearchReddit: false,
   enableInlineSyllableRuby: true,
   syllableDisplayMode: 'badge',
   autoTranslateFocus: false,

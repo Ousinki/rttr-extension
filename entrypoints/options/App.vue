@@ -341,6 +341,16 @@ const uiDict: Record<string, Record<string, string>> = {
     "ja": "右クリックカスタムメニューでX（Twitter）のピンポイント検索ボタンを表示する",
     "en": "Show precise search button on X (Twitter) in the custom right-click menu"
   },
+  "Reddit 搜索": {
+    "zh-TW": "Reddit 搜尋",
+    "ja": "Reddit 検索",
+    "en": "Search on Reddit"
+  },
+  "在自定义右键菜单中显示 Reddit 搜索按钮": {
+    "zh-TW": "在自訂右鍵選單中顯示 Reddit 搜尋按鈕",
+    "ja": "右クリックカスタムメニューで Reddit 検索ボタンを表示する",
+    "en": "Show Reddit search button in the custom right-click menu"
+  },
   "单击断音节": {
     "zh-TW": "單擊斷音節",
     "ja": "クリックで音節分割",
@@ -1613,6 +1623,14 @@ watch(settings, () => {
             <div>
               <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("X (Twitter) 搜索") }}</div>
               <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("在自定义右键菜单中显示 X (Twitter) 精准搜索按钮") }}</div>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;" :style="{ opacity: settings.enableContextMenu ? 1 : 0.5, pointerEvents: settings.enableContextMenu ? 'auto' : 'none' }">
+            <input type="checkbox" v-model="settings.enableSearchReddit" :disabled="!settings.enableContextMenu" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
+            <div>
+              <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("Reddit 搜索") }}</div>
+              <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("在自定义右键菜单中显示 Reddit 搜索按钮") }}</div>
             </div>
           </div>
 

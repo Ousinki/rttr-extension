@@ -174,6 +174,17 @@ export async function recognizeImageWord(img: HTMLImageElement, clientX: number,
             window.open(`https://x.com/search?q=${encodeURIComponent(`"${targetWord}"`)}`, '_blank');
           }
         });
+      }
+      if (currentSettings?.enableSearchReddit) {
+        items.push({
+          icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8c-2.5 0-5 1.5-5 4s2.5 4 5 4 5-1.5 5-4-2.5-4-5-4z"/><circle cx="9" cy="11.5" r="1" fill="currentColor"/><circle cx="15" cy="11.5" r="1" fill="currentColor"/><path d="M9.5 14.5c.8.8 2.2 1 2.5 1s1.7-.2 2.5-1"/></svg>',
+          label: '搜索 Reddit',
+          onClick: () => {
+            window.open(`https://www.reddit.com/search/?q=${encodeURIComponent(targetWord)}`, '_blank');
+          }
+        });
+      }
+      if (currentSettings?.enableSearchX || currentSettings?.enableSearchReddit) {
         items.push({ type: 'divider', label: 'DIVIDER' });
       }
       items.push({ icon: SVG_ICONS.settings, label: '设置', onClick: () => safeSendMessage({ type: 'OPEN_OPTIONS' }) });
