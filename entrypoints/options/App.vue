@@ -841,6 +841,7 @@ onUnmounted(() => {
 onMounted(async () => {
   const savedSettings = await settingsStorage.getValue();
   settings.value = { ...settings.value, ...savedSettings };
+  if (!Array.isArray(settings.value.customSearchEngines)) settings.value.customSearchEngines = [];
   await loadCommandShortcuts();
   
   loadVoices();
