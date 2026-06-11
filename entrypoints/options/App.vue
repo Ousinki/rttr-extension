@@ -728,6 +728,7 @@ const currentSections = computed(() => {
       { id: 'section-shortcuts', title: t('全局快捷键与段落翻译') },
       { id: 'section-sentence-focus', title: t('句子聚焦导航模式') },
       { id: 'section-tts', title: t('语音合成 (TTS) 设置') },
+      { id: 'section-context-menu', title: t('右键自定义菜单') },
       { id: 'section-other', title: t('其他辅助功能') }
     ];
   } else {
@@ -1602,21 +1603,6 @@ watch(settings, () => {
           </div>
         </section>
 
-        <!-- Other Features Settings -->
-        <section id="section-other" class="settings-card">
-          <h2>{{ t("其他辅助功能") }}</h2>
-          <p class="section-desc">{{ t("管理浏览器扩展的其他增强体验与功能。") }}</p>
-
-          <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
-            <input type="checkbox" v-model="settings.enableNumberConversion" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
-            <div>
-              <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("数字单位转换") }}</div>
-              <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("自动识别 100 million、5 billion 等数字并转换为中文计量（1亿、50亿）") }}</div>
-            </div>
-          </div>
-
-        </section>
-
         <!-- Context Menu Settings -->
         <section id="section-context-menu" class="settings-card">
           <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -1647,7 +1633,19 @@ watch(settings, () => {
           </div>
         </section>
 
-        <section id="section-other-continued" class="settings-card">
+        <!-- Other Features Settings -->
+        <section id="section-other" class="settings-card">
+          <h2>{{ t("其他辅助功能") }}</h2>
+          <p class="section-desc">{{ t("管理浏览器扩展的其他增强体验与功能。") }}</p>
+
+          <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" v-model="settings.enableNumberConversion" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
+            <div>
+              <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("数字单位转换") }}</div>
+              <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("自动识别 100 million、5 billion 等数字并转换为中文计量（1亿、50亿）") }}</div>
+            </div>
+          </div>
+
           <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; flex-direction: column; gap: 12px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <input type="checkbox" v-model="settings.enableInlineSyllableRuby" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
