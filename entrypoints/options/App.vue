@@ -331,20 +331,20 @@ const uiDict: Record<string, Record<string, string>> = {
     "ja": "無効にすると右クリックはブラウザ標準メニューに戻ります",
     "en": "When disabled, right-click will show the browser's native context menu"
   },
-  "自定义右键菜单中的搜索快捷按钮。右键可拦截链接跳转，适用于在链接文本上查词、发音或搜索。": {
-    "zh-TW": "自訂右鍵選單中的搜尋快捷按鈕。右鍵可攞截連結跳轉，適用於在連結文字上查詞、發音或搜尋。",
-    "ja": "右クリックカスタムメニューの検索ショートカット。右クリックでリンク遷移をブロックし、リンクテキスト上で単語検索・発音・検索が可能です。",
-    "en": "Search shortcuts in the custom right-click menu. Right-click intercepts link navigation, useful for looking up, pronouncing or searching link text."
+  "自定义右键菜单中的搜索快捷按钮。": {
+    "zh-TW": "自訂右鍵選單中的搜尋快捷按鈕。",
+    "ja": "右クリックカスタムメニューの検索ショートカットボタン。",
+    "en": "Search shortcuts in the custom right-click menu."
   },
   "发音后显示音标与翻译": {
     "zh-TW": "發音後顯示音標與翻譯",
     "ja": "発音後に発音記号と翻訳を表示",
     "en": "Show IPA & Translation After Speaking"
   },
-  "点击菜单栏发音按钮后，自动显示音标、机器翻译和 AI 语境翻译": {
-    "zh-TW": "點擊選單列發音按鈕後，自動顯示音標、機器翻譯和 AI 語境翻譯",
-    "ja": "メニューバーの発音ボタンをクリックすると、発音記号・機械翻訳・AI文脈翻訳を自動表示",
-    "en": "After clicking the speak button in the menu, automatically show IPA, machine translation and AI contextual translation"
+  "点击菜单栏发音按钮后，自动显示音标、机器翻译和 AI 语境翻译。适用于链接文本等点击会跳转的场景": {
+    "zh-TW": "點擊選單列發音按鈕後，自動顯示音標、機器翻譯和 AI 語境翻譯。適用於連結文字等點擊會跳轉的場景",
+    "ja": "メニューの発音ボタンクリック後、発音記号・機械翻訳・AI文脈翻訳を自動表示。リンクテキストなどクリックで遷移する場面に最適",
+    "en": "After clicking speak, auto-show IPA, translation & AI context. Useful for link text that would navigate on click"
   },
   "X (Twitter) 搜索": {
     "zh-TW": "X (Twitter) 搜尋",
@@ -1662,14 +1662,14 @@ watch(settings, () => {
               <span class="switch-slider"></span>
             </label>
           </div>
-          <p class="section-desc" style="margin-top: 8px;">{{ t("自定义右键菜单中的搜索快捷按钮。右键可拦截链接跳转，适用于在链接文本上查词、发音或搜索。") }}</p>
+          <p class="section-desc" style="margin-top: 8px;">{{ t("自定义右键菜单中的搜索快捷按钮。") }}</p>
 
           <div v-if="settings.enableContextMenu" style="display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
             <div style="padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
               <input type="checkbox" v-model="settings.enableContextMenuInfo" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
               <div>
                 <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("发音后显示音标与翻译") }}</div>
-                <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("点击菜单栏发音按钮后，自动显示音标、机器翻译和 AI 语境翻译") }}</div>
+                <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("点击菜单栏发音按钮后，自动显示音标、机器翻译和 AI 语境翻译。适用于链接文本等点击会跳转的场景") }}</div>
               </div>
             </div>
 
