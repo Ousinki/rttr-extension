@@ -1673,6 +1673,8 @@ watch(settings, () => {
               </div>
             </div>
 
+            <div style="border-top: 1px solid #e5e7eb; margin: 4px 0;"></div>
+
             <div style="padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
               <input type="checkbox" v-model="settings.enableSearchGoogle" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
               <div>
