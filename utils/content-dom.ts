@@ -121,6 +121,7 @@ export function applyAnnotations(
 
   // Pre-calculate translation parts for all annotations
   const annotationTranslationParts = new Map<AnnotationEntry, Map<number, string>>();
+  const multiNodeGroupIds = new Map<AnnotationEntry, string>();
   for (const entry of annotations) {
     const rawTranslation = entry.translation || '';
     const isSame = entry.text.toLowerCase() === rawTranslation.toLowerCase();
@@ -140,17 +141,11 @@ export function applyAnnotations(
     if (intersectingNodes.length === 1) {
       partsMap.set(intersectingNodes[0].idx, translation);
     } else if (intersectingNodes.length > 1) {
-      const totalOverlap = intersectingNodes.reduce((sum, n) => sum + n.overlap, 0);
-      let currentTranslationChar = 0;
+      // Multi-node: full translation on first segment, empty on rest; will be merged later
+      const gid = `g-${entry.start}-${entry.end}`;
+      multiNodeGroupIds.set(entry, gid);
       for (let j = 0; j < intersectingNodes.length; j++) {
-        const { idx, overlap } = intersectingNodes[j];
-        if (j === intersectingNodes.length - 1) {
-          partsMap.set(idx, translation.slice(currentTranslationChar));
-        } else {
-          const charCount = Math.round((overlap / totalOverlap) * translation.length);
-          partsMap.set(idx, translation.slice(currentTranslationChar, currentTranslationChar + charCount));
-          currentTranslationChar += charCount;
-        }
+        partsMap.set(intersectingNodes[j].idx, j === 0 ? translation : '');
       }
     }
     annotationTranslationParts.set(entry, partsMap);
@@ -170,6 +165,7 @@ export function applyAnnotations(
           start: Math.max(0, entry.start - textNode.start),
           end: Math.min(textNode.end, entry.end) - textNode.start,
           translationPart,
+          groupId: multiNodeGroupIds.get(entry),
         };
       })
       .filter((item) => item.end > item.start);
@@ -207,6 +203,104 @@ export function applyAnnotations(
       }
     }
   }
+
+  // Post-processing: merge multi-segment <ruby> elements with the same group into a single <ruby>
+  mergeGroupedRubyElements(paragraph);
+}
+
+/**
+ * Merge adjacent <ruby> elements that share the same data-rttr-group into a single <ruby>.
+ * This allows translations of multi-word phrases (spanning DOM boundaries like <a> tags)
+ * to be centered over the entire phrase instead of split into fragments.
+ */
+function mergeGroupedRubyElements(container: HTMLElement) {
+  const grouped = new Map<string, HTMLElement[]>();
+  container.querySelectorAll('ruby[data-rttr-group]').forEach(el => {
+    const gid = (el as HTMLElement).dataset.rttrGroup!;
+    if (!grouped.has(gid)) grouped.set(gid, []);
+    grouped.get(gid)!.push(el as HTMLElement);
+  });
+
+  for (const [, elements] of grouped) {
+    if (elements.length < 2) continue;
+
+    const first = elements[0];
+    // Find the <rt> with the full translation (on the first element)
+    const firstRt = first.querySelector('rt.rttr-translation');
+    const fullTranslation = firstRt?.textContent || '';
+
+    // Remove the <rt> from first element temporarily
+    if (firstRt) firstRt.remove();
+
+    // For each subsequent element in the group, collect its content and merge into first <ruby>
+    for (let i = 1; i < elements.length; i++) {
+      const el = elements[i];
+      const rt = el.querySelector('rt.rttr-translation');
+      if (rt) rt.remove();
+
+      // Collect all intermediate nodes between previous group element and current one
+      // Then unwrap the current <ruby> and move its content + any wrapper (like <a>) into first
+      const prevEl = elements[i - 1];
+      const nodesInBetween = collectNodesBetween(prevEl, el);
+
+      // Move intermediate nodes (whitespace, other inline elements) into first <ruby>
+      for (const node of nodesInBetween) {
+        first.appendChild(node);
+      }
+
+      // If the <ruby> is wrapped by an inline element (like <a>), preserve that wrapper
+      const parent = el.parentElement;
+      if (parent && parent !== first.parentElement && isInlineWrapper(parent)) {
+        // Move all children out of the <ruby> into its parent wrapper
+        while (el.firstChild) parent.insertBefore(el.firstChild, el);
+        el.remove();
+        // Move the wrapper (e.g. <a>) into the first <ruby>
+        first.appendChild(parent);
+      } else {
+        // Same parent - just unwrap the <ruby> and move its children
+        while (el.firstChild) first.appendChild(el.firstChild);
+        el.remove();
+      }
+    }
+
+    // Re-add the <rt> with the full translation at the end of the merged <ruby>
+    const rt = document.createElement('rt');
+    rt.className = 'rttr-translation';
+    rt.textContent = fullTranslation;
+    rt.style.color = first.style.color || 'inherit';
+    first.appendChild(rt);
+  }
+}
+
+/** Collect all sibling nodes between `start` (exclusive) and `end` (exclusive) at the same level. */
+function collectNodesBetween(start: Node, end: Node): Node[] {
+  const result: Node[] = [];
+  // If they share the same parent, collect direct siblings
+  if (start.parentNode === end.parentNode) {
+    let node = start.nextSibling;
+    while (node && node !== end) {
+      result.push(node);
+      node = node.nextSibling;
+    }
+    return result;
+  }
+  // If end is inside a wrapper (like <a>), collect nodes between start and that wrapper
+  const endWrapper = end.parentElement;
+  if (endWrapper && start.parentNode === endWrapper.parentNode) {
+    let node = start.nextSibling;
+    while (node && node !== endWrapper) {
+      result.push(node);
+      node = node.nextSibling;
+    }
+  }
+  return result;
+}
+
+function isInlineWrapper(el: HTMLElement): boolean {
+  const tag = el.tagName;
+  return tag === 'A' || tag === 'SPAN' || tag === 'EM' || tag === 'STRONG' ||
+    tag === 'B' || tag === 'I' || tag === 'U' || tag === 'MARK' || tag === 'ABBR' ||
+    tag === 'CODE' || tag === 'SUB' || tag === 'SUP' || tag === 'FONT';
 }
 
 function annotateTextNode(

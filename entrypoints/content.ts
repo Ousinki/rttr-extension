@@ -16,7 +16,7 @@ import { recognizeImageWord } from '@/utils/content-ocr';
 import { speakText } from '@/utils/tts';
 import { getNumberReading, isNumberLikeText } from '@/utils/number-reading';
 import { syllabifyText } from '@/utils/syllables';
-import { initSentenceFocus, splitBlock, splitAndFocusAtNode, handleSeparatorClick, isFocused, focusNext, focusPrev, focusSentenceAtNode, unfocusSentence, getFocusedSentenceText, getFocusedSentenceRect, isSplitActive, refreshFocusHighlight } from "@/utils/sentence-focus";
+import { initSentenceFocus, splitBlock, splitAndFocusAtNode, handleSeparatorClick, isFocused, focusNext, focusPrev, focusSentenceAtNode, unfocusSentence, getFocusedSentenceText, getFocusedSentenceRect, isSplitActive, refreshFocusHighlight, getBlockSentenceBoundaries, getBlockText } from "@/utils/sentence-focus";
 import { initSubtitleInteraction } from '@/utils/subtitle-interaction';
 import { checkFullscreen } from '@/utils/bilibili-state';
 
@@ -773,7 +773,7 @@ export default defineContentScript({
         }
 
         if (matched) {
-          // If the mouse is directly over a translation block, toggle it off
+          // If the mouse is directly over a translation block, toggle it off immediately
           const transBlockUnder = lastMouseTarget?.closest?.('.rttr-paragraph-translation') as HTMLElement | null;
           if (transBlockUnder) {
             e.preventDefault();
@@ -1440,7 +1440,6 @@ export default defineContentScript({
         }
       }
     }
-
     // Inline Paragraph Translation: insert translated text below the paragraph
     async function handleInlineParagraphTranslate(paragraph: HTMLElement) {
       // If triggered directly on a translation block, resolve to the original paragraph
@@ -1455,8 +1454,7 @@ export default defineContentScript({
           return;
         }
       }
-
-      // Toggle off: check if translation block already exists (via stored reference)
+      // Toggle off: block translation (via stored reference)
       const existing = (paragraph as any)._rttr_translation_block;
       if (existing && document.body.contains(existing)) {
         existing.classList.add('rttr-para-trans-exit');
@@ -1466,7 +1464,7 @@ export default defineContentScript({
         return;
       }
 
-      // Toggle off: remove ALL adjacent translation blocks (handles cleaning up any existing duplicates)
+      // Toggle off: adjacent block translations
       let sibling = paragraph.nextElementSibling;
       let removedSibling = false;
       while (sibling && sibling.classList.contains('rttr-paragraph-translation')) {
@@ -1477,27 +1475,34 @@ export default defineContentScript({
         removedSibling = true;
         sibling = sibling.nextElementSibling;
       }
-
       if (removedSibling) {
         (paragraph as any)._rttr_translation_block = null;
         return;
       }
 
+      const fullText = (paragraph.textContent || '').trim();
+      if (!fullText) return;
+
+      const isHeading = /^H[1-6]$/.test(paragraph.tagName);
+
+      await handleBlockTranslate(paragraph, isHeading);
+    }
+
+
+
+    /** Block mode: create a translation block after the paragraph (existing behavior) */
+    async function handleBlockTranslate(paragraph: HTMLElement, isHeading: boolean) {
       let html = paragraph.innerHTML || '';
       html = html.replace(/◯/g, ' ').trim();
       if (!html) return;
 
-      // Create translation block — use <span> for headings to avoid layout issues in flex containers
       const computedStyle = window.getComputedStyle(paragraph);
-      const isHeading = /^H[1-6]$/.test(paragraph.tagName);
       const transBlock = document.createElement(isHeading ? 'span' : paragraph.tagName.toLowerCase());
       transBlock.className = 'rttr-paragraph-translation rttr-loading';
-      
-      // Store bidirectional references
+
       (paragraph as any)._rttr_translation_block = transBlock;
       (transBlock as any)._rttr_original_paragraph = paragraph;
 
-      // Copy key typography styles from original paragraph
       transBlock.style.fontFamily = computedStyle.fontFamily;
       transBlock.style.fontSize = computedStyle.fontSize;
       transBlock.style.lineHeight = computedStyle.lineHeight;
@@ -1507,7 +1512,6 @@ export default defineContentScript({
       paragraph.insertAdjacentElement('afterend', transBlock);
 
       try {
-        // Try normal translation engine first
         const engine = currentSettings?.translationEngine || 'google';
         if (engine !== 'none') {
           const resp = await safeSendMessage({
@@ -1521,11 +1525,8 @@ export default defineContentScript({
             return;
           }
         }
-        // Fallback to AI
         const aiResp = await safeSendMessage({
-          type: 'CONTEXTUAL_TRANSLATE',
-          word: html,
-          sentence: html
+          type: 'CONTEXTUAL_TRANSLATE', word: html, sentence: html
         });
         if (aiResp?.success && aiResp.translation) {
           transBlock.innerHTML = aiResp.translation;
@@ -1846,6 +1847,24 @@ function injectStyles() {
     @keyframes rttr-para-pulse {
       0%, 100% { opacity: 0.3; }
       50% { opacity: 0.65; }
+    }
+
+    .rttr-sentence-translation {
+      opacity: 0.5;
+      color: #999;
+      font-style: italic;
+      animation: rttr-sentence-fade-in 0.3s ease forwards;
+    }
+    .rttr-sentence-translation.rttr-sentence-trans-exit {
+      animation: rttr-sentence-fade-out 0.2s ease forwards;
+    }
+    @keyframes rttr-sentence-fade-in {
+      from { opacity: 0; }
+      to { opacity: 0.5; }
+    }
+    @keyframes rttr-sentence-fade-out {
+      from { opacity: 0.5; }
+      to { opacity: 0; }
     }
     
     .rttr-inline-syllable,

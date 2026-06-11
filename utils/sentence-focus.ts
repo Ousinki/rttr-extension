@@ -44,8 +44,15 @@ export function isFocused(): boolean {
   return focusState !== null;
 }
 
+export function getBlockSentenceBoundaries(block: Element): {startOffset: number, endOffset: number}[] {
+  const data = sentenceStore.get(block);
+  return data ? data.boundaries : [];
+}
 
-
+export function getBlockText(block: Element): string {
+  const data = sentenceStore.get(block);
+  return data ? data.fullText : '';
+}
 export function splitBlock(node: Node): void {
   const block = findParagraph(node as HTMLElement);
   if (!block) return;
@@ -348,7 +355,31 @@ function computeSentenceBoundaries(block: Element): SentenceBoundary[] {
 
   const segmenter = new Intl.Segmenter('en', { granularity: 'sentence' });
   const cleanText = blockText.replace(/\[.*?\]/g, match => ' '.repeat(match.length));
-  const segments = Array.from(segmenter.segment(cleanText));
+  
+  const rawSegments = Array.from(segmenter.segment(cleanText));
+  const segments: { index: number; segment: string }[] = [];
+  
+  const abbrRegex = /\b(?:e\.g|i\.e|etc|vs|cf|viz|al|Inc|Ltd|Co|Corp|Mr|Mrs|Ms|Dr|Prof|Rev|St|Mt|Ft|Capt|Gen|Sen|Rep|Gov|a\.m|p\.m|vol|fig|eq|p|pp|approx|dept|univ|assn|bros)\.\s*$/i;
+  const initialRegex = /\b[A-Z]\.\s*$/;
+
+  for (let i = 0; i < rawSegments.length; i++) {
+    const current = rawSegments[i];
+    if (segments.length > 0) {
+      const prev = segments[segments.length - 1];
+      const endsWithPunc = /[.?!]["']?\s+$/.test(prev.segment);
+      const startsWithLower = /^[a-z]/.test(current.segment.trim());
+
+      if (
+        abbrRegex.test(prev.segment) || 
+        initialRegex.test(prev.segment) || 
+        (endsWithPunc && startsWithLower)
+      ) {
+        prev.segment += current.segment;
+        continue;
+      }
+    }
+    segments.push({ index: current.index, segment: current.segment });
+  }
 
   const boundaries: SentenceBoundary[] = [];
   for (const seg of segments) {
@@ -746,6 +777,7 @@ function collectTextNodes(block: Element, skipSeparators: boolean): Text[] {
       const parent = node.parentElement;
       if (!parent) return NodeFilter.FILTER_REJECT;
       if (parent.closest('script, style, rt, rp')) return NodeFilter.FILTER_REJECT;
+      if (parent.closest('.rttr-sentence-translation')) return NodeFilter.FILTER_REJECT;
       if (skipSeparators && parent.closest('.rttr-sentence-sep')) return NodeFilter.FILTER_REJECT;
       if (!skipSeparators && parent.closest('.rttr-sentence-sep, [data-rttr-split="true"] [data-rttr-split="true"]')) {
         return NodeFilter.FILTER_REJECT;
