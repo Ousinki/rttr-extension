@@ -30,7 +30,14 @@ interface LocalAnnotation {
 
 export function findParagraph(el: HTMLElement | null): HTMLElement | null {
   while (el && el.tagName !== 'BODY' && el.tagName !== 'MAIN') {
-    if (BLOCK_TAGS.has(el.tagName)) return el;
+    if (el.classList?.contains('rttr-paragraph-translation')) {
+      const orig = (el as any)._rttr_original_paragraph;
+      if (orig) return orig;
+      const prev = el.previousElementSibling as HTMLElement;
+      if (prev) return prev;
+      return null;
+    }
+    if (el.classList && BLOCK_TAGS.has(el.tagName)) return el;
     el = el.parentElement;
   }
   return null;

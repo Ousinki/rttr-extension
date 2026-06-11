@@ -125,7 +125,6 @@ export default defineContentScript({
   matches: ['<all_urls>'],
   cssInjectionMode: 'ui',
   async main(ctx) {
-    console.log('[RTTR BOOT] content script loaded v-debug-1');
     let currentSettings: any;
     try {
       currentSettings = await settingsStorage.getValue();
@@ -774,6 +773,15 @@ export default defineContentScript({
         }
 
         if (matched) {
+          // If the mouse is directly over a translation block, toggle it off
+          const transBlockUnder = lastMouseTarget?.closest?.('.rttr-paragraph-translation') as HTMLElement | null;
+          if (transBlockUnder) {
+            e.preventDefault();
+            transBlockUnder.classList.add('rttr-para-trans-exit');
+            transBlockUnder.addEventListener('animationend', () => transBlockUnder.remove(), { once: true });
+            setTimeout(() => { if (transBlockUnder.parentNode) transBlockUnder.remove(); }, 500);
+            return;
+          }
           const paragraph = findParagraph(lastMouseTarget);
           if (paragraph) {
             e.preventDefault();
@@ -793,7 +801,7 @@ export default defineContentScript({
       if (currentSettings.inlineParagraphTrigger !== 'longpress') return;
       if (e.button !== 0) return;
       const target = e.target as HTMLElement;
-      if (target.closest('rttr-ui-root') || target.closest('rttr-bili-study-ui')) return;
+      if (target.closest('rttr-ui-root') || target.closest('rttr-bili-study-ui') || target.closest('.rttr-paragraph-translation')) return;
       const paragraph = findParagraph(target);
       if (!paragraph) return;
       inlineLongPressTimer = setTimeout(() => {
@@ -1435,11 +1443,43 @@ export default defineContentScript({
 
     // Inline Paragraph Translation: insert translated text below the paragraph
     async function handleInlineParagraphTranslate(paragraph: HTMLElement) {
-      // Toggle: if already translated, remove
-      const existing = paragraph.nextElementSibling;
-      if (existing?.classList.contains('rttr-paragraph-translation')) {
+      // If triggered directly on a translation block, resolve to the original paragraph
+      if ((paragraph as any)._rttr_original_paragraph) {
+        paragraph = (paragraph as any)._rttr_original_paragraph;
+      } else if (paragraph.classList.contains('rttr-paragraph-translation')) {
+        const prev = paragraph.previousElementSibling;
+        if (prev && !prev.classList.contains('rttr-paragraph-translation')) {
+          paragraph = prev as HTMLElement;
+        } else {
+          paragraph.remove();
+          return;
+        }
+      }
+
+      // Toggle off: check if translation block already exists (via stored reference)
+      const existing = (paragraph as any)._rttr_translation_block;
+      if (existing && document.body.contains(existing)) {
         existing.classList.add('rttr-para-trans-exit');
         existing.addEventListener('animationend', () => existing.remove(), { once: true });
+        setTimeout(() => { if (existing.parentNode) existing.remove(); }, 500);
+        (paragraph as any)._rttr_translation_block = null;
+        return;
+      }
+
+      // Toggle off: remove ALL adjacent translation blocks (handles cleaning up any existing duplicates)
+      let sibling = paragraph.nextElementSibling;
+      let removedSibling = false;
+      while (sibling && sibling.classList.contains('rttr-paragraph-translation')) {
+        const toRemove = sibling;
+        toRemove.classList.add('rttr-para-trans-exit');
+        toRemove.addEventListener('animationend', () => toRemove.remove(), { once: true });
+        setTimeout(() => { if (toRemove.parentNode) toRemove.remove(); }, 500);
+        removedSibling = true;
+        sibling = sibling.nextElementSibling;
+      }
+
+      if (removedSibling) {
+        (paragraph as any)._rttr_translation_block = null;
         return;
       }
 
@@ -1447,10 +1487,16 @@ export default defineContentScript({
       html = html.replace(/◯/g, ' ').trim();
       if (!html) return;
 
-      // Create translation block — inherit original paragraph's tag and styles
+      // Create translation block — use <span> for headings to avoid layout issues in flex containers
       const computedStyle = window.getComputedStyle(paragraph);
-      const transBlock = document.createElement(paragraph.tagName.toLowerCase());
+      const isHeading = /^H[1-6]$/.test(paragraph.tagName);
+      const transBlock = document.createElement(isHeading ? 'span' : paragraph.tagName.toLowerCase());
       transBlock.className = 'rttr-paragraph-translation rttr-loading';
+      
+      // Store bidirectional references
+      (paragraph as any)._rttr_translation_block = transBlock;
+      (transBlock as any)._rttr_original_paragraph = paragraph;
+
       // Copy key typography styles from original paragraph
       transBlock.style.fontFamily = computedStyle.fontFamily;
       transBlock.style.fontSize = computedStyle.fontSize;
@@ -1777,9 +1823,8 @@ function injectStyles() {
 
     .rttr-paragraph-translation {
       margin: 4px 0 12px;
-      padding: 8px 12px;
+      margin-left: 0.5em;
       opacity: 0.65;
-      border-left: 3px solid #ccc;
       background: transparent;
       white-space: pre-wrap;
       animation: rttr-para-fade-in 0.3s ease forwards;
