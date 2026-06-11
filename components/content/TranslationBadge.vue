@@ -14,7 +14,12 @@
     </div>
     <strong v-else>{{ uiState.translationBadge.text }}</strong>
 
-    <span class="engine-tag" v-if="uiState.translationBadge.showEngine">
+    <span
+      class="engine-tag"
+      v-if="uiState.translationBadge.showEngine"
+      @click="handleEngineClick"
+      title="点击使用 AI 翻译"
+    >
       {{ safeEngine }}
     </span>
   </div>
@@ -24,6 +29,7 @@
 import { computed, ref, onMounted, watch, nextTick } from 'vue';
 import { uiState } from '@/utils/content-state';
 import { checkFullscreen } from '@/utils/bilibili-state';
+import { safeSendMessage } from '@/utils/content-messaging';
 
 const badgeEl = ref<HTMLElement | null>(null);
 const hostEl = ref<HTMLElement | null>(null);
@@ -179,6 +185,43 @@ const badgeStyle = computed(() => {
   };
 });
 
+const isTranslating = ref(false);
+
+const handleEngineClick = async (e: MouseEvent) => {
+  e.stopPropagation();
+  e.preventDefault();
+  
+  if (isTranslating.value) return;
+  
+  const originalText = uiState.translationBadge.originalText;
+  if (!originalText) return;
+  
+  isTranslating.value = true;
+  
+  uiState.translationBadge.text = 'AI 翻译中...';
+  uiState.translationBadge.engine = 'AI';
+  uiState.translationBadge.translationType = 'ai';
+  uiState.translationBadge.pinned = true;
+  
+  try {
+    const resp = await safeSendMessage({
+      type: 'CONTEXTUAL_TRANSLATE',
+      word: originalText,
+      sentence: originalText
+    });
+    
+    if (resp && resp.success && resp.translation) {
+      uiState.translationBadge.text = resp.translation;
+    } else {
+      uiState.translationBadge.text = resp?.error ? `翻译失败: ${resp.error}` : '翻译失败';
+    }
+  } catch (err) {
+    uiState.translationBadge.text = '翻译出错';
+    console.error('[RTTR-DEBUG] AI translation failed:', err);
+  } finally {
+    isTranslating.value = false;
+  }
+};
 </script>
 
 <style scoped>
@@ -234,6 +277,14 @@ const badgeStyle = computed(() => {
   line-height: 1;
   white-space: nowrap;
   flex-shrink: 0;
+  pointer-events: auto !important;
+  cursor: pointer;
+  transition: color 0.2s ease, font-weight 0.2s ease;
+}
+
+.rttr-translation-tooltip .engine-tag:hover {
+  color: #1a1a1a;
+  font-weight: bold;
 }
 
 .rttr-translation-tooltip .trans-content-col {

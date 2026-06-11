@@ -33,9 +33,14 @@ export interface RTTRSettings {
   targetLanguage: 'zh-CN' | 'zh-TW' | 'ja' | 'en'; // 目标翻译语言
   enableNumberConversion: boolean;                   // 数字单位转换 (100 million → 1亿)
   enableContextMenu: boolean;                         // 右键自定义菜单
+  enableSearchX: boolean;                             // 右键搜索 X (Twitter)
   enableInlineSyllableRuby: boolean;                  // 单击单词时断音节 (Syllabification)
   syllableDisplayMode: 'inline' | 'badge' | 'overlay'; // 音节展示模式
   autoTranslateFocus: boolean;                        // 聚焦句子时自动翻译
+  sentenceFocusStyle: 'dim' | 'hl-yellow' | 'hl-blue' | 'hl-red'; // 聚焦句子样式
+  enableInlineParagraphTranslate: boolean;             // 段落内联翻译开关
+  inlineParagraphTrigger: 'shift' | 'ctrl' | 'alt' | 'longpress' | 'direct' | 'custom'; // 触发方式
+  inlineParagraphCustomShortcut: string;               // 自定义快捷键 (如 'Alt+KeyP')
 
   // Bilibili 双语精读增强设置
   enableBiliStudy: boolean;                           // 是否启用 B 站双语精读助手
@@ -73,9 +78,14 @@ const DEFAULT_SETTINGS: RTTRSettings = {
   targetLanguage: 'zh-CN',
   enableNumberConversion: true,
   enableContextMenu: true,
+  enableSearchX: true,
   enableInlineSyllableRuby: true,
   syllableDisplayMode: 'badge',
   autoTranslateFocus: false,
+  sentenceFocusStyle: 'dim',
+  enableInlineParagraphTranslate: true,
+  inlineParagraphTrigger: 'shift',
+  inlineParagraphCustomShortcut: 'Alt+KeyP',
 
   enableBiliStudy: true,
   biliAutoPause: false,

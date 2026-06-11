@@ -104,14 +104,14 @@ function injectSubtitleStyles() {
     }
 
     /* 被 RTTR 点击查词高亮的单词 */
-    .rttr-word-highlight {
+    .rttr-subtitle-word-highlight {
       color: #00aeec !important;
       text-shadow: 0 0 8px rgba(0, 174, 236, 0.4) !important;
       transition: color 0.2s ease, text-shadow 0.2s ease !important;
       border-radius: 2px;
       pointer-events: auto !important;
     }
-    .rttr-word-highlight.fading {
+    .rttr-subtitle-word-highlight.fading {
       color: inherit !important;
       text-shadow: none !important;
     }
@@ -135,14 +135,14 @@ function injectStylesIntoShadowRoot(root: ShadowRoot) {
     }
     
     /* Word highlight inside Shadow DOM */
-    .rttr-word-highlight {
+    .rttr-subtitle-word-highlight {
       color: #00aeec !important;
       text-shadow: 0 0 8px rgba(0, 174, 236, 0.4) !important;
       transition: color 0.2s ease, text-shadow 0.2s ease !important;
       border-radius: 2px;
       pointer-events: auto !important;
     }
-    .rttr-word-highlight.fading {
+    .rttr-subtitle-word-highlight.fading {
       color: inherit !important;
       text-shadow: none !important;
     }
@@ -355,7 +355,7 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
     e.stopPropagation();
 
     // 清除之前的高亮
-    subtitleEl.querySelectorAll('.rttr-word-highlight').forEach(span => {
+    subtitleEl.querySelectorAll('.rttr-subtitle-word-highlight').forEach(span => {
       const parent = span.parentNode;
       if (parent) {
         parent.replaceChild(document.createTextNode(span.textContent || ''), span);
@@ -402,7 +402,7 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
       wordRange.setEnd(textNode, end);
 
       const highlightSpan = document.createElement('span');
-      highlightSpan.className = 'rttr-word-highlight';
+      highlightSpan.className = 'rttr-subtitle-word-highlight';
       wordRange.surroundContents(highlightSpan);
 
       // 鼠标离开该单词时淡出并移除高亮

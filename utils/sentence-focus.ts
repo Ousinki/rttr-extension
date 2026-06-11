@@ -25,6 +25,7 @@ const sentenceStore = new WeakMap<Element, BlockSentenceData>();
 let splitBlocks: Set<Element> = new Set();
 let focusState: FocusStateInternal | null = null;
 let currentSettings: Settings | null = null;
+let activeHighlightSpans: HTMLSpanElement[] = [];
 
 const BLOCK_SELECTOR = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, td, th, article > div, section > div, main > div';
 const SKIP_SELECTOR = 'nav, header, footer, code, pre, script, style, rttr-ui-root';
@@ -191,15 +192,45 @@ export function focusPrev(): void {
   applyFocusHighlight();
 }
 
+const FOCUS_HIGHLIGHT_KEYS = [
+  'rttr-sentence-dim',
+  'rttr-sentence-hl-yellow',
+  'rttr-sentence-hl-blue',
+  'rttr-sentence-hl-red'
+];
+
+export function clearFocusHighlights(): void {
+  const cssObj = CSS as any;
+  if (cssObj.highlights) {
+    for (const key of FOCUS_HIGHLIGHT_KEYS) {
+      cssObj.highlights.delete(key);
+    }
+  }
+  clearDOMHighlights();
+}
+
 export function unfocusSentence(): void {
   focusState = null;
-  const cssObj = CSS as any;
-  if (cssObj.highlights) cssObj.highlights.delete('rttr-sentence-dim');
+  clearFocusHighlights();
+}
+
+export function refreshFocusHighlight(): void {
+  if (focusState) {
+    applyFocusHighlight();
+  }
 }
 
 export function getFocusedSentenceText(): string | null {
   if (!focusState) return null;
   try {
+    // When DOM highlight spans are active, the original Range is invalidated
+    // by surroundContents(). Use the spans' text content instead.
+    if (activeHighlightSpans.length > 0) {
+      let text = activeHighlightSpans.map(s => s.textContent || '').join('');
+      text = text.replace(/◯/g, '');
+      text = text.replace(/\[\d+\]/g, '');
+      return text.trim() || null;
+    }
     let text = focusState.allRanges[focusState.currentIdx]?.toString() || '';
     text = text.replace(/◯/g, '');
     text = text.replace(/\[\d+\]/g, '');
@@ -210,6 +241,23 @@ export function getFocusedSentenceText(): string | null {
 export function getFocusedSentenceRect(): DOMRect | null {
   if (!focusState) return null;
   try {
+    // When DOM highlight spans are active, compute a bounding rect
+    // from the spans since the original Range is invalidated by surroundContents().
+    if (activeHighlightSpans.length > 0) {
+      let minLeft = Infinity, minTop = Infinity;
+      let maxRight = -Infinity, maxBottom = -Infinity;
+      for (const span of activeHighlightSpans) {
+        const r = span.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) continue;
+        minLeft = Math.min(minLeft, r.left);
+        minTop = Math.min(minTop, r.top);
+        maxRight = Math.max(maxRight, r.right);
+        maxBottom = Math.max(maxBottom, r.bottom);
+      }
+      if (minLeft !== Infinity) {
+        return new DOMRect(minLeft, minTop, maxRight - minLeft, maxBottom - minTop);
+      }
+    }
     return focusState.allRanges[focusState.currentIdx]?.getBoundingClientRect() || null;
   } catch { return null; }
 }
@@ -374,11 +422,58 @@ function insertVisualSeparators(block: Element, boundaries: SentenceBoundary[]):
     if (remaining) frag.appendChild(document.createTextNode(remaining));
     entry.node.parentNode?.replaceChild(frag, entry.node);
   }
+
+  // Post-process: Move separators out of <sup>, <sub> or <a> elements to keep styling clean
+  block.querySelectorAll('.rttr-sentence-sep').forEach((sep) => {
+    let parent = sep.parentElement;
+    let containerToMoveAfter: HTMLElement | null = null;
+    while (parent && parent !== block) {
+      if (parent.tagName === 'SUP' || parent.tagName === 'SUB' || parent.tagName === 'A') {
+        containerToMoveAfter = parent as HTMLElement;
+      }
+      parent = parent.parentElement;
+    }
+    if (containerToMoveAfter && containerToMoveAfter.parentNode) {
+      containerToMoveAfter.parentNode.insertBefore(sep, containerToMoveAfter.nextSibling);
+    }
+  });
+}
+
+// --- Internal: DOM Highlights (Fallback for Chromium background highlight bugs) ---
+
+function clearDOMHighlights(): void {
+  for (const span of activeHighlightSpans) {
+    if (span.parentNode) {
+      const parent = span.parentNode;
+      const fragment = document.createDocumentFragment();
+      while (span.firstChild) {
+        fragment.appendChild(span.firstChild);
+      }
+      parent.replaceChild(fragment, span);
+    }
+  }
+  activeHighlightSpans = [];
+}
+
+function applyDOMHighlight(ranges: Range[], style: string): void {
+  clearDOMHighlights();
+
+  for (const range of ranges) {
+    try {
+      const span = document.createElement('span');
+      span.className = `rttr-sentence-highlight rttr-sentence-${style}`;
+      range.surroundContents(span);
+      activeHighlightSpans.push(span);
+    } catch (err) {
+      console.error('[RTTR-DEBUG] Failed to surround range with span:', err);
+    }
+  }
 }
 
 // --- Internal: Range Reconstruction ---
 
 function rebuildAllRanges(): Range[] {
+  clearDOMHighlights();
   const allRanges: Range[] = [];
 
   // Collect blocks in document order
@@ -410,19 +505,38 @@ function rebuildRangesForBlock(data: BlockSentenceData): Range[] {
   const offsetMap = buildOffsetMap(textNodes);
   const ranges: Range[] = [];
 
-  for (const boundary of data.boundaries) {
+  console.log('[RTTR-DEBUG] rebuildRangesForBlock textNodes count:', textNodes.length);
+  for (let idx = 0; idx < data.boundaries.length; idx++) {
+    const boundary = data.boundaries[idx];
     const startPos = findNodeAtOffset(offsetMap, boundary.startOffset);
     const endPos = findNodeAtOffset(offsetMap, boundary.endOffset);
-    if (!startPos || !endPos) continue;
+    
+    if (!startPos || !endPos) {
+      console.log(`[RTTR-DEBUG] boundary ${idx} failed to resolve start/end:`, startPos, endPos);
+      continue;
+    }
 
     try {
       const range = document.createRange();
       range.setStart(offsetMap[startPos.nodeIdx].node, startPos.localOffset);
       range.setEnd(offsetMap[endPos.nodeIdx].node, endPos.localOffset);
+      
+      console.log(`[RTTR-DEBUG] boundary ${idx} resolved:`, {
+        startNodeIdx: startPos.nodeIdx,
+        startOffset: startPos.localOffset,
+        startText: offsetMap[startPos.nodeIdx].node.textContent?.slice(0, 20),
+        endNodeIdx: endPos.nodeIdx,
+        endOffset: endPos.localOffset,
+        endText: offsetMap[endPos.nodeIdx].node.textContent?.slice(0, 20),
+        rangeText: range.toString().slice(0, 60) + '...'
+      });
+
       if (range.toString().trim().length > 0) {
         ranges.push(range);
       }
-    } catch { /* skip invalid ranges */ }
+    } catch (err) {
+      console.error(`[RTTR-DEBUG] boundary ${idx} failed to construct range:`, err);
+    }
   }
 
   return ranges;
@@ -430,37 +544,164 @@ function rebuildRangesForBlock(data: BlockSentenceData): Range[] {
 
 // --- Internal: Focus Highlight ---
 
+function splitRangeIntoTextRanges(range: Range): Range[] {
+  const startNode = range.startContainer;
+  const endNode = range.endContainer;
+
+  if (startNode === endNode) {
+    const trimmed = trimTextRange(range);
+    return trimmed ? [trimmed] : [range];
+  }
+
+  const ranges: Range[] = [];
+  const commonAncestor = range.commonAncestorContainer;
+  
+  const walker = document.createTreeWalker(
+    commonAncestor,
+    NodeFilter.SHOW_TEXT
+  );
+
+  let started = false;
+  let node = walker.nextNode();
+  while (node) {
+    if (node === startNode) {
+      started = true;
+    }
+    if (started) {
+      const textNode = node as Text;
+      const r = document.createRange();
+      
+      let startOffset = 0;
+      let endOffset = textNode.textContent?.length ?? 0;
+      
+      if (textNode === startNode) {
+        startOffset = range.startOffset;
+      }
+      if (textNode === endNode) {
+        endOffset = range.endOffset;
+      }
+      
+      // Trim leading and trailing whitespaces of this text node within the range
+      const text = textNode.textContent || '';
+      while (startOffset < endOffset && /\s/.test(text[startOffset])) {
+        startOffset++;
+      }
+      while (endOffset > startOffset && /\s/.test(text[endOffset - 1])) {
+        endOffset--;
+      }
+      
+      if (startOffset < endOffset) {
+        r.setStart(textNode, startOffset);
+        r.setEnd(textNode, endOffset);
+        ranges.push(r);
+      }
+      
+      if (node === endNode) {
+        break;
+      }
+    }
+    node = walker.nextNode();
+  }
+
+  return ranges.length > 0 ? ranges : [range];
+}
+
+function trimTextRange(range: Range): Range | null {
+  if (range.startContainer.nodeType !== Node.TEXT_NODE) return null;
+  const textNode = range.startContainer as Text;
+  const text = textNode.textContent || '';
+  
+  let startOffset = range.startOffset;
+  let endOffset = range.endOffset;
+  
+  while (startOffset < endOffset && /\s/.test(text[startOffset])) {
+    startOffset++;
+  }
+  while (endOffset > startOffset && /\s/.test(text[endOffset - 1])) {
+    endOffset--;
+  }
+  
+  if (startOffset >= endOffset) return null;
+  
+  try {
+    const r = document.createRange();
+    r.setStart(textNode, startOffset);
+    r.setEnd(textNode, endOffset);
+    return r;
+  } catch {
+    return null;
+  }
+}
+
 function applyFocusHighlight(): void {
   if (!focusState) return;
   const focused = focusState.allRanges[focusState.currentIdx];
   if (!focused) return;
 
+  clearFocusHighlights();
+
+  const style = currentSettings?.sentenceFocusStyle || 'dim';
   const cssObj = CSS as any;
-  if (cssObj.highlights) cssObj.highlights.delete('rttr-sentence-dim');
+  if (!cssObj.highlights) return;
 
-  const root = document.body;
-  const dimRanges: Range[] = [];
+  if (style === 'dim') {
+    const root = document.body;
+    const dimRanges: Range[] = [];
 
-  try {
-    const before = document.createRange();
-    before.setStart(root, 0);
-    before.setEnd(focused.startContainer, focused.startOffset);
-    if (before.toString().trim().length > 0) dimRanges.push(before);
-  } catch { /* skip */ }
+    try {
+      const before = document.createRange();
+      before.setStart(root, 0);
+      
+      // Optimize end of "before" range to avoid Chromium's Highlights API edge-rendering bug
+      if (focused.startContainer.nodeType === Node.TEXT_NODE && focused.startOffset === 0) {
+        before.setEndBefore(focused.startContainer);
+      } else {
+        before.setEnd(focused.startContainer, focused.startOffset);
+      }
+      
+      if (before.toString().trim().length > 0) dimRanges.push(before);
+    } catch { /* skip */ }
 
-  try {
-    const after = document.createRange();
-    after.setStart(focused.endContainer, focused.endOffset);
-    after.setEnd(root, root.childNodes.length);
-    if (after.toString().trim().length > 0) dimRanges.push(after);
-  } catch { /* skip */ }
+    try {
+      const after = document.createRange();
+      
+      // Optimize start of "after" range to avoid Chromium's Highlights API edge-rendering bug
+      if (focused.endContainer.nodeType === Node.TEXT_NODE && focused.endOffset === (focused.endContainer.textContent?.length ?? 0)) {
+        after.setStartAfter(focused.endContainer);
+      } else {
+        after.setStart(focused.endContainer, focused.endOffset);
+      }
+      
+      after.setEnd(root, root.childNodes.length);
+      if (after.toString().trim().length > 0) dimRanges.push(after);
+    } catch { /* skip */ }
 
-  if (dimRanges.length > 0 && cssObj.highlights) {
-    const highlight = new (window as any).Highlight(...dimRanges);
-    cssObj.highlights.set('rttr-sentence-dim', highlight);
+    if (dimRanges.length > 0) {
+      const highlight = new (window as any).Highlight(...dimRanges);
+      cssObj.highlights.set('rttr-sentence-dim', highlight);
+    }
+  } else {
+    // For other styles, highlight the focused range directly.
+    // We use DOM element wrapping (<span>) to ensure 100% reliable rendering
+    // across inline boundaries (like <a>, <code>, <sup>, etc.) where Highlight API has rendering bugs.
+    try {
+      console.log('[RTTR-DEBUG] applying focus highlight with style:', style, 'range:', focused.toString());
+      const subRanges = splitRangeIntoTextRanges(focused);
+      console.log('[RTTR-DEBUG] split range into', subRanges.length, 'sub-ranges');
+      subRanges.forEach((sr, idx) => {
+        console.log(`[RTTR-DEBUG] sub-range ${idx}: "${sr.toString()}"`, 
+                    'start:', sr.startContainer.nodeName, sr.startOffset, 
+                    'end:', sr.endContainer.nodeName, sr.endOffset,
+                    'parent:', sr.startContainer.parentElement?.tagName,
+                    'parentClass:', sr.startContainer.parentElement?.className,
+                    'connected:', sr.startContainer.isConnected);
+      });
+      applyDOMHighlight(subRanges, style);
+      console.log('[RTTR-DEBUG] successfully applied DOM highlights for style:', style);
+    } catch (err) {
+      console.error('[RTTR-DEBUG] Failed to apply DOM Highlights:', err);
+    }
   }
-
-
 
   // Scroll focused sentence into view
   try {

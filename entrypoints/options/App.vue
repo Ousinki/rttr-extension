@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, nextTick, watch } from 'vue';
 import { settingsStorage } from '@/utils/storage';
 import type { RTTRSettings } from '@/utils/storage';
 import { speakText } from '@/utils/tts';
@@ -331,6 +331,16 @@ const uiDict: Record<string, Record<string, string>> = {
     "ja": "無効にすると右クリックはブラウザ標準メニューに戻ります",
     "en": "When disabled, right-click will show the browser's native context menu"
   },
+  "X (Twitter) 搜索": {
+    "zh-TW": "X (Twitter) 搜尋",
+    "ja": "X（Twitter）検索",
+    "en": "Search on X (Twitter)"
+  },
+  "在自定义右键菜单中显示 X (Twitter) 精准搜索按钮": {
+    "zh-TW": "在自訂右鍵選單中顯示 X (Twitter) 精確搜尋按鈕",
+    "ja": "右クリックカスタムメニューでX（Twitter）のピンポイント検索ボタンを表示する",
+    "en": "Show precise search button on X (Twitter) in the custom right-click menu"
+  },
   "单击断音节": {
     "zh-TW": "單擊斷音節",
     "ja": "クリックで音節分割",
@@ -510,6 +520,41 @@ const uiDict: Record<string, Record<string, string>> = {
     "zh-TW": "懸停暫停 · 點擊查詞 · 單詞高亮 · 移開繼續",
     "ja": "ホバー一時停止 · クリック検索 · 単語ハイライト · 離れて再開",
     "en": "Hover Pause · Click Lookup · Word Highlight · Leave to Resume"
+  },
+  "聚焦样式": {
+    "zh-TW": "聚焦樣式",
+    "ja": "フォーカススタイル",
+    "en": "Focus Style"
+  },
+  "弱化非聚焦文本 (默认)": {
+    "zh-TW": "弱化非聚焦文本 (預設)",
+    "ja": "非フォーカス文章を弱化 (デフォルト)",
+    "en": "Dim surrounding text (Default)"
+  },
+  "高亮背景 (黄色)": {
+    "zh-TW": "高亮背景 (黃色)",
+    "ja": "背景ハイライト (黄色)",
+    "en": "Highlight background (Yellow)"
+  },
+  "高亮背景 (蓝色)": {
+    "zh-TW": "高亮背景 (藍色)",
+    "ja": "背景ハイライト (青色)",
+    "en": "Highlight background (Blue)"
+  },
+  "字体颜色 (蓝色)": {
+    "zh-TW": "字體顏色 (藍色)",
+    "ja": "文字色 (青色)",
+    "en": "Text color (Blue)"
+  },
+  "字体颜色 (绿色)": {
+    "zh-TW": "字體顏色 (綠色)",
+    "ja": "文字色 (緑色)",
+    "en": "Text color (Green)"
+  },
+  "下划线": {
+    "zh-TW": "下劃線",
+    "ja": "下線",
+    "en": "Underline"
   }
 };
 
@@ -547,9 +592,14 @@ const settings = ref<RTTRSettings>({
   targetLanguage: 'zh-CN',
   enableNumberConversion: true,
   enableContextMenu: true,
+  enableSearchX: true,
   enableInlineSyllableRuby: true,
   syllableDisplayMode: 'badge',
   autoTranslateFocus: false,
+  sentenceFocusStyle: 'dim',
+  enableInlineParagraphTranslate: true,
+  inlineParagraphTrigger: 'shift',
+  inlineParagraphCustomShortcut: 'Alt+KeyP',
 
   enableBiliStudy: true,
   biliAutoPause: false,
@@ -591,6 +641,53 @@ const runDemoLoop = () => {
   setTimeout(() => { demoState.value.step = 12; }, 9500); // hold, then reset
 };
 
+const getDemoSpanStyle = (index: number) => {
+  const step = demoState.value.step;
+  if (step < 5) return { color: '#333' };
+
+  let isActive = false;
+  if (index === 0 && step >= 5 && step < 6) isActive = true;
+  else if (index === 1 && step >= 6 && step < 8) isActive = true;
+  else if (index === 2 && step >= 8 && step < 10) isActive = true;
+  else if (index === 3 && step >= 10) isActive = true;
+
+  const styleMode = settings.value.sentenceFocusStyle || 'dim';
+
+  if (styleMode === 'dim') {
+    return {
+      color: isActive ? '#111' : '#bbb',
+      transition: 'all 0.3s'
+    };
+  }
+
+  const baseStyle: Record<string, any> = {
+    color: '#333',
+    transition: 'all 0.3s',
+    padding: '2px 4px',
+    borderRadius: '4px'
+  };
+
+  if (!isActive) {
+    return {
+      color: '#333',
+      transition: 'all 0.3s'
+    };
+  }
+
+  if (styleMode === 'hl-yellow') {
+    baseStyle.backgroundColor = 'rgba(253, 224, 71, 0.4)';
+    baseStyle.color = '#333';
+  } else if (styleMode === 'hl-blue') {
+    baseStyle.backgroundColor = 'rgba(59, 130, 246, 0.25)';
+    baseStyle.color = '#333';
+  } else if (styleMode === 'hl-red') {
+    baseStyle.backgroundColor = 'rgba(239, 68, 68, 0.25)';
+    baseStyle.color = '#333';
+  }
+
+  return baseStyle;
+};
+
 const loadVoices = () => {
   const synth = window.speechSynthesis;
   voices.value = synth.getVoices().filter(v => v.lang.toLowerCase().includes('en'));
@@ -604,6 +701,77 @@ const loadVoices = () => {
     settings.value.ttsVoiceURI = defaultLocalVoice?.voiceURI || '';
   }
 };
+
+const activeSectionId = ref('');
+
+const currentSections = computed(() => {
+  if (activeTab.value === 'translation') {
+    return [
+      { id: 'section-api', title: t('翻译 API 设置') },
+      { id: 'section-translate-mode', title: t('划词翻译模式') },
+      { id: 'section-pronounce-mode', title: t('划词发音模式') },
+      { id: 'section-shortcuts', title: t('全局快捷键与段落翻译') },
+      { id: 'section-sentence-focus', title: t('句子聚焦导航模式') },
+      { id: 'section-tts', title: t('语音合成 (TTS) 设置') },
+      { id: 'section-other', title: t('其他辅助功能') }
+    ];
+  } else {
+    const list = [{ id: 'section-bili-study', title: t('B站双语精读') }];
+    if (settings.value.enableBiliStudy) {
+      list.push(
+        { id: 'section-subtitle-behavior', title: t('字幕与视频交互行为') },
+        { id: 'section-native-subtitle', title: t('原生字幕智能交互') },
+        { id: 'section-subtitle-demo', title: t('字幕与视频联动演示') }
+      );
+    }
+    return list;
+  }
+});
+
+const scrollToSection = (id: string) => {
+  activeSectionId.value = id;
+  const el = document.getElementById(id);
+  if (el) {
+    const yOffset = -90; 
+    const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
+    window.scrollTo({ top: y, behavior: 'smooth' });
+  }
+};
+
+let observer: IntersectionObserver | null = null;
+
+const initObserver = () => {
+  if (observer) {
+    observer.disconnect();
+  }
+
+  observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        activeSectionId.value = entry.target.id;
+      }
+    });
+  }, {
+    rootMargin: '-100px 0px -60% 0px'
+  });
+
+  currentSections.value.forEach(section => {
+    const el = document.getElementById(section.id);
+    if (el) {
+      observer?.observe(el);
+    }
+  });
+};
+
+watch(currentSections, () => {
+  nextTick(() => {
+    initObserver();
+  });
+}, { immediate: true });
+
+onUnmounted(() => {
+  if (observer) observer.disconnect();
+});
 
 onMounted(async () => {
   const savedSettings = await settingsStorage.getValue();
@@ -639,6 +807,47 @@ async function saveSettings() {
   await settingsStorage.setValue(settings.value);
   saved.value = true;
   setTimeout(() => (saved.value = false), 2000);
+}
+
+const isRecordingShortcut = ref(false);
+
+function startRecordingShortcut() {
+  isRecordingShortcut.value = true;
+  const handler = (e: KeyboardEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Ignore standalone modifier keys
+    if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return;
+    const parts: string[] = [];
+    if (e.ctrlKey || e.metaKey) parts.push('Ctrl');
+    if (e.altKey) parts.push('Alt');
+    if (e.shiftKey) parts.push('Shift');
+    parts.push(e.code);
+    settings.value.inlineParagraphCustomShortcut = parts.join('+');
+    isRecordingShortcut.value = false;
+    document.removeEventListener('keydown', handler, true);
+  };
+  document.addEventListener('keydown', handler, true);
+  // Auto-cancel after 5s
+  setTimeout(() => {
+    if (isRecordingShortcut.value) {
+      isRecordingShortcut.value = false;
+      document.removeEventListener('keydown', handler, true);
+    }
+  }, 5000);
+}
+
+function formatShortcutDisplay(shortcut: string): string {
+  if (!shortcut) return '';
+  return shortcut.split('+').map(part => {
+    if (part === 'Ctrl') return '⌃ Ctrl';
+    if (part === 'Alt') return '⌥ Alt';
+    if (part === 'Shift') return '⇧ Shift';
+    // Convert KeyX → X, Digit1 → 1, etc.
+    if (part.startsWith('Key')) return part.slice(3);
+    if (part.startsWith('Digit')) return part.slice(5);
+    return part;
+  }).join(' + ');
 }
 
 function testTTS() {
@@ -772,11 +981,28 @@ watch(settings, () => {
       </div>
     </header>
 
-    <main class="content">
-      <!-- Translation tab content -->
-      <template v-if="activeTab === 'translation'">
-        <!-- API Settings -->
-        <section class="settings-card">
+    <div class="settings-layout">
+      <!-- Sidebar Navigation Directory -->
+      <aside class="settings-sidebar">
+        <div class="sidebar-nav">
+          <a 
+            v-for="item in currentSections" 
+            :key="item.id" 
+            :href="'#' + item.id"
+            class="sidebar-nav-item"
+            :class="{ active: activeSectionId === item.id }"
+            @click.prevent="scrollToSection(item.id)"
+          >
+            {{ item.title }}
+          </a>
+        </div>
+      </aside>
+
+      <main class="content">
+        <!-- Translation tab content -->
+        <template v-if="activeTab === 'translation'">
+          <!-- API Settings -->
+          <section id="section-api" class="settings-card">
           <h2>{{ t("翻译 API 设置") }}</h2>
           <p class="section-desc">{{ t("配置 OpenAI 兼容的接口信息用于长句/段落的 AI 划词翻译。") }}</p>
 
@@ -903,7 +1129,7 @@ watch(settings, () => {
         </section>
 
         <!-- Selection Translation Mode -->
-        <section class="settings-card">
+        <section id="section-translate-mode" class="settings-card">
           <h2>{{ t("划词翻译模式") }}</h2>
           <p class="section-desc">{{ t("配置拖动选中文本时的翻译行为。翻译悬浮窗与发音相互独立，可同时启用。") }}</p>
 
@@ -983,7 +1209,7 @@ watch(settings, () => {
         </section>
 
         <!-- Selection Pronunciation Settings -->
-        <section class="settings-card">
+        <section id="section-pronounce-mode" class="settings-card">
           <h2>{{ t("划词发音模式") }}</h2>
           <p class="section-desc">{{ t("配置拖动选中文本时的发音行为。直接点击下方卡片即可切换模式。") }}</p>
 
@@ -1075,7 +1301,7 @@ watch(settings, () => {
         </section>
 
         <!-- Global Shortcuts Settings -->
-        <section class="settings-card">
+        <section id="section-shortcuts" class="settings-card">
           <h2>{{ t("全局快捷键与段落翻译") }}</h2>
           <p class="section-desc">{{ t("配置段落翻译的触发快捷键。它能在不破坏原有英文版面的前提下，将中文翻译像拼音一样注入到生词上方。") }}</p>
 
@@ -1156,91 +1382,79 @@ watch(settings, () => {
               </div>
             </div>
           </div>
-        </section>
 
-        <!-- Other Features Settings -->
-        <section class="settings-card">
-          <h2>{{ t("其他辅助功能") }}</h2>
-          <p class="section-desc">{{ t("管理浏览器扩展的其他增强体验与功能。") }}</p>
-
-          <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
-            <input type="checkbox" v-model="settings.enableNumberConversion" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
-            <div>
-              <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("数字单位转换") }}</div>
-              <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("自动识别 100 million、5 billion 等数字并转换为中文计量（1亿、50亿）") }}</div>
-            </div>
-          </div>
-
-          <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
-            <input type="checkbox" v-model="settings.enableContextMenu" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
-            <div>
-              <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("右键自定义菜单") }}</div>
-              <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("关闭后右键将恢复浏览器原生菜单") }}</div>
-            </div>
-          </div>
-
-          <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; flex-direction: column; gap: 12px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <input type="checkbox" v-model="settings.enableInlineSyllableRuby" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
-              <div>
-                <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("单击断音节") }}</div>
-                <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("点击英文单词时自动显示音节划分（如 un·pun·ished）") }}</div>
+          <div class="animation-previews" style="grid-template-columns: 1fr; margin-top: 16px;">
+            <div class="preview-box" :class="{ active: settings.enableInlineParagraphTranslate }" @click="settings.enableInlineParagraphTranslate = !settings.enableInlineParagraphTranslate">
+              <div class="preview-title">{{ t("Shift 段落内联翻译演示") }}</div>
+              <div class="anim-container anim-inline-para" style="height: 180px; padding: 24px 32px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; background: #fafafa; gap: 0; position: relative; overflow: hidden;">
+                <div class="anim-inline-para-original" style="font-size: 14px; line-height: 1.8; color: #333; text-align: left; width: 100%;">
+                  The programs in this language are called <em>scripts</em>. They can be written right in a web page's HTML.
+                </div>
+                <div class="anim-inline-para-translated">
+                  这种语言编写的程序被称为脚本。它们可以直接编写在网页的 HTML 中。
+                </div>
+                <!-- Shift key hint -->
+                <div class="anim-inline-shift-key">
+                  <span class="key key-main">⇧ Shift</span>
+                </div>
+                <!-- Floating mouse cursor -->
+                <svg class="anim-cursor anim-inline-para-cursor" width="24" height="24" viewBox="0 0 24 24"><path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z" fill="#000" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
               </div>
             </div>
-            
-            <div v-if="settings.enableInlineSyllableRuby" style="padding-left: 22px; display: flex; align-items: center; gap: 12px;">
-              <span style="font-size: 12px; color: #4b5563;">{{ t("展示方式") }}</span>
-              <select v-model="settings.syllableDisplayMode" style="flex: 1; max-width: 200px; padding: 4px 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; background: white; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.05); color: #111827;">
-                <option value="badge">{{ t("气泡内展示 (推荐，零干扰)") }}</option>
-                <option value="overlay">{{ t("图层覆盖 (如 Mac 原生词典)") }}</option>
-                <option value="inline">{{ t("行内原位替换 (沉浸感更强)") }}</option>
+          </div>
+
+          <div v-if="settings.enableInlineParagraphTranslate" style="margin-top: 16px; padding: 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb;">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+              <span style="font-size: 13px; font-weight: 500; color: #374151;">{{ t("触发方式") }}</span>
+              <select v-model="settings.inlineParagraphTrigger" style="flex: 1; max-width: 260px; padding: 6px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; background: white; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.05); color: #111827;">
+                <option value="shift">{{ t("+ Shift 翻译 / 还原该段") }}</option>
+                <option value="ctrl">{{ t("+ Ctrl 翻译 / 还原该段") }}</option>
+                <option value="alt">{{ t("+ ⌥ 翻译 / 还原该段") }}</option>
+                <option value="longpress">{{ t("+ 长按鼠标左键") }}</option>
+                <option value="direct">{{ t("直接翻译该段") }}</option>
+                <option value="custom">{{ t("自定义快捷键") }}</option>
               </select>
             </div>
-
-            <!-- Syllable Mode Animations -->
-            <div v-if="settings.enableInlineSyllableRuby" style="padding-left: 22px; margin-top: 4px;">
-              <div class="anim-container anim-syl-container" :key="settings.syllableDisplayMode" style="height: 120px; padding: 16px 24px; display: flex; flex-direction: column; justify-content: center; align-items: center; background: #fafafa; border-radius: 8px; border: 1px solid #e5e7eb; overflow: hidden; position: relative;">
-                <div style="font-size: 18px; color: #333; position: relative;">
-                  <span>He left </span>
-                  <span class="syl-target-word" style="position: relative; display: inline-block; cursor: pointer;">
-                    <span class="syl-word-original">unpunished</span>
-                    
-                    <!-- Badge Mode -->
-                    <div v-if="settings.syllableDisplayMode === 'badge'" class="syl-badge anim-syl-pop">
-                      <div style="color: #B56B45; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; font-weight: 600; letter-spacing: 0.5px;">un·pun·ished</div>
-                      <div style="color: #7eb8ff; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; font-weight: 500;">/ʌnˈpʌnɪʃt/</div>
-                    </div>
-
-                    <!-- Overlay Mode -->
-                    <div v-if="settings.syllableDisplayMode === 'overlay'" class="syl-overlay anim-syl-show">
-                      un·pun·ished
-                    </div>
-
-                    <!-- Inline Mode -->
-                    <span v-if="settings.syllableDisplayMode === 'inline'" class="syl-inline anim-syl-swap">
-                      un·pun·ished
-                    </span>
-
-                    <div class="anim-click-ripple-syl"></div>
-                  </span>
-                  <span>.</span>
-                </div>
-                <svg class="anim-cursor anim-cursor-syl" width="24" height="24" viewBox="0 0 24 24"><path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z" fill="#000" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
+            <div v-if="settings.inlineParagraphTrigger === 'custom'" style="display: flex; align-items: center; gap: 12px;">
+              <span style="font-size: 12px; color: #6b7280;">{{ t("快捷键") }}</span>
+              <div
+                @click="startRecordingShortcut"
+                tabindex="0"
+                style="flex: 1; max-width: 220px; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; text-align: center; cursor: pointer; user-select: none; transition: all 0.2s ease;"
+                :style="isRecordingShortcut
+                  ? 'border: 2px solid #3b82f6; background: #eff6ff; color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.15);'
+                  : 'border: 1px solid #d1d5db; background: white; color: #111827; box-shadow: 0 1px 2px rgba(0,0,0,0.05);'"
+              >
+                {{ isRecordingShortcut ? t('按下快捷键组合…') : formatShortcutDisplay(settings.inlineParagraphCustomShortcut) || t('点击设置') }}
               </div>
+            </div>
+            <div v-if="settings.inlineParagraphTrigger === 'direct'" style="margin-top: 8px;">
+              <div style="font-size: 11px; color: #9ca3af;">{{ t("⚠ 直接模式会在鼠标悬停新段落时自动翻译，可能产生大量翻译请求。") }}</div>
             </div>
           </div>
         </section>
 
+
         <!-- Sentence Focus Navigation Mode -->
-        <section class="settings-card">
+        <section id="section-sentence-focus" class="settings-card">
           <h2>{{ t("句子聚焦导航模式") }}</h2>
           <p class="section-desc">{{ t("右键段落选择「聚焦此句」后，使用方向键控制句子。选择你偏好的左右键行为。") }}</p>
 
-          <div class="form-row" style="margin-bottom: 20px;">
+          <div style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 20px;">
             <label class="checkbox-label" style="display: flex; align-items: center; gap: 8px;">
               <input type="checkbox" v-model="settings.autoTranslateFocus" class="checkbox">
               <span class="label-text" style="font-weight: 500; font-size: 14px; color: #374151;">{{ t("自动显示 API 翻译悬浮窗") }}</span>
             </label>
+
+            <div style="display: flex; align-items: center; gap: 12px; padding-left: 22px;">
+              <span style="font-size: 13px; color: #374151; font-weight: 500;">{{ t("聚焦样式") }}</span>
+              <select v-model="settings.sentenceFocusStyle" style="max-width: 240px; padding: 6px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; background: white; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.05); color: #111827;">
+                <option value="dim">{{ t("弱化非聚焦文本 (默认)") }}</option>
+                <option value="hl-yellow">{{ t("高亮背景 (黄色)") }}</option>
+                <option value="hl-blue">{{ t("高亮背景 (蓝色)") }}</option>
+                <option value="hl-red">{{ t("高亮背景 (红色)") }}</option>
+              </select>
+            </div>
           </div>
 
           <!-- Animated Demo (Vue State Driven) -->
@@ -1250,9 +1464,8 @@ watch(settings, () => {
               <div class="anim-container" style="height: 200px; padding: 20px 28px; flex-direction: column; align-items: flex-start; justify-content: center; background: #fafafa; overflow: hidden; position: relative;">
                 
                 <!-- Paragraph Text -->
-                <div class="focus-demo-text" style="font-size: 14px; line-height: 2.0; color: #333; text-align: left; width: 100%; transition: all 0.3s;"
-                     :style="{ color: demoState.step >= 5 ? '#bbb' : '#333' }">
-                  <span style="transition: color 0.3s;" :style="{ color: (demoState.step >= 5 && demoState.step < 6) ? '#111' : 'inherit' }">The quick brown fox jumps over the lazy dog.</span><span class="demo-sep" :class="{ 'demo-sep-visible': demoState.step >= 5 }">&#9675;</span><span style="transition: color 0.3s;" :style="{ color: (demoState.step >= 6 && demoState.step < 8) ? '#111' : 'inherit' }">It was a bright and sunny day.</span><span class="demo-sep" :class="{ 'demo-sep-visible': demoState.step >= 5 }">&#9675;</span><span style="transition: color 0.3s;" :style="{ color: (demoState.step >= 8 && demoState.step < 10) ? '#111' : 'inherit' }">Birds were singing in the trees.</span><span class="demo-sep" :class="{ 'demo-sep-visible': demoState.step >= 5 }">&#9675;</span><span style="transition: color 0.3s;" :style="{ color: demoState.step >= 10 ? '#111' : 'inherit' }">A gentle breeze blew across the field.</span>
+                <div class="focus-demo-text" style="font-size: 14px; line-height: 2.0; color: #333; text-align: left; width: 100%; transition: all 0.3s;">
+                  <span :style="getDemoSpanStyle(0)">The quick brown fox jumps over the lazy dog.</span><span class="demo-sep" :class="{ 'demo-sep-visible': demoState.step >= 5 }">&#9675;</span><span :style="getDemoSpanStyle(1)">It was a bright and sunny day.</span><span class="demo-sep" :class="{ 'demo-sep-visible': demoState.step >= 5 }">&#9675;</span><span :style="getDemoSpanStyle(2)">Birds were singing in the trees.</span><span class="demo-sep" :class="{ 'demo-sep-visible': demoState.step >= 5 }">&#9675;</span><span :style="getDemoSpanStyle(3)">A gentle breeze blew across the field.</span>
                 </div>
 
                 <!-- Context Menu -->
@@ -1326,7 +1539,7 @@ watch(settings, () => {
         </section>
 
         <!-- TTS Settings -->
-        <section class="settings-card">
+        <section id="section-tts" class="settings-card">
           <h2>{{ t("语音合成 (TTS) 设置") }}</h2>
           <p class="section-desc">{{ t("配置发音人的语言、语速及音量。") }}</p>
           
@@ -1373,12 +1586,93 @@ watch(settings, () => {
             <span class="save-status" :class="{ visible: saved }">{{ t("✓ 已自动保存") }}</span>
           </div>
         </section>
+
+        <!-- Other Features Settings -->
+        <section id="section-other" class="settings-card">
+          <h2>{{ t("其他辅助功能") }}</h2>
+          <p class="section-desc">{{ t("管理浏览器扩展的其他增强体验与功能。") }}</p>
+
+          <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" v-model="settings.enableNumberConversion" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
+            <div>
+              <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("数字单位转换") }}</div>
+              <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("自动识别 100 million、5 billion 等数字并转换为中文计量（1亿、50亿）") }}</div>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" v-model="settings.enableContextMenu" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
+            <div>
+              <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("右键自定义菜单") }}</div>
+              <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("关闭后右键将恢复浏览器原生菜单") }}</div>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;" :style="{ opacity: settings.enableContextMenu ? 1 : 0.5, pointerEvents: settings.enableContextMenu ? 'auto' : 'none' }">
+            <input type="checkbox" v-model="settings.enableSearchX" :disabled="!settings.enableContextMenu" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
+            <div>
+              <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("X (Twitter) 搜索") }}</div>
+              <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("在自定义右键菜单中显示 X (Twitter) 精准搜索按钮") }}</div>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 24px; padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" v-model="settings.enableInlineSyllableRuby" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
+              <div>
+                <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("单击断音节") }}</div>
+                <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("点击英文单词时自动显示音节划分（如 un·pun·ished）") }}</div>
+              </div>
+            </div>
+            
+            <div v-if="settings.enableInlineSyllableRuby" style="padding-left: 22px; display: flex; align-items: center; gap: 12px;">
+              <span style="font-size: 12px; color: #4b5563;">{{ t("展示方式") }}</span>
+              <select v-model="settings.syllableDisplayMode" style="flex: 1; max-width: 200px; padding: 4px 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; background: white; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.05); color: #111827;">
+                <option value="badge">{{ t("气泡内展示 (推荐，零干扰)") }}</option>
+                <option value="overlay">{{ t("图层覆盖 (如 Mac 原生词典)") }}</option>
+                <option value="inline">{{ t("行内原位替换 (沉浸感更强)") }}</option>
+              </select>
+            </div>
+
+            <!-- Syllable Mode Animations -->
+            <div v-if="settings.enableInlineSyllableRuby" style="padding-left: 22px; margin-top: 4px;">
+              <div class="anim-container anim-syl-container" :key="settings.syllableDisplayMode" style="height: 120px; padding: 16px 24px; display: flex; flex-direction: column; justify-content: center; align-items: center; background: #fafafa; border-radius: 8px; border: 1px solid #e5e7eb; overflow: hidden; position: relative;">
+                <div style="font-size: 18px; color: #333; position: relative;">
+                  <span>He left </span>
+                  <span class="syl-target-word" style="position: relative; display: inline-block; cursor: pointer;">
+                    <span class="syl-word-original">unpunished</span>
+                    
+                    <!-- Badge Mode -->
+                    <div v-if="settings.syllableDisplayMode === 'badge'" class="syl-badge anim-syl-pop">
+                      <div style="color: #B56B45; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; font-weight: 600; letter-spacing: 0.5px;">un·pun·ished</div>
+                      <div style="color: #7eb8ff; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; font-weight: 500;">/ʌnˈpʌnɪʃt/</div>
+                    </div>
+
+                    <!-- Overlay Mode -->
+                    <div v-if="settings.syllableDisplayMode === 'overlay'" class="syl-overlay anim-syl-show">
+                      un·pun·ished
+                    </div>
+
+                    <!-- Inline Mode -->
+                    <span v-if="settings.syllableDisplayMode === 'inline'" class="syl-inline anim-syl-swap">
+                      un·pun·ished
+                    </span>
+
+                    <div class="anim-click-ripple-syl"></div>
+                  </span>
+                  <span>.</span>
+                </div>
+                <svg class="anim-cursor anim-cursor-syl" width="24" height="24" viewBox="0 0 24 24"><path d="M4 4l5.8 16.7c.3.8 1.4.9 1.8.2l2.6-5.2 5.2-2.6c.7-.4.6-1.5-.2-1.8L4 4z" fill="#000" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
+              </div>
+            </div>
+          </div>
+        </section>
       </template>
 
       <!-- Subtitles tab content -->
       <template v-else-if="activeTab === 'subtitles'">
         <!-- B站学习助手全局开关 -->
-        <section class="settings-card">
+        <section id="section-bili-study" class="settings-card">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <h2 style="margin: 0;">{{ t("B站双语精读") }}</h2>
             <label class="switch-container" style="display: flex; align-items: center; cursor: pointer;">
@@ -1390,7 +1684,7 @@ watch(settings, () => {
         </section>
 
         <!-- 字幕与视频交互行为设置 -->
-        <section v-if="settings.enableBiliStudy" class="settings-card">
+        <section id="section-subtitle-behavior" v-if="settings.enableBiliStudy" class="settings-card">
           <h2>{{ t("字幕与视频交互行为") }}</h2>
           <p class="section-desc" style="margin-bottom: 24px;">{{ t("在 B 站视频中挂载 RTTR 学习面板、自定义双语字幕和 HUD 讲义") }}</p>
 
@@ -1420,7 +1714,7 @@ watch(settings, () => {
         </section>
 
         <!-- 原生字幕智能交互卡片（独立卡片 + 动画演示） -->
-        <section v-if="settings.enableBiliStudy" class="settings-card">
+        <section id="section-native-subtitle" v-if="settings.enableBiliStudy" class="settings-card">
           <h2>{{ t("原生字幕智能交互") }}</h2>
           <p class="section-desc" style="margin-bottom: 24px;">{{ t("悬停暂停 · 点击查词 · 单词高亮 · 移开继续") }}</p>
 
@@ -1497,7 +1791,7 @@ watch(settings, () => {
         </section>
 
         <!-- 字幕与视频联动演示 -->
-        <section v-if="settings.enableBiliStudy" class="settings-card">
+        <section id="section-subtitle-demo" v-if="settings.enableBiliStudy" class="settings-card">
           <h2>{{ t("字幕与视频联动演示") }}</h2>
           <p class="section-desc" style="margin-bottom: 24px;">{{ t("实时高精度同步 · 单词悬停查词 · 一键 A-B 单句循环") }}</p>
 
@@ -1592,6 +1886,7 @@ watch(settings, () => {
         </div>
       </template>
     </main>
+    </div>
   </div>
 </template>
 
@@ -1680,6 +1975,92 @@ body {
   display: flex;
   flex-direction: column;
   gap: 32px;
+}
+
+.settings-layout {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.settings-sidebar {
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  background: rgba(244, 244, 245, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(228, 228, 231, 0.6);
+  border-radius: 12px;
+  box-sizing: border-box;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar-nav-item {
+  display: block;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #27272a; /* zinc-800: high-contrast dark text */
+  text-decoration: none;
+  border-radius: 8px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-nav-item:hover {
+  color: #00aeec;
+  background: rgba(0, 174, 236, 0.04);
+}
+
+.sidebar-nav-item.active {
+  color: #00aeec !important;
+  background: #ffffff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.01);
+  font-weight: 600;
+}
+
+@media (min-width: 1150px) {
+  .settings-sidebar {
+    position: fixed;
+    left: calc(50% - 320px - 220px - 32px);
+    top: 120px;
+  }
+}
+
+@media (max-width: 1149px) and (min-width: 900px) {
+  .settings-layout {
+    flex-direction: row;
+    gap: 32px;
+    width: auto;
+    max-width: 960px;
+    justify-content: center;
+    align-items: flex-start;
+  }
+  .settings-sidebar {
+    position: sticky;
+    top: 120px;
+  }
+}
+
+@media (max-width: 899px) {
+  .settings-sidebar {
+    width: 100%;
+    max-width: 640px;
+    margin-bottom: 24px;
+  }
 }
 
 .settings-card {
@@ -2638,6 +3019,69 @@ body {
   /* Hover while keyboard is pressed and translation happens */
   15%, 85% { transform: translate(0px, 0px); opacity: 1; }
   90%, 100% { transform: translate(-80px, 80px); opacity: 0; }
+}
+
+/* Inline Paragraph Translation Animation (Shift key demo) */
+.anim-inline-para-translated {
+  font-size: 13px;
+  line-height: 1.7;
+  color: #999;
+  border-left: 3px solid #e0e0e0;
+  padding: 6px 12px;
+  margin-top: 6px;
+  width: 100%;
+  text-align: left;
+  opacity: 0;
+  transform: translateY(-4px);
+  animation: inlineParaTranslated 5s infinite;
+}
+
+@keyframes inlineParaTranslated {
+  0%, 40% { opacity: 0; transform: translateY(-4px); }
+  50%, 80% { opacity: 1; transform: translateY(0); }
+  90%, 100% { opacity: 0; transform: translateY(-4px); }
+}
+
+.anim-inline-shift-key {
+  position: absolute;
+  bottom: 16px;
+  right: 24px;
+  opacity: 0;
+  animation: inlineShiftKeyAnim 5s infinite;
+}
+
+.anim-inline-shift-key .key {
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  box-shadow: 0 2px 0 #d1d5db;
+}
+
+@keyframes inlineShiftKeyAnim {
+  0%, 15% { opacity: 0; transform: translateY(8px); }
+  20%, 32% { opacity: 1; transform: translateY(0); }
+  35% { transform: translateY(2px); }
+  38%, 48% { opacity: 1; transform: translateY(0); }
+  55%, 100% { opacity: 0; transform: translateY(8px); }
+}
+
+.anim-inline-para-cursor {
+  position: absolute;
+  top: 36%;
+  left: 40%;
+  z-index: 10;
+  animation: inlineParaCursorAnim 5s infinite;
+}
+
+@keyframes inlineParaCursorAnim {
+  0%, 5% { transform: translate(-60px, 60px); opacity: 0; }
+  12%, 80% { transform: translate(0, 0); opacity: 1; }
+  90%, 100% { transform: translate(-60px, 60px); opacity: 0; }
 }
 
 /* Syllable Modes Animations */

@@ -184,19 +184,29 @@ async function translateBing(text: string, sourceLang: string, targetLang: strin
 
 // --- Main Handler ---
 export async function handleFetchTranslation(text: string, sourceLang: string, targetLang: string, engine: TranslationEngine): Promise<FetchTranslationResponse> {
-  try {
-    switch (engine) {
-      case 'google':
-        return await translateGoogle(text, sourceLang, targetLang);
-      case 'deepl':
-        return await translateDeepL(text, sourceLang, targetLang);
-      case 'bing':
-        return await translateBing(text, sourceLang, targetLang);
-      default:
-        throw new Error(`Unknown engine: ${engine}`);
+  const engines: TranslationEngine[] = [engine];
+  if (engine !== 'google') engines.push('google');
+  if (engine !== 'bing') engines.push('bing');
+  if (engine !== 'deepl') engines.push('deepl');
+
+  let lastError: any = null;
+  for (const eng of engines) {
+    try {
+      switch (eng) {
+        case 'google':
+          return await translateGoogle(text, sourceLang, targetLang);
+        case 'deepl':
+          return await translateDeepL(text, sourceLang, targetLang);
+        case 'bing':
+          return await translateBing(text, sourceLang, targetLang);
+        default:
+          throw new Error(`Unknown engine: ${eng}`);
+      }
+    } catch (err) {
+      console.warn(`[RTTR] ${eng} translation failed, trying fallback:`, err);
+      lastError = err;
     }
-  } catch (err) {
-    console.error(`[RTTR] ${engine} translation error:`, err);
-    throw err;
   }
+  console.error(`[RTTR] All translation engines failed. Last error:`, lastError);
+  throw lastError || new Error('All translation engines failed');
 }

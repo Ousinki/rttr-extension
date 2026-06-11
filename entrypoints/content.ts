@@ -11,12 +11,12 @@ import {
   containsShadowAware,
   getDeepCaretRangeFromPoint
 } from '@/utils/content-dom';
-import { safeSendMessage } from '@/utils/content-messaging';
+import { safeSendMessage, showErrorToast } from '@/utils/content-messaging';
 import { recognizeImageWord } from '@/utils/content-ocr';
 import { speakText } from '@/utils/tts';
 import { getNumberReading, isNumberLikeText } from '@/utils/number-reading';
 import { syllabifyText } from '@/utils/syllables';
-import { initSentenceFocus, splitBlock, splitAndFocusAtNode, handleSeparatorClick, isFocused, focusNext, focusPrev, focusSentenceAtNode, unfocusSentence, getFocusedSentenceText, getFocusedSentenceRect, isSplitActive } from "@/utils/sentence-focus";
+import { initSentenceFocus, splitBlock, splitAndFocusAtNode, handleSeparatorClick, isFocused, focusNext, focusPrev, focusSentenceAtNode, unfocusSentence, getFocusedSentenceText, getFocusedSentenceRect, isSplitActive, refreshFocusHighlight } from "@/utils/sentence-focus";
 import { initSubtitleInteraction } from '@/utils/subtitle-interaction';
 import { checkFullscreen } from '@/utils/bilibili-state';
 
@@ -513,9 +513,15 @@ export default defineContentScript({
                     }
                   } else {
                     const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
-                    uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, rect, true, pos, currentSettings.showTranslationEngine ?? true, false, () => getClosestRect(result.range, e.clientX, e.clientY));
+                     uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, rect, true, pos, currentSettings.showTranslationEngine ?? true, false, () => getClosestRect(result.range, e.clientX, e.clientY), cleanWord);
                   }
+                } else {
+                  const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
+                  triggerAutoAITranslate(cleanWord, rect, pos, true, () => getClosestRect(result.range, e.clientX, e.clientY), resp?.error || 'Unknown error');
                 }
+              }).catch((err) => {
+                const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
+                triggerAutoAITranslate(cleanWord, rect, pos, true, () => getClosestRect(result.range, e.clientX, e.clientY), err?.message || 'Network error');
               });
             }
           }
@@ -539,6 +545,38 @@ export default defineContentScript({
     }, { capture: true });
 
     // --- Focus mode action helpers ---
+    function triggerAutoAITranslate(originalText: string, rect: DOMRect, pos: 'top' | 'bottom', isAnnotated: boolean, updater: (() => DOMRect | null) | null, errorMsg: string, isFocus = false) {
+      showErrorToast(`Error: ${errorMsg}`);
+      
+      uiActions.showTranslationBadge('AI 翻译中...', 'AI', rect, isAnnotated, pos, currentSettings.showTranslationEngine ?? true, false, updater, originalText);
+      if (isFocus) {
+        uiState.translationBadge.pinned = true;
+      }
+
+      safeSendMessage({
+        type: 'CONTEXTUAL_TRANSLATE',
+        word: originalText,
+        sentence: originalText
+      }).then((resp: any) => {
+        if (resp?.success && resp.translation) {
+          const activeRect = updater ? updater() || rect : rect;
+          uiActions.showTranslationBadge(resp.translation, 'AI', activeRect, isAnnotated, pos, currentSettings.showTranslationEngine ?? true, false, updater, originalText);
+        } else {
+          const activeRect = updater ? updater() || rect : rect;
+          uiActions.showTranslationBadge(resp?.error ? `AI 翻译失败: ${resp.error}` : 'AI 翻译失败', 'AI', activeRect, isAnnotated, pos, currentSettings.showTranslationEngine ?? true, false, updater, originalText);
+        }
+        if (isFocus) {
+          uiState.translationBadge.pinned = true;
+        }
+      }).catch((err: any) => {
+        const activeRect = updater ? updater() || rect : rect;
+        uiActions.showTranslationBadge('AI 翻译出错', 'AI', activeRect, isAnnotated, pos, currentSettings.showTranslationEngine ?? true, false, updater, originalText);
+        if (isFocus) {
+          uiState.translationBadge.pinned = true;
+        }
+      });
+    }
+
     function doFocusTTS(text: string) {
       const rect = getFocusedSentenceRect();
       if (rect) {
@@ -562,9 +600,21 @@ export default defineContentScript({
           const rect = getFocusedSentenceRect();
           if (rect) {
             const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
-            uiActions.showTranslationBadge(resp.targetText,  resp.engine || currentSettings.translationEngine, rect, false, pos, currentSettings.showTranslationEngine ?? true, true, getFocusedSentenceRect);
+            uiActions.showTranslationBadge(resp.targetText,  resp.engine || currentSettings.translationEngine, rect, false, pos, currentSettings.showTranslationEngine ?? true, true, getFocusedSentenceRect, text);
             uiState.translationBadge.pinned = true;
           }
+        } else {
+          const rect = getFocusedSentenceRect();
+          if (rect) {
+            const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
+            triggerAutoAITranslate(text, rect, pos, false, getFocusedSentenceRect, resp?.error || 'Unknown error', true);
+          }
+        }
+      }).catch((err) => {
+        const rect = getFocusedSentenceRect();
+        if (rect) {
+          const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
+          triggerAutoAITranslate(text, rect, pos, false, getFocusedSentenceRect, err?.message || 'Network error', true);
         }
       });
     }
@@ -573,7 +623,7 @@ export default defineContentScript({
       const rect = getFocusedSentenceRect();
       if (!rect) return;
       const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
-      uiActions.showTranslationBadge('AI 翻译中...', 'AI', rect, true, pos, currentSettings.showTranslationEngine ?? true, true, getFocusedSentenceRect);
+      uiActions.showTranslationBadge('AI 翻译中...', 'AI', rect, true, pos, currentSettings.showTranslationEngine ?? true, true, getFocusedSentenceRect, text);
       uiState.translationBadge.pinned = true;
       safeSendMessage({
         type: 'CONTEXTUAL_TRANSLATE',
@@ -584,14 +634,14 @@ export default defineContentScript({
           const newRect = getFocusedSentenceRect();
           if (newRect) {
             const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
-            uiActions.showTranslationBadge(resp.translation, 'AI', newRect, false, pos, currentSettings.showTranslationEngine ?? true, false, getFocusedSentenceRect);
+            uiActions.showTranslationBadge(resp.translation, 'AI', newRect, false, pos, currentSettings.showTranslationEngine ?? true, false, getFocusedSentenceRect, text);
             uiState.translationBadge.pinned = true;
           }
         } else if (resp?.error) {
           const newRect = getFocusedSentenceRect();
           if (newRect) {
             const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
-            uiActions.showTranslationBadge(`翻译失败: ${resp.error}`, 'AI', newRect, false, pos, currentSettings.showTranslationEngine ?? true, false, getFocusedSentenceRect);
+            uiActions.showTranslationBadge(`翻译失败: ${resp.error}`, 'AI', newRect, false, pos, currentSettings.showTranslationEngine ?? true, false, getFocusedSentenceRect, text);
             uiState.translationBadge.pinned = true;
           }
         }
@@ -694,9 +744,84 @@ export default defineContentScript({
           return;
         }
       }
+
+      // Inline paragraph translation — keyboard trigger modes
+      if (currentSettings?.enableInlineParagraphTranslate && !e.repeat) {
+        const trigger = currentSettings.inlineParagraphTrigger || 'shift';
+        let matched = false;
+
+        if (trigger === 'shift' && e.key === 'Shift' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          matched = true;
+        } else if (trigger === 'ctrl' && e.key === 'Control' && !e.shiftKey && !e.metaKey && !e.altKey) {
+          matched = true;
+        } else if (trigger === 'alt' && e.key === 'Alt' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+          matched = true;
+        } else if (trigger === 'custom') {
+          const shortcut = currentSettings.inlineParagraphCustomShortcut || '';
+          if (shortcut) {
+            const parts = shortcut.split('+');
+            const keyPart = parts[parts.length - 1]; // e.g. 'KeyP'
+            const needCtrl = parts.includes('Ctrl');
+            const needAlt = parts.includes('Alt');
+            const needShift = parts.includes('Shift');
+            if (e.code === keyPart
+              && (needCtrl ? (e.ctrlKey || e.metaKey) : true)
+              && (needAlt ? e.altKey : true)
+              && (needShift ? e.shiftKey : true)) {
+              matched = true;
+            }
+          }
+        }
+
+        if (matched) {
+          const paragraph = findParagraph(lastMouseTarget);
+          if (paragraph) {
+            e.preventDefault();
+            handleInlineParagraphTranslate(paragraph);
+            return;
+          }
+        }
+      }
     }, { capture: true });
 
     let lastMouseTarget: HTMLElement | null = null;
+
+    // Inline paragraph translation — longpress mode
+    let inlineLongPressTimer: ReturnType<typeof setTimeout> | null = null;
+    document.addEventListener('pointerdown', (e) => {
+      if (!currentSettings?.enabled || !currentSettings?.enableInlineParagraphTranslate) return;
+      if (currentSettings.inlineParagraphTrigger !== 'longpress') return;
+      if (e.button !== 0) return;
+      const target = e.target as HTMLElement;
+      if (target.closest('rttr-ui-root') || target.closest('rttr-bili-study-ui')) return;
+      const paragraph = findParagraph(target);
+      if (!paragraph) return;
+      inlineLongPressTimer = setTimeout(() => {
+        handleInlineParagraphTranslate(paragraph);
+        inlineLongPressTimer = null;
+      }, 500);
+    }, { capture: true });
+    document.addEventListener('pointerup', () => {
+      if (inlineLongPressTimer) { clearTimeout(inlineLongPressTimer); inlineLongPressTimer = null; }
+    }, { capture: true });
+    document.addEventListener('pointermove', (e) => {
+      if (inlineLongPressTimer) { clearTimeout(inlineLongPressTimer); inlineLongPressTimer = null; }
+    }, { capture: true, passive: true });
+
+    // Inline paragraph translation — direct mode (hover to translate)
+    let lastDirectTranslatedParagraph: HTMLElement | null = null;
+    document.addEventListener('mouseover', (e) => {
+      if (!currentSettings?.enabled || !currentSettings?.enableInlineParagraphTranslate) return;
+      if (currentSettings.inlineParagraphTrigger !== 'direct') return;
+      const target = e.target as HTMLElement;
+      if (target.closest('rttr-ui-root') || target.closest('rttr-bili-study-ui') || target.closest('.rttr-paragraph-translation')) return;
+      const paragraph = findParagraph(target);
+      if (!paragraph || paragraph === lastDirectTranslatedParagraph) return;
+      // Don't re-translate if already has translation block
+      if (paragraph.nextElementSibling?.classList.contains('rttr-paragraph-translation')) return;
+      lastDirectTranslatedParagraph = paragraph;
+      handleInlineParagraphTranslate(paragraph);
+    }, { capture: true, passive: true });
 
     // Capture selection state on pointerdown (before click clears it) for click-on-selection features
     document.addEventListener('pointerdown', (e) => {
@@ -776,9 +901,15 @@ export default defineContentScript({
                   }
                 } else {
                   const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
-                  uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, info.rect, false, pos, currentSettings.showTranslationEngine ?? true, false, () => info.rect);
+                  uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, info.rect, false, pos, currentSettings.showTranslationEngine ?? true, false, () => info.rect, info.text);
                 }
+              } else {
+                const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
+                triggerAutoAITranslate(info.text, info.rect, pos, false, () => info.rect, resp?.error || 'Unknown error');
               }
+            }).catch((err) => {
+              const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
+              triggerAutoAITranslate(info.text, info.rect, pos, false, () => info.rect, err?.message || 'Network error');
             });
           }
           return;
@@ -837,13 +968,29 @@ export default defineContentScript({
                 }
               } else {
                 const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
-                uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, rect, false, pos, currentSettings.showTranslationEngine ?? true, false, () => { const sel = document.getSelection(); return sel && sel.rangeCount > 0 ? sel.getRangeAt(0).getBoundingClientRect() : null; });
+                 uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, rect, false, pos, currentSettings.showTranslationEngine ?? true, false, () => { const sel = document.getSelection(); return sel && sel.rangeCount > 0 ? sel.getRangeAt(0).getBoundingClientRect() : null; }, text);
               }
+            } else {
+              const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
+              triggerAutoAITranslate(text, rect, pos, false, () => { const sel = document.getSelection(); return sel && sel.rangeCount > 0 ? sel.getRangeAt(0).getBoundingClientRect() : null; }, resp?.error || 'Unknown error');
             }
+          }).catch((err) => {
+            const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
+            triggerAutoAITranslate(text, rect, pos, false, () => { const sel = document.getSelection(); return sel && sel.rangeCount > 0 ? sel.getRangeAt(0).getBoundingClientRect() : null; }, err?.message || 'Network error');
           });
         }
       }, 50);
     }, { capture: true });
+
+    const getTooltipRect = (): DOMRect | null => {
+      const root = document.querySelector('rttr-ui-root')?.shadowRoot || document.querySelector('rttr-bili-study-ui')?.shadowRoot;
+      const el = root?.querySelector('.rttr-translation-tooltip');
+      if (el) {
+        return el.getBoundingClientRect();
+      }
+      return null;
+    };
+
     // Hover logic for Badges (moving away hides them)
     document.addEventListener('mousemove', (e) => {
       if (!currentSettings?.enabled) return;
@@ -855,7 +1002,16 @@ export default defineContentScript({
         const PAD = isFullscreen ? 120 : 30;
         const inX = e.clientX >= rect.left - PAD && e.clientX <= rect.right + PAD;
         const inY = e.clientY >= rect.top - PAD && e.clientY <= rect.bottom + PAD;
-        if (!inX || !inY) {
+
+        let inTooltip = false;
+        const tooltipRect = getTooltipRect();
+        if (tooltipRect) {
+          const tPAD = 15; // 15px hover margin around the tooltip itself
+          inTooltip = e.clientX >= tooltipRect.left - tPAD && e.clientX <= tooltipRect.right + tPAD &&
+                      e.clientY >= tooltipRect.top - tPAD && e.clientY <= tooltipRect.bottom + tPAD;
+        }
+
+        if ((!inX || !inY) && !inTooltip) {
           uiActions.hideTranslationBadge();
         }
       }
@@ -1000,7 +1156,7 @@ export default defineContentScript({
               }
             } else {
               const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
-              uiActions.showTranslationBadge(resp.translation, 'AI', longPressRect(), false, pos, currentSettings.showTranslationEngine ?? true, false, longPressRect);
+              uiActions.showTranslationBadge(resp.translation, 'AI', longPressRect(), false, pos, currentSettings.showTranslationEngine ?? true, false, longPressRect, longPressWord);
             }
             // Extract the English collocation from AI response "english (translation)" and speak it
             const collocMatch = resp.translation.match(/^(.+?)\s*[（(]/);
@@ -1055,6 +1211,7 @@ export default defineContentScript({
       const iconExplain = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>';
       const iconTranslate = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>';
       const iconSettings = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>';
+      const iconSearchX = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l11.733 16h4.267l-11.733 -16z"/><path d="M20 4L4 20"/></svg>';
 
       const rttrWord = target.closest('.rttr-word') as HTMLElement;
       if (rttrWord) {
@@ -1064,15 +1221,29 @@ export default defineContentScript({
           .map(n => n.textContent);
         const word = wordParts.join('');
 
-        uiActions.showContextMenu([
+        const menuItems: any[] = [
           { 
             type: 'header', 
             label: word, 
             onSpeakClick: () => rttrWord.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
           },
-          { type: 'divider', label: 'DIVIDER' },
-          { icon: iconSettings, label: '设置', onClick: () => safeSendMessage({ type: 'OPEN_OPTIONS' }) }
-        ], e.clientX, e.clientY);
+          { type: 'divider', label: 'DIVIDER' }
+        ];
+
+        if (currentSettings?.enableSearchX) {
+          menuItems.push({
+            icon: iconSearchX,
+            label: '搜索 X (Twitter)',
+            onClick: () => {
+              window.open(`https://x.com/search?q=${encodeURIComponent(`"${word}"`)}`, '_blank');
+            }
+          });
+          menuItems.push({ type: 'divider', label: 'DIVIDER' });
+        }
+
+        menuItems.push({ icon: iconSettings, label: '设置', onClick: () => safeSendMessage({ type: 'OPEN_OPTIONS' }) });
+
+        uiActions.showContextMenu(menuItems, e.clientX, e.clientY);
         return;
       }
 
@@ -1152,7 +1323,7 @@ export default defineContentScript({
                   }
                 } else {
                   const pos = currentSettings.translationPosition === 'pronounce-badge' ? 'bottom' : (currentSettings.translationPosition || 'bottom');
-                  uiActions.showTranslationBadge(resp.translation, 'AI', rect, false, pos, currentSettings.showTranslationEngine ?? true, false, () => targetRange!.getBoundingClientRect());
+                   uiActions.showTranslationBadge(resp.translation, 'AI', rect, false, pos, currentSettings.showTranslationEngine ?? true, false, () => targetRange!.getBoundingClientRect(), targetText);
                 }
               }
             });
@@ -1181,6 +1352,16 @@ export default defineContentScript({
                 }
               }});
             }
+          }
+
+          if (currentSettings?.enableSearchX) {
+            menuItems.push({
+              icon: iconSearchX,
+              label: '搜索 X (Twitter)',
+              onClick: () => {
+                window.open(`https://x.com/search?q=${encodeURIComponent(`"${targetText}"`)}`, '_blank');
+              }
+            });
           }
 
           menuItems.push({ type: 'divider', label: 'DIVIDER' });
@@ -1252,12 +1433,73 @@ export default defineContentScript({
       }
     }
 
+    // Inline Paragraph Translation: insert translated text below the paragraph
+    async function handleInlineParagraphTranslate(paragraph: HTMLElement) {
+      // Toggle: if already translated, remove
+      const existing = paragraph.nextElementSibling;
+      if (existing?.classList.contains('rttr-paragraph-translation')) {
+        existing.classList.add('rttr-para-trans-exit');
+        existing.addEventListener('animationend', () => existing.remove(), { once: true });
+        return;
+      }
+
+      let html = paragraph.innerHTML || '';
+      html = html.replace(/◯/g, ' ').trim();
+      if (!html) return;
+
+      // Create translation block — inherit original paragraph's tag and styles
+      const computedStyle = window.getComputedStyle(paragraph);
+      const transBlock = document.createElement(paragraph.tagName.toLowerCase());
+      transBlock.className = 'rttr-paragraph-translation rttr-loading';
+      // Copy key typography styles from original paragraph
+      transBlock.style.fontFamily = computedStyle.fontFamily;
+      transBlock.style.fontSize = computedStyle.fontSize;
+      transBlock.style.lineHeight = computedStyle.lineHeight;
+      transBlock.style.letterSpacing = computedStyle.letterSpacing;
+      transBlock.style.textAlign = computedStyle.textAlign;
+      transBlock.innerHTML = '翻译中…';
+      paragraph.insertAdjacentElement('afterend', transBlock);
+
+      try {
+        // Try normal translation engine first
+        const engine = currentSettings?.translationEngine || 'google';
+        if (engine !== 'none') {
+          const resp = await safeSendMessage({
+            type: 'FETCH_TRANSLATION', text: html, sourceLang: 'auto',
+            targetLang: currentSettings?.targetLanguage || 'zh-CN',
+            engine
+          });
+          if (resp?.targetText) {
+            transBlock.innerHTML = resp.targetText;
+            transBlock.classList.remove('rttr-loading');
+            return;
+          }
+        }
+        // Fallback to AI
+        const aiResp = await safeSendMessage({
+          type: 'CONTEXTUAL_TRANSLATE',
+          word: html,
+          sentence: html
+        });
+        if (aiResp?.success && aiResp.translation) {
+          transBlock.innerHTML = aiResp.translation;
+        } else {
+          transBlock.innerHTML = aiResp?.error ? `翻译失败: ${aiResp.error}` : '翻译失败';
+        }
+      } catch (err) {
+        transBlock.innerHTML = '翻译出错';
+      } finally {
+        transBlock.classList.remove('rttr-loading');
+      }
+    }
+
     settingsStorage.watch((newSettings) => {
       if (currentSettings && currentSettings.enabled !== newSettings.enabled) {
         showToast(newSettings.enabled ? '✅ RTTR 扩展已开启' : '💤 RTTR 扩展已关闭');
       }
       currentSettings = newSettings;
       initSentenceFocus(currentSettings);
+      refreshFocusHighlight();
     });
 
     // Listen for messages from background (e.g. Chrome Commands global shortcuts)
@@ -1532,6 +1774,34 @@ function injectStyles() {
     @keyframes rttr-spin {
       to { transform: rotate(360deg); }
     }
+
+    .rttr-paragraph-translation {
+      margin: 4px 0 12px;
+      padding: 8px 12px;
+      opacity: 0.65;
+      border-left: 3px solid #ccc;
+      background: transparent;
+      white-space: pre-wrap;
+      animation: rttr-para-fade-in 0.3s ease forwards;
+    }
+    .rttr-paragraph-translation.rttr-loading {
+      animation: rttr-para-fade-in 0.3s ease forwards, rttr-para-pulse 1.5s ease-in-out infinite;
+    }
+    .rttr-paragraph-translation.rttr-para-trans-exit {
+      animation: rttr-para-fade-out 0.2s ease forwards;
+    }
+    @keyframes rttr-para-fade-in {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 0.65; transform: translateY(0); }
+    }
+    @keyframes rttr-para-fade-out {
+      from { opacity: 0.65; transform: translateY(0); }
+      to { opacity: 0; transform: translateY(-4px); }
+    }
+    @keyframes rttr-para-pulse {
+      0%, 100% { opacity: 0.3; }
+      50% { opacity: 0.65; }
+    }
     
     .rttr-inline-syllable,
     strong .rttr-inline-syllable,
@@ -1589,6 +1859,18 @@ function injectStyles() {
       ::highlight(rttr-sentence-dim) {
         color: rgba(160, 170, 190, 0.15) !important;
       }
+    }
+
+    ::highlight(rttr-sentence-hl-yellow), .rttr-sentence-hl-yellow {
+      background-color: rgba(253, 224, 71, 0.4) !important;
+    }
+
+    ::highlight(rttr-sentence-hl-blue), .rttr-sentence-hl-blue {
+      background-color: rgba(59, 130, 246, 0.25) !important;
+    }
+
+    ::highlight(rttr-sentence-hl-red), .rttr-sentence-hl-red {
+      background-color: rgba(239, 68, 68, 0.25) !important;
     }
   `;
   document.head.appendChild(style);

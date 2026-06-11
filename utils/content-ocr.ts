@@ -162,11 +162,22 @@ export async function recognizeImageWord(img: HTMLImageElement, clientX: number,
     }
 
     if (targetWord) {
-      uiActions.showContextMenu([
+      const items: any[] = [
         { type: 'header', label: targetWord, onSpeakClick: () => speakText(targetWord, currentSettings) },
-        { type: 'divider', label: 'DIVIDER' },
-        { icon: SVG_ICONS.settings, label: '设置', onClick: () => safeSendMessage({ type: 'OPEN_OPTIONS' }) }
-      ], clientX, clientY);
+        { type: 'divider', label: 'DIVIDER' }
+      ];
+      if (currentSettings?.enableSearchX) {
+        items.push({
+          icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l11.733 16h4.267l-11.733 -16z"/><path d="M20 4L4 20"/></svg>',
+          label: '搜索 X (Twitter)',
+          onClick: () => {
+            window.open(`https://x.com/search?q=${encodeURIComponent(`"${targetWord}"`)}`, '_blank');
+          }
+        });
+        items.push({ type: 'divider', label: 'DIVIDER' });
+      }
+      items.push({ icon: SVG_ICONS.settings, label: '设置', onClick: () => safeSendMessage({ type: 'OPEN_OPTIONS' }) });
+      uiActions.showContextMenu(items, clientX, clientY);
     } else {
       const items: any[] = [
         { type: 'header', label: 'No text detected' },

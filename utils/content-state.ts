@@ -142,6 +142,7 @@ export const uiState = reactive({
     showEngine: true,
     exactRect: false,
     updater: null as (() => DOMRect | null) | null,
+    originalText: '',
   },
   explainPanel: {
     visible: false,
@@ -286,7 +287,7 @@ export const uiActions = {
   },
 
   // Translation Badge
-  showTranslationBadge(text: string, engine: string, targetRect: DOMRect, isAnnotated: boolean, position: 'top' | 'bottom' = 'bottom', showEngine = true, exactRect = false, updater: (() => DOMRect | null) | null = null, isSync = false) {
+  showTranslationBadge(text: string, engine: string, targetRect: DOMRect, isAnnotated: boolean, position: 'top' | 'bottom' = 'bottom', showEngine = true, exactRect = false, updater: (() => DOMRect | null) | null = null, originalText = '', isSync = false) {
     uiState.translationBadge.text = text;
     uiState.translationBadge.engine = engine;
     uiState.translationBadge.translationType = engine === 'AI' ? 'ai' : 'api';
@@ -296,10 +297,11 @@ export const uiActions = {
     uiState.translationBadge.isAnnotated = isAnnotated;
     uiState.translationBadge.position = position;
     uiState.translationBadge.showEngine = showEngine;
+    uiState.translationBadge.originalText = originalText;
     uiState.translationBadge.visible = true;
 
     if (!isSync) {
-      syncAction('showTranslationBadge', text, engine, toPlainRect(targetRect), isAnnotated, position, showEngine, exactRect, null);
+      syncAction('showTranslationBadge', text, engine, toPlainRect(targetRect), isAnnotated, position, showEngine, exactRect, null, originalText);
     }
   },
   hideTranslationBadge(isSync = false) {

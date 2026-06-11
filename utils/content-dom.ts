@@ -1,4 +1,4 @@
-import { safeSendMessage } from '@/utils/content-messaging';
+import { safeSendMessage, showErrorToast } from '@/utils/content-messaging';
 import { uiActions, setLastInteractionY, getLineRect } from '@/utils/content-state';
 import { speakText } from '@/utils/tts';
 import { findNumberConversions } from '@/utils/number-conversion';
@@ -24,7 +24,7 @@ interface LocalAnnotation {
   entry: AnnotationEntry;
   start: number;
   end: number;
-  isFirst: boolean; // true = show <rt> translation; false = continuation segment
+  translationPart: string;
   groupId?: string; // set for multi-segment annotations (used for floating translation)
 }
 
@@ -112,40 +112,92 @@ export function applyAnnotations(
     textOffset += length;
   }
 
-  // Pre-pass: for each annotation, find which text node has the largest overlap.
-  // The <rt> translation will be shown ONLY on that segment.
-  const primaryNodeIndex = new Map<AnnotationEntry, number>();
+  // Pre-calculate translation parts for all annotations
+  const annotationTranslationParts = new Map<AnnotationEntry, Map<number, string>>();
   for (const entry of annotations) {
-    let bestIdx = -1;
-    let bestSize = 0;
+    const rawTranslation = entry.translation || '';
+    const isSame = entry.text.toLowerCase() === rawTranslation.toLowerCase();
+    const translation = isSame ? '' : rawTranslation;
+
+    const intersectingNodes: Array<{ idx: number; overlap: number }> = [];
     for (let i = 0; i < textNodes.length; i++) {
       const tn = textNodes[i];
       if (entry.start >= tn.end || entry.end <= tn.start) continue;
-      const size = Math.min(entry.end, tn.end) - Math.max(entry.start, tn.start);
-      if (size > bestSize) {
-        bestSize = size;
-        bestIdx = i;
+      const overlap = Math.min(entry.end, tn.end) - Math.max(entry.start, tn.start);
+      if (overlap > 0) {
+        intersectingNodes.push({ idx: i, overlap });
       }
     }
-    if (bestIdx >= 0) primaryNodeIndex.set(entry, bestIdx);
+
+    const partsMap = new Map<number, string>();
+    if (intersectingNodes.length === 1) {
+      partsMap.set(intersectingNodes[0].idx, translation);
+    } else if (intersectingNodes.length > 1) {
+      const totalOverlap = intersectingNodes.reduce((sum, n) => sum + n.overlap, 0);
+      let currentTranslationChar = 0;
+      for (let j = 0; j < intersectingNodes.length; j++) {
+        const { idx, overlap } = intersectingNodes[j];
+        if (j === intersectingNodes.length - 1) {
+          partsMap.set(idx, translation.slice(currentTranslationChar));
+        } else {
+          const charCount = Math.round((overlap / totalOverlap) * translation.length);
+          partsMap.set(idx, translation.slice(currentTranslationChar, currentTranslationChar + charCount));
+          currentTranslationChar += charCount;
+        }
+      }
+    }
+    annotationTranslationParts.set(entry, partsMap);
   }
+
+  const replacementsByParent = new Map<Node, Array<{ original: Text; fragment: DocumentFragment }>>();
 
   for (let i = 0; i < textNodes.length; i++) {
     const textNode = textNodes[i];
     const localAnnotations = annotations
       .filter((entry) => entry.start < textNode.end && entry.end > textNode.start)
-      .map((entry) => ({
-        entry,
-        start: Math.max(0, entry.start - textNode.start),
-        end: Math.min(textNode.end, entry.end) - textNode.start,
-        // Show <rt> only on the primary (largest) segment
-        isFirst: primaryNodeIndex.get(entry) === i,
-      }))
+      .map((entry) => {
+        const partsMap = annotationTranslationParts.get(entry);
+        const translationPart = partsMap?.get(i) ?? '';
+        return {
+          entry,
+          start: Math.max(0, entry.start - textNode.start),
+          end: Math.min(textNode.end, entry.end) - textNode.start,
+          translationPart,
+        };
+      })
       .filter((item) => item.end > item.start);
 
     const fragment = annotateTextNode(textNode.node, localAnnotations, currentSettings, isLongPressFired);
     if (fragment) {
-      textNode.node.replaceWith(fragment);
+      const parent = textNode.node.parentNode;
+      if (parent) {
+        if (!replacementsByParent.has(parent)) {
+          replacementsByParent.set(parent, []);
+        }
+        replacementsByParent.get(parent)!.push({ original: textNode.node, fragment });
+      }
+    }
+  }
+
+  for (const [parent, list] of replacementsByParent.entries()) {
+    const newChildren: Node[] = [];
+    for (const child of Array.from(parent.childNodes)) {
+      const replacement = list.find((r) => r.original === child);
+      if (replacement) {
+        newChildren.push(...Array.from(replacement.fragment.childNodes));
+      } else {
+        newChildren.push(child);
+      }
+    }
+    if (parent instanceof Element) {
+      parent.replaceChildren(...newChildren);
+    } else {
+      while (parent.firstChild) {
+        parent.removeChild(parent.firstChild);
+      }
+      for (const child of newChildren) {
+        parent.appendChild(child);
+      }
     }
   }
 }
@@ -170,9 +222,6 @@ function annotateTextNode(
 
     const part = text.slice(annotation.start, annotation.end);
     const entry = annotation.entry;
-    const translation = entry.translation || '';
-    const lower = part.toLowerCase();
-    const isSameTranslation = part.toLowerCase() === translation.toLowerCase();
 
     let wrapper = document.createElement('ruby');
     wrapper.className = getAnnotationClassName(entry);
@@ -201,16 +250,15 @@ function annotateTextNode(
       wrapper.classList.add('rttr-has-tooltip');
     }
 
-    // Only show <rt> translation on the first segment of a cross-node phrase
-    if (annotation.isFirst && shouldRenderRt(entry, translation)) {
+    if (shouldRenderRt(entry, annotation.translationPart)) {
       const rt = document.createElement('rt');
       rt.className = 'rttr-translation';
       rt.style.color = entry.importance === 'highlight' ? entry.color : 'inherit';
-      rt.textContent = isSameTranslation ? '' : translation;
+      rt.textContent = annotation.translationPart;
 
       wrapper.appendChild(rt);
-    } else if (!annotation.isFirst) {
-      // Continuation segment: add an empty <rt> to keep ruby layout consistent
+    } else {
+      // Continuation or no translation segment: add an empty <rt> to keep ruby layout consistent
       const rt = document.createElement('rt');
       rt.className = 'rttr-translation';
       rt.textContent = '';
@@ -280,8 +328,48 @@ function annotateTextNode(
           }).then((resp: any) => {
             if (resp && resp.targetText) {
               uiActions.showTranslationBadge(resp.targetText, resp.engine || engine, clickRect(), true,
-                currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true);
+                currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true, false, null, textToSpeak);
+            } else {
+              showErrorToast(`Error: ${resp?.error || 'Unknown error'}`);
+              uiActions.showTranslationBadge('AI 翻译中...', 'AI', clickRect(), true,
+                currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true, false, null, textToSpeak);
+              safeSendMessage({
+                type: 'CONTEXTUAL_TRANSLATE',
+                word: textToSpeak,
+                sentence: textToSpeak
+              }).then((aiResp: any) => {
+                if (aiResp?.success && aiResp.translation) {
+                  uiActions.showTranslationBadge(aiResp.translation, 'AI', clickRect(), true,
+                    currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true, false, null, textToSpeak);
+                } else {
+                  uiActions.showTranslationBadge(aiResp?.error ? `AI 翻译失败: ${aiResp.error}` : 'AI 翻译失败', 'AI', clickRect(), true,
+                    currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true, false, null, textToSpeak);
+                }
+              }).catch(() => {
+                uiActions.showTranslationBadge('AI 翻译出错', 'AI', clickRect(), true,
+                  currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true, false, null, textToSpeak);
+              });
             }
+          }).catch((err: any) => {
+            showErrorToast(`Error: ${err?.message || 'Network error'}`);
+            uiActions.showTranslationBadge('AI 翻译中...', 'AI', clickRect(), true,
+              currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true, false, null, textToSpeak);
+            safeSendMessage({
+              type: 'CONTEXTUAL_TRANSLATE',
+              word: textToSpeak,
+              sentence: textToSpeak
+            }).then((aiResp: any) => {
+              if (aiResp?.success && aiResp.translation) {
+                uiActions.showTranslationBadge(aiResp.translation, 'AI', clickRect(), true,
+                  currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true, false, null, textToSpeak);
+              } else {
+                uiActions.showTranslationBadge(aiResp?.error ? `AI 翻译失败: ${aiResp.error}` : 'AI 翻译失败', 'AI', clickRect(), true,
+                  currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true, false, null, textToSpeak);
+              }
+            }).catch(() => {
+              uiActions.showTranslationBadge('AI 翻译出错', 'AI', clickRect(), true,
+                currentSettings.translationPosition || 'bottom', currentSettings.showTranslationEngine ?? true, false, null, textToSpeak);
+            });
           });
         }
 
