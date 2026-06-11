@@ -3,9 +3,10 @@ import { reactive } from 'vue';
 export interface MenuItem {
   icon?: string;
   label: string;
-  type?: 'header' | 'divider' | 'item';
+  type?: 'header' | 'divider' | 'item' | 'info';
   onClick?: () => void;
   onSpeakClick?: () => void;
+  onMouseLeave?: () => void;
 }
 
 export interface Rect {

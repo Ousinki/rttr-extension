@@ -1294,7 +1294,71 @@ export default defineContentScript({
           const menuItems: any[] = [];
           
           if (isWord) {
-            menuItems.push({ type: 'header', label: targetText, onSpeakClick: () => speakText(targetText, currentSettings) });
+            let infoMode = false;
+            let savedTail: any[] = [];
+
+            const restoreOriginalItems = () => {
+              if (infoMode && uiState.contextMenu.visible) {
+                uiState.contextMenu.items.splice(2);
+                uiState.contextMenu.items.push(...savedTail);
+                infoMode = false;
+              }
+            };
+
+            menuItems.push({ type: 'header', label: targetText, onSpeakClick: () => {
+              speakText(targetText, currentSettings);
+
+              if (infoMode) return;
+              infoMode = true;
+
+              // Save all items from index 2 onward, then replace with info rows
+              savedTail = uiState.contextMenu.items.splice(2);
+              const settingsItem = savedTail[savedTail.length - 1];
+              const dividerItem = savedTail[savedTail.length - 2];
+
+              const cachedIpa = getCachedIpa(targetText);
+              uiState.contextMenu.items.push(
+                { type: 'info', label: cachedIpa || '…' } as any,
+                { type: 'info', label: '…' } as any,
+                { type: 'info', label: '…' } as any,
+                dividerItem,
+                settingsItem,
+              );
+
+              // IPA lookup
+              if (!cachedIpa) {
+                lookupIpa(targetText).then((ipa) => {
+                  if (ipa && uiState.contextMenu.visible && infoMode) {
+                    uiState.contextMenu.items[2] = { type: 'info', label: ipa } as any;
+                  }
+                });
+              }
+
+              // Machine translation
+              const engine = currentSettings?.translationEngine || 'google';
+              if (engine !== 'none') {
+                safeSendMessage({
+                  type: 'FETCH_TRANSLATION', text: targetText, sourceLang: 'auto',
+                  targetLang: currentSettings?.targetLanguage || 'zh-CN', engine
+                }).then((resp: any) => {
+                  if (resp?.targetText && uiState.contextMenu.visible && infoMode) {
+                    uiState.contextMenu.items[3] = { type: 'info', label: resp.targetText } as any;
+                  }
+                });
+              }
+
+              // AI contextual translation
+              const sentence = getSentenceAroundNode(targetRange!.startContainer);
+              safeSendMessage({
+                type: 'CONTEXTUAL_TRANSLATE',
+                word: targetText,
+                sentence
+              }).then((resp: any) => {
+                if (resp?.success && resp.translation && uiState.contextMenu.visible && infoMode) {
+                  uiState.contextMenu.items[4] = { type: 'info', label: resp.translation } as any;
+                }
+              });
+            }, onMouseLeave: restoreOriginalItems });
             menuItems.push({ type: 'divider', label: 'DIVIDER' });
           } else if (isNumber) {
             const numberPhrase = expandNumberWithUnit(targetRange);

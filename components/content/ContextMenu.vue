@@ -14,7 +14,8 @@
       <div v-else-if="item.type === 'header'" 
            class="rttr-cm-header" 
            :class="{ clickable: !!item.onSpeakClick }"
-           @click="item.onSpeakClick ? handleSpeakClick($event, item.onSpeakClick, index) : null">
+           @click="item.onSpeakClick ? handleSpeakClick($event, item.onSpeakClick, index) : null"
+           @mouseleave="item.onMouseLeave ? item.onMouseLeave() : null">
         
         <span v-if="!item.onSpeakClick">{{ item.label }}</span>
         
@@ -28,6 +29,11 @@
             </svg>
           </span>
         </template>
+      </div>
+
+      <!-- Info -->
+      <div v-else-if="item.type === 'info'" class="rttr-cm-info">
+        <span class="rttr-cm-info-text">{{ item.label }}</span>
       </div>
 
       <!-- Item -->
@@ -199,6 +205,24 @@ const handleSpeakClick = (e: MouseEvent, onSpeakClick: () => void, index: number
   height: 1px;
   background: rgba(0, 0, 0, 0.08);
   margin: 6px;
+}
+
+.rttr-cm-info {
+  display: flex;
+  align-items: center;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  color: #6e6e73;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: default;
+  min-height: 24px;
+  word-break: break-word;
+}
+
+.rttr-cm-info-text {
+  font-family: system-ui, -apple-system, 'PingFang SC', sans-serif;
+  line-height: 1.4;
 }
 
 .rttr-cm-icon {
