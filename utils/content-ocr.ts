@@ -177,7 +177,7 @@ export async function recognizeImageWord(img: HTMLImageElement, clientX: number,
       }
       if (currentSettings?.enableSearchReddit) {
         items.push({
-          icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8c-2.5 0-5 1.5-5 4s2.5 4 5 4 5-1.5 5-4-2.5-4-5-4z"/><circle cx="9" cy="11.5" r="1" fill="currentColor"/><circle cx="15" cy="11.5" r="1" fill="currentColor"/><path d="M9.5 14.5c.8.8 2.2 1 2.5 1s1.7-.2 2.5-1"/></svg>',
+          icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8c-4 0-8 2.5-8 6s4 6 8 6 8-2.5 8-6-4-6-8-6z"/><circle cx="8.5" cy="13" r="1" fill="currentColor"/><circle cx="15.5" cy="13" r="1" fill="currentColor"/><path d="M9 16.5c1 .8 2 1 3 1s2-.2 3-1"/><path d="M12 8V5"/><circle cx="15" cy="3" r="2"/><circle cx="3.5" cy="10.5" r="1.5"/><circle cx="20.5" cy="10.5" r="1.5"/></svg>',
           label: '搜索 Reddit',
           onClick: () => {
             window.open(`https://www.reddit.com/search/?q=${encodeURIComponent(targetWord)}`, '_blank');
