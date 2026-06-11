@@ -5,7 +5,13 @@
 
 import { storage } from '#imports';
 
-// ─── 类型定义 ────────────────────────────────────────────
+// ─── 类型定义 ────────────────────────────────────────
+
+export interface CustomSearchEngine {
+  name: string;          // 显示名称
+  urlTemplate: string;   // URL 模板，使用 {query} 占位符
+  enabled: boolean;
+}
 
 export interface RTTRSettings {
   apiKey: string;
@@ -35,6 +41,8 @@ export interface RTTRSettings {
   enableContextMenu: boolean;                         // 右键自定义菜单
   enableSearchX: boolean;                             // 右键搜索 X (Twitter)
   enableSearchReddit: boolean;                        // 右键搜索 Reddit
+  enableSearchGoogle: boolean;                        // 右键搜索 Google
+  customSearchEngines: CustomSearchEngine[];           // 用户自定义搜索引擎
   enableInlineSyllableRuby: boolean;                  // 单击单词时断音节 (Syllabification)
   syllableDisplayMode: 'inline' | 'badge' | 'overlay'; // 音节展示模式
   autoTranslateFocus: boolean;                        // 聚焦句子时自动翻译
@@ -81,6 +89,8 @@ const DEFAULT_SETTINGS: RTTRSettings = {
   enableContextMenu: true,
   enableSearchX: true,
   enableSearchReddit: false,
+  enableSearchGoogle: true,
+  customSearchEngines: [],
   enableInlineSyllableRuby: true,
   syllableDisplayMode: 'badge',
   autoTranslateFocus: false,

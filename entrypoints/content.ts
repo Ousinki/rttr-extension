@@ -1221,6 +1221,31 @@ export default defineContentScript({
       const iconSettings = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>';
       const iconSearchX = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l11.733 16h4.267l-11.733 -16z"/><path d="M20 4L4 20"/></svg>';
       const iconSearchReddit = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8c-4 0-8 2.5-8 6s4 6 8 6 8-2.5 8-6-4-6-8-6z"/><circle cx="8.5" cy="13" r="1" fill="currentColor"/><circle cx="15.5" cy="13" r="1" fill="currentColor"/><path d="M9 16.5c1 .8 2 1 3 1s2-.2 3-1"/><path d="M12 8V5"/><circle cx="15" cy="3" r="2"/><circle cx="3.5" cy="10.5" r="1.5"/><circle cx="20.5" cy="10.5" r="1.5"/></svg>';
+      const iconSearchGoogle = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>';
+      const iconCustomSearch = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
+
+      // Helper: build search menu items for all enabled engines
+      function buildSearchItems(query: string): any[] {
+        const items: any[] = [];
+        if (currentSettings?.enableSearchGoogle) {
+          items.push({ icon: iconSearchGoogle, label: '搜索 Google', onClick: () => window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank') });
+        }
+        if (currentSettings?.enableSearchX) {
+          items.push({ icon: iconSearchX, label: '搜索 X (Twitter)', onClick: () => window.open(`https://x.com/search?q=${encodeURIComponent(`"${query}"`)}`, '_blank') });
+        }
+        if (currentSettings?.enableSearchReddit) {
+          items.push({ icon: iconSearchReddit, label: '搜索 Reddit', onClick: () => window.open(`https://www.reddit.com/search/?q=${encodeURIComponent(query)}`, '_blank') });
+        }
+        if (currentSettings?.customSearchEngines?.length) {
+          for (const engine of currentSettings.customSearchEngines) {
+            if (engine.enabled && engine.name && engine.urlTemplate) {
+              const url = engine.urlTemplate.replace(/\{query\}/g, encodeURIComponent(query));
+              items.push({ icon: iconCustomSearch, label: engine.name, onClick: () => window.open(url, '_blank') });
+            }
+          }
+        }
+        return items;
+      }
 
       const rttrWord = target.closest('.rttr-word') as HTMLElement;
       if (rttrWord) {
@@ -1239,25 +1264,9 @@ export default defineContentScript({
           { type: 'divider', label: 'DIVIDER' }
         ];
 
-        if (currentSettings?.enableSearchX) {
-          menuItems.push({
-            icon: iconSearchX,
-            label: '搜索 X (Twitter)',
-            onClick: () => {
-              window.open(`https://x.com/search?q=${encodeURIComponent(`"${word}"`)}`, '_blank');
-            }
-          });
-        }
-        if (currentSettings?.enableSearchReddit) {
-          menuItems.push({
-            icon: iconSearchReddit,
-            label: '搜索 Reddit',
-            onClick: () => {
-              window.open(`https://www.reddit.com/search/?q=${encodeURIComponent(word)}`, '_blank');
-            }
-          });
-        }
-        if (currentSettings?.enableSearchX || currentSettings?.enableSearchReddit) {
+        const searchItems = buildSearchItems(word);
+        if (searchItems.length) {
+          menuItems.push(...searchItems);
           menuItems.push({ type: 'divider', label: 'DIVIDER' });
         }
 
@@ -1438,24 +1447,9 @@ export default defineContentScript({
             }
           }
 
-          if (currentSettings?.enableSearchX) {
-            menuItems.push({
-              icon: iconSearchX,
-              label: '搜索 X (Twitter)',
-              onClick: () => {
-                window.open(`https://x.com/search?q=${encodeURIComponent(`"${targetText}"`)}`, '_blank');
-              }
-            });
-          }
-
-          if (currentSettings?.enableSearchReddit) {
-            menuItems.push({
-              icon: iconSearchReddit,
-              label: '搜索 Reddit',
-              onClick: () => {
-                window.open(`https://www.reddit.com/search/?q=${encodeURIComponent(targetText)}`, '_blank');
-              }
-            });
+          const searchItems = buildSearchItems(targetText);
+          if (searchItems.length) {
+            menuItems.push(...searchItems);
           }
 
           menuItems.push({ type: 'divider', label: 'DIVIDER' });

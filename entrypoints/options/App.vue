@@ -356,6 +356,41 @@ const uiDict: Record<string, Record<string, string>> = {
     "ja": "右クリックカスタムメニューで Reddit 検索ボタンを表示する",
     "en": "Show Reddit search button in the custom right-click menu"
   },
+  "Google 搜索": {
+    "zh-TW": "Google 搜尋",
+    "ja": "Google 検索",
+    "en": "Search on Google"
+  },
+  "在自定义右键菜单中显示 Google 搜索按钮": {
+    "zh-TW": "在自訂右鍵選單中顯示 Google 搜尋按鈕",
+    "ja": "右クリックカスタムメニューで Google 検索ボタンを表示する",
+    "en": "Show Google search button in the custom right-click menu"
+  },
+  "自定义搜索引擎": {
+    "zh-TW": "自訂搜尋引擎",
+    "ja": "カスタム検索エンジン",
+    "en": "Custom Search Engines"
+  },
+  "名称": {
+    "zh-TW": "名稱",
+    "ja": "名前",
+    "en": "Name"
+  },
+  "URL 模板": {
+    "zh-TW": "URL 樣板",
+    "ja": "URL テンプレート",
+    "en": "URL Template"
+  },
+  "添加搜索引擎": {
+    "zh-TW": "新增搜尋引擎",
+    "ja": "検索エンジンを追加",
+    "en": "Add Search Engine"
+  },
+  "使用 {query} 作为搜索词占位符": {
+    "zh-TW": "使用 {query} 作為搜尋詞佔位符",
+    "ja": "{query} を検索語のプレースホルダーとして使用",
+    "en": "Use {query} as the search term placeholder"
+  },
   "单击断音节": {
     "zh-TW": "單擊斷音節",
     "ja": "クリックで音節分割",
@@ -608,6 +643,9 @@ const settings = ref<RTTRSettings>({
   enableNumberConversion: true,
   enableContextMenu: true,
   enableSearchX: true,
+  enableSearchReddit: false,
+  enableSearchGoogle: true,
+  customSearchEngines: [],
   enableInlineSyllableRuby: true,
   syllableDisplayMode: 'badge',
   autoTranslateFocus: false,
@@ -1616,6 +1654,14 @@ watch(settings, () => {
 
           <div v-if="settings.enableContextMenu" style="display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
             <div style="padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" v-model="settings.enableSearchGoogle" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
+              <div>
+                <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("Google 搜索") }}</div>
+                <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("在自定义右键菜单中显示 Google 搜索按钮") }}</div>
+              </div>
+            </div>
+
+            <div style="padding: 12px 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px;">
               <input type="checkbox" v-model="settings.enableSearchX" style="margin: 0; width: 14px; height: 14px; cursor: pointer;" />
               <div>
                 <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("X (Twitter) 搜索") }}</div>
@@ -1629,6 +1675,26 @@ watch(settings, () => {
                 <div style="font-size: 13px; font-weight: 500; color: #111827;">{{ t("Reddit 搜索") }}</div>
                 <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ t("在自定义右键菜单中显示 Reddit 搜索按钮") }}</div>
               </div>
+            </div>
+
+            <!-- Custom Search Engines -->
+            <div style="padding: 16px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e5e7eb;">
+              <div style="font-size: 13px; font-weight: 600; color: #111827; margin-bottom: 4px;">{{ t("自定义搜索引擎") }}</div>
+              <div style="font-size: 11px; color: #6b7280; margin-bottom: 12px;">{{ t("使用 {query} 作为搜索词占位符") }}</div>
+
+              <div v-for="(engine, idx) in settings.customSearchEngines" :key="idx" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                <input type="checkbox" v-model="engine.enabled" style="margin: 0; width: 14px; height: 14px; cursor: pointer; flex-shrink: 0;" />
+                <input type="text" v-model="engine.name" :placeholder="t('名称')" style="width: 80px; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 12px; outline: none; background: white; color: #111827;" />
+                <input type="text" v-model="engine.urlTemplate" :placeholder="'https://example.com/search?q={query}'" style="flex: 1; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 12px; outline: none; background: white; color: #111827; font-family: ui-monospace, monospace;" />
+                <button @click="settings.customSearchEngines.splice(idx, 1)" style="flex-shrink: 0; width: 24px; height: 24px; border: none; background: transparent; cursor: pointer; color: #9ca3af; display: flex; align-items: center; justify-content: center; border-radius: 4px; transition: all 0.15s;" @mouseenter="$event.target.style.color='#ef4444';$event.target.style.background='#fef2f2'" @mouseleave="$event.target.style.color='#9ca3af';$event.target.style.background='transparent'">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+
+              <button @click="settings.customSearchEngines.push({ name: '', urlTemplate: '', enabled: true })" style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px dashed #d1d5db; border-radius: 8px; background: white; cursor: pointer; font-size: 12px; color: #6b7280; transition: all 0.15s; width: 100%; justify-content: center;" @mouseenter="$event.target.style.borderColor='#3b82f6';$event.target.style.color='#3b82f6'" @mouseleave="$event.target.style.borderColor='#d1d5db';$event.target.style.color='#6b7280'">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                {{ t("添加搜索引擎") }}
+              </button>
             </div>
           </div>
         </section>

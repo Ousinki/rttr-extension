@@ -166,25 +166,30 @@ export async function recognizeImageWord(img: HTMLImageElement, clientX: number,
         { type: 'header', label: targetWord, onSpeakClick: () => speakText(targetWord, currentSettings) },
         { type: 'divider', label: 'DIVIDER' }
       ];
+      // Build search menu items for all enabled engines
+      const iconSearchGoogle = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>';
+      const iconSearchX = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l11.733 16h4.267l-11.733 -16z"/><path d="M20 4L4 20"/></svg>';
+      const iconSearchReddit = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8c-4 0-8 2.5-8 6s4 6 8 6 8-2.5 8-6-4-6-8-6z"/><circle cx="8.5" cy="13" r="1" fill="currentColor"/><circle cx="15.5" cy="13" r="1" fill="currentColor"/><path d="M9 16.5c1 .8 2 1 3 1s2-.2 3-1"/><path d="M12 8V5"/><circle cx="15" cy="3" r="2"/><circle cx="3.5" cy="10.5" r="1.5"/><circle cx="20.5" cy="10.5" r="1.5"/></svg>';
+      const iconCustomSearch = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
+
+      if (currentSettings?.enableSearchGoogle) {
+        items.push({ icon: iconSearchGoogle, label: '搜索 Google', onClick: () => window.open(`https://www.google.com/search?q=${encodeURIComponent(targetWord)}`, '_blank') });
+      }
       if (currentSettings?.enableSearchX) {
-        items.push({
-          icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l11.733 16h4.267l-11.733 -16z"/><path d="M20 4L4 20"/></svg>',
-          label: '搜索 X (Twitter)',
-          onClick: () => {
-            window.open(`https://x.com/search?q=${encodeURIComponent(`"${targetWord}"`)}`, '_blank');
-          }
-        });
+        items.push({ icon: iconSearchX, label: '搜索 X (Twitter)', onClick: () => window.open(`https://x.com/search?q=${encodeURIComponent(`"${targetWord}"`)}`, '_blank') });
       }
       if (currentSettings?.enableSearchReddit) {
-        items.push({
-          icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8c-4 0-8 2.5-8 6s4 6 8 6 8-2.5 8-6-4-6-8-6z"/><circle cx="8.5" cy="13" r="1" fill="currentColor"/><circle cx="15.5" cy="13" r="1" fill="currentColor"/><path d="M9 16.5c1 .8 2 1 3 1s2-.2 3-1"/><path d="M12 8V5"/><circle cx="15" cy="3" r="2"/><circle cx="3.5" cy="10.5" r="1.5"/><circle cx="20.5" cy="10.5" r="1.5"/></svg>',
-          label: '搜索 Reddit',
-          onClick: () => {
-            window.open(`https://www.reddit.com/search/?q=${encodeURIComponent(targetWord)}`, '_blank');
-          }
-        });
+        items.push({ icon: iconSearchReddit, label: '搜索 Reddit', onClick: () => window.open(`https://www.reddit.com/search/?q=${encodeURIComponent(targetWord)}`, '_blank') });
       }
-      if (currentSettings?.enableSearchX || currentSettings?.enableSearchReddit) {
+      if (currentSettings?.customSearchEngines?.length) {
+        for (const engine of currentSettings.customSearchEngines) {
+          if (engine.enabled && engine.name && engine.urlTemplate) {
+            const url = engine.urlTemplate.replace(/\{query\}/g, encodeURIComponent(targetWord));
+            items.push({ icon: iconCustomSearch, label: engine.name, onClick: () => window.open(url, '_blank') });
+          }
+        }
+      }
+      if (items.length > 2) { // more than just header + divider
         items.push({ type: 'divider', label: 'DIVIDER' });
       }
       items.push({ icon: SVG_ICONS.settings, label: '设置', onClick: () => safeSendMessage({ type: 'OPEN_OPTIONS' }) });
