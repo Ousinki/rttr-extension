@@ -206,8 +206,13 @@ export const biliActions = {
     this.savePrefs();
   },
 
-  setStudyActive(enabled: boolean) {
-    biliState.studyActive = enabled;
+  setStudyActive(active: boolean) {
+    biliState.studyActive = active;
+    
+    // Broadcast the state change so other isolated content scripts (like content.ts) can sync it
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('rttr-study-state-change', { detail: { active } }));
+    }
     this.savePrefs();
   },
 

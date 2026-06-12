@@ -34,9 +34,14 @@ export default defineContentScript({
 
     // 1. 注入全局样式，定义自定义精读控制按钮样式
     const injectGlobalStyles = () => {
-      if (document.getElementById('rttr-bili-study-styles')) return;
+      // 清理可能残留的旧版样式（针对不刷新页面只重载扩展的情况）
+      document.getElementById('rttr-bili-study-styles')?.remove();
+      
+      const styleId = 'rttr-bili-study-styles-v2';
+      if (document.getElementById(styleId)) return;
+      
       const style = document.createElement('style');
-      style.id = 'rttr-bili-study-styles';
+      style.id = styleId;
       style.textContent = `
         /* RTTR 精读自定义按钮默认状态：灰色、带透明度 */
         .rttr-bili-study-btn {
@@ -55,17 +60,14 @@ export default defineContentScript({
           vertical-align: middle !important;
         }
 
-        .rttr-bili-study-btn .bpx-player-ctrl-btn-icon {
-          display: flex !important;
-          align-items: center !important;
-          justify-content: center !important;
-          height: 100% !important;
-          width: 100% !important;
+        .rttr-bili-study-btn .rttr-btn-icon-wrapper {
+          display: block !important;
+          width: 28px !important;
+          height: 12px !important;
         }
 
         .rttr-bili-study-btn svg {
-          display: block !important;
-          transform: translateY(-3px) !important; /* 精准上移 3px 纠正B站原生容器导致的下偏问题 */
+          /* 位置调整已经移动到内联 style，避免特异性冲突 */
           transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
         }
 
@@ -82,8 +84,11 @@ export default defineContentScript({
           opacity: 0.95 !important;
           color: #ffffff !important;
         }
+        #rttr-bili-study-trigger:hover .rttr-btn-icon-wrapper {
+          margin-top: -11px !important; /* 悬停时再往上浮 1px */
+        }
         #rttr-bili-study-trigger:hover svg {
-          transform: translateY(-4px) scale(1.05) !important; /* 悬停时向上微浮，展现立体感 */
+          transform: scale(1.05) !important; /* 悬停时展现立体感 */
         }
 
         /* 开启（激活）状态：完全不透明且应用金属渐变和精致重叠描边 */
@@ -155,12 +160,15 @@ export default defineContentScript({
         console.log('[RTTR BiliStudy] 找到播放器控制条，注入精读控制按钮...');
         studyBtn = document.createElement('div');
         studyBtn.id = 'rttr-bili-study-trigger';
-        studyBtn.className = 'bpx-player-ctrl-btn rttr-bili-study-btn';
+        // 不再混用 bpx-player-ctrl-btn 避免被B站的伪元素或特定行高干扰
+        studyBtn.className = 'rttr-bili-study-btn'; 
         studyBtn.setAttribute('role', 'button');
         studyBtn.setAttribute('aria-label', '双语精读');
         studyBtn.setAttribute('tabindex', '0');
         studyBtn.setAttribute('title', '开启/关闭 RTTR 双语精读学习助手');
         
+        // 改为 inline-block 和 relative 以支持内部的绝对定位
+        studyBtn.style.display = 'inline-block';
         studyBtn.style.width = '36px';
         studyBtn.style.height = '100%';
         studyBtn.style.cursor = 'pointer';
@@ -169,9 +177,13 @@ export default defineContentScript({
         studyBtn.style.margin = '0 4px';
         studyBtn.style.transition = 'all 0.2s ease';
 
+        // 使用绝对定位彻底摆脱 Flexbox 的牵制
+        // top: 50% 配合 margin-top 可以实现像素级的精准上移
+        // 几何中心是 margin-top: -6px (高度 12px 的一半)
+        // 我们想往上移 4px，所以设为 margin-top: -10px
         studyBtn.innerHTML = `
-          <div class="bpx-player-ctrl-btn-icon" style="display: flex; align-items: center; justify-content: center; height: 100%; width: 100%;">
-            <svg viewBox="0 0 700 300" style="width: 28px; height: 12px; transition: all 0.2s ease;">
+          <div class="rttr-btn-icon-wrapper" style="position: absolute; top: 50%; left: 50%; margin-left: -14px; margin-top: -10px; width: 28px; height: 12px;">
+            <svg viewBox="0 0 700 300" style="width: 100%; height: 100%; transition: all 0.2s ease; display: block;">
               <defs>
                 <linearGradient id="rttr-grad1" x1="0%" y1="0%" x2="0%" y2="100%">
                   <stop offset="0%" stop-color="#94a3b8" />
@@ -207,6 +219,14 @@ export default defineContentScript({
           e.preventDefault();
           const nextActive = !biliState.studyActive;
           biliActions.setStudyActive(nextActive);
+          
+          // 立即更新样式，消除 1.5s 轮询带来的延迟感
+          if (nextActive) {
+            studyBtn.classList.add('active');
+          } else {
+            studyBtn.classList.remove('active');
+          }
+          
           // 一键联动：开启精读时，也直接开启双语字幕；关闭精读时，关闭双语字幕并释放原生字幕
           biliActions.setCustomSubtitlesEnabled(nextActive);
         });
@@ -422,7 +442,7 @@ export default defineContentScript({
       const hider = document.getElementById('rttr-bili-subtitle-hider');
       if (hider) hider.remove();
 
-      const styles = document.getElementById('rttr-bili-study-styles');
+      const styles = document.getElementById('rttr-bili-study-styles-v2');
       if (styles) styles.remove();
 
       const studyBtn = document.getElementById('rttr-bili-study-trigger');

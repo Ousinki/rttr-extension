@@ -13,6 +13,7 @@
 
 import { settingsStorage } from '@/utils/storage';
 import { getDeepCaretRangeFromPoint } from '@/utils/content-dom';
+import { biliState } from '@/utils/bilibili-state';
 
 // ─── 多平台字幕元素选择器 ───────────────────────────────────
 
@@ -287,13 +288,47 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
     else currentMode = 'off';
   });
 
+  // --- HMR 幽灵监听器击杀机制 ---
+  // 开发环境下热更新(HMR)会导致多次注册相同的 document.addEventListener('mouseover', ...)
+  // 旧的监听器无法被自动移除，会变成“幽灵监听器”继续触发暂停！
+  // 通过赋予当前实例唯一的 ID，所有旧实例一旦发现 ID 不匹配就会立刻自杀退出。
+  const INSTANCE_ID = Date.now() + Math.random();
+  (window as any).__rttr_subtitle_active_instance = INSTANCE_ID;
+
+  const isGhostListener = () => {
+    return (window as any).__rttr_subtitle_active_instance !== INSTANCE_ID;
+  };
+
   // ─── 事件委托处理 ───
+
+  const checkStudyActive = (): boolean => {
+    const isBilibili = window.location.hostname.includes('bilibili.com');
+    const studyBtn = document.getElementById('rttr-bili-study-trigger');
+    
+    if (isBilibili) {
+      // 在 B 站：直接检查 DOM，这是穿越一切上下文隔离的最终真理
+      // 只要按钮不存在，或者按钮变灰了（没有 active），立刻放行，绝不暂停视频
+      if (!studyBtn || !studyBtn.classList.contains('active')) {
+        return false;
+      }
+    } else {
+      // 对于 YouTube 等目前尚未注入该开关按钮的平台，如果找不到按钮，默认放行
+      const studyBtn = document.getElementById('rttr-bili-study-trigger');
+      if (studyBtn && !studyBtn.classList.contains('active')) {
+        return false;
+      }
+    }
+    
+    return true;
+  };
 
   /**
    * mouseover (冒泡版 mouseenter)：鼠标移入字幕文本时
    */
   const onMouseOver = (e: MouseEvent) => {
+    if (isGhostListener()) return; // 遇到幽灵监听器，直接自杀
     if (currentMode === 'off') return;
+    if (!checkStudyActive()) return;
     const subtitleEl = findSubtitleElement(e.target, e);
     if (!subtitleEl) return;
 
@@ -318,6 +353,7 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
    * mouseout (冒泡版 mouseleave)：鼠标离开字幕文本时
    */
   const onMouseOut = (e: MouseEvent) => {
+    if (isGhostListener()) return;
     const subtitleEl = findSubtitleElement(e.target, e);
     if (!subtitleEl) return;
 
@@ -347,7 +383,9 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
    * click：点击字幕单词 → 高亮 + (click 模式下)暂停
    */
   const onClick = (e: MouseEvent) => {
+    if (isGhostListener()) return;
     if (currentMode === 'off') return;
+    if (!checkStudyActive()) return;
     const subtitleEl = findSubtitleElement(e.target, e);
     if (!subtitleEl) return;
 
@@ -424,6 +462,7 @@ export function initSubtitleInteraction(): SubtitleInteractionCleanup {
   // ─── 拦截并阻止底层视频播放器捕获字幕区域的鼠标/指针事件（防止 drag/play/pause 等干扰行为） ───
   const handleSubtitleEvents = (e: Event) => {
     if (currentMode === 'off') return;
+    if (!checkStudyActive()) return;
     const subtitleEl = findSubtitleElement(e.target, e);
     if (!subtitleEl) return;
 
