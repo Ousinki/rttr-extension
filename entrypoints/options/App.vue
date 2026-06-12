@@ -1554,7 +1554,7 @@ watch(settings, () => {
                 
                 <!-- Paragraph Text -->
                 <div class="focus-demo-text" style="font-size: 14px; line-height: 2.0; color: #333; text-align: left; width: 100%; transition: all 0.3s;">
-                  <span :style="getDemoSpanStyle(0)">The quick brown fox jumps over the lazy dog.</span><span class="demo-sep" :class="{ 'demo-sep-visible': demoState.step >= 5 }">&#9675;</span><span :style="getDemoSpanStyle(1)">It was a bright and sunny day.</span><span class="demo-sep" :class="{ 'demo-sep-visible': demoState.step >= 5 }">&#9675;</span><span :style="getDemoSpanStyle(2)">Birds were singing in the trees.</span><span class="demo-sep" :class="{ 'demo-sep-visible': demoState.step >= 5 }">&#9675;</span><span :style="getDemoSpanStyle(3)">A gentle breeze blew across the field.</span>
+                  <span :style="getDemoSpanStyle(0)">The quick brown fox jumps over the lazy dog.</span><span class="demo-sep" :class="{ 'demo-sep-visible': demoState.step >= 5 }">&#9675;</span><span :style="getDemoSpanStyle(1)"> It was a bright and sunny day.</span><span class="demo-sep" :class="{ 'demo-sep-visible': demoState.step >= 5 }">&#9675;</span><span :style="getDemoSpanStyle(2)"> Birds were singing in the trees.</span><span class="demo-sep" :class="{ 'demo-sep-visible': demoState.step >= 5 }">&#9675;</span><span :style="getDemoSpanStyle(3)"> A gentle breeze blew across the field.</span>
                 </div>
 
                 <!-- Context Menu -->
