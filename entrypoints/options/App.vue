@@ -762,10 +762,10 @@ const getDemoPopupStyle = () => {
   let top = '60px';
   let left = '28px';
 
-  if (step >= 5 && step < 6) { top = '88px'; left = '28px'; } // Sentence 1 (Line 1)
-  else if (step >= 6 && step < 8) { top = '116px'; left = '28px'; } // Sentence 2 (Wraps to Line 2)
-  else if (step >= 8 && step < 10) { top = '116px'; left = '150px'; } // Sentence 3 (Line 2 middle)
-  else if (step >= 10) { top = '144px'; left = '28px'; } // Sentence 4 (Wraps to Line 3)
+  if (step >= 5 && step < 6) { top = '116px'; left = '28px'; } // Sentence 1 (Line 1) -> Popup below Line 1
+  else if (step >= 6 && step < 8) { top = '144px'; left = '28px'; } // Sentence 2 (Wraps to Line 2) -> Popup below Line 2
+  else if (step >= 8 && step < 10) { top = '144px'; left = '150px'; } // Sentence 3 (Line 2 middle) -> Popup below Line 2
+  else if (step >= 10) { top = '172px'; left = '28px'; } // Sentence 4 (Wraps to Line 3) -> Popup below Line 3
 
   return {
     top,
