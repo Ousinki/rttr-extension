@@ -123,6 +123,7 @@ function getClosestRect(range: Range, x: number, y: number): DOMRect {
 
 export default defineContentScript({
   matches: ['<all_urls>'],
+  allFrames: true,
   cssInjectionMode: 'ui',
   async main(ctx) {
     let currentSettings: any;
