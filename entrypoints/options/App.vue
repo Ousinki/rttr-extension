@@ -770,7 +770,7 @@ const getDemoPopupStyle = () => {
   return {
     top,
     left,
-    position: 'absolute',
+    position: 'absolute' as const,
     transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)'
   };
 };
@@ -1737,12 +1737,12 @@ watch(settings, () => {
                 <input type="checkbox" v-model="engine.enabled" style="margin: 0; width: 14px; height: 14px; cursor: pointer; flex-shrink: 0;" />
                 <input type="text" v-model="engine.name" :placeholder="t('名称')" style="width: 80px; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 12px; outline: none; background: white; color: #111827;" />
                 <input type="text" v-model="engine.urlTemplate" :placeholder="'https://example.com/search?q={query}'" style="flex: 1; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 12px; outline: none; background: white; color: #111827; font-family: ui-monospace, monospace;" />
-                <button @click="settings.customSearchEngines.splice(idx, 1)" style="flex-shrink: 0; width: 24px; height: 24px; border: none; background: transparent; cursor: pointer; color: #9ca3af; display: flex; align-items: center; justify-content: center; border-radius: 4px; transition: all 0.15s;" @mouseenter="$event.target.style.color='#ef4444';$event.target.style.background='#fef2f2'" @mouseleave="$event.target.style.color='#9ca3af';$event.target.style.background='transparent'">
+                <button @click="settings.customSearchEngines.splice(idx, 1)" style="flex-shrink: 0; width: 24px; height: 24px; border: none; background: transparent; cursor: pointer; color: #9ca3af; display: flex; align-items: center; justify-content: center; border-radius: 4px; transition: all 0.15s;" @mouseenter="($event.currentTarget as HTMLElement).style.color='#ef4444';($event.currentTarget as HTMLElement).style.background='#fef2f2'" @mouseleave="($event.currentTarget as HTMLElement).style.color='#9ca3af';($event.currentTarget as HTMLElement).style.background='transparent'">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
               </div>
 
-              <button @click="settings.customSearchEngines.push({ name: '', urlTemplate: '', enabled: true })" style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px dashed #d1d5db; border-radius: 8px; background: white; cursor: pointer; font-size: 12px; color: #6b7280; transition: all 0.15s; width: 100%; justify-content: center;" @mouseenter="$event.target.style.borderColor='#3b82f6';$event.target.style.color='#3b82f6'" @mouseleave="$event.target.style.borderColor='#d1d5db';$event.target.style.color='#6b7280'">
+              <button @click="settings.customSearchEngines.push({ name: '', urlTemplate: '', enabled: true })" style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px dashed #d1d5db; border-radius: 8px; background: white; cursor: pointer; font-size: 12px; color: #6b7280; transition: all 0.15s; width: 100%; justify-content: center;" @mouseenter="($event.currentTarget as HTMLElement).style.borderColor='#3b82f6';($event.currentTarget as HTMLElement).style.color='#3b82f6'" @mouseleave="($event.currentTarget as HTMLElement).style.borderColor='#d1d5db';($event.currentTarget as HTMLElement).style.color='#6b7280'">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 {{ t("添加搜索引擎") }}
               </button>
